@@ -1,6 +1,6 @@
 ## Variables
 $savedcreds=$false                      ## false = manually enter creds, True = auto
-$credpath = "c:\downloads\tenant.xml"   ## local with credentials
+$credpath = "c:\downloads\tenant.xml"   ## local file with credentials
 
 clear-host
 
