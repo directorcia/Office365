@@ -20,9 +20,10 @@ if ($savedcreds) {
 }
 else {
     ## Get creds manually
-    $cred=get-credential
-    connect-msolservice -credential $cred   
+    $cred=get-credential 
 }
+
+connect-msolservice -credential $cred
 
 ## Start Exchange Online session
 $Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://outlook.office365.com/powershell-liveid/?proxyMethod=RPS -Credential $Cred -Authentication Basic -AllowRedirection
