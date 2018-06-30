@@ -29,9 +29,9 @@ else {
 
 ## Connect to Office 365 admin service
 connect-msolservice -credential $cred
-write-host -foregroundcolor darkgreen "Now connected to Office 365 Admin service"
+write-host -foregroundcolor green "Now connected to Office 365 Admin service"
 
 ## Start Exchange Online session
 $Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://outlook.office365.com/powershell-liveid/?proxyMethod=RPS -Credential $Cred -Authentication Basic -AllowRedirection
 import-PSSession $Session
-write-host -foregroundcolor darkgreen "Now connected to Exchange Online services"
+write-host -foregroundcolor green "Now connected to Exchange Online services"

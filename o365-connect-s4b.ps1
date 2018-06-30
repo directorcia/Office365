@@ -3,13 +3,11 @@
 
 ## Prerequisites = 2
 ## 1. Ensure msonline module installed or updated
-## 2. Ensure SharePoint online PowerShell module installed or updated
+## 2. Ensure Skype for Business online PowerShell module installed or updated
 
 ## Variables
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
-#Change <tenantname> to be your own tenant
-$tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL for tenant
 
 clear-host
 
@@ -20,9 +18,9 @@ clear-host
 ## ensure that update-module msonline has been run to get latest module
 import-module msonline
 
-## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=35588 (SharePoint Online Module)
-## Current version = 16.0.7813.1200, 27 June 2018
-import-module microsoft.online.sharepoint.powershell -disablenamechecking
+## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=39366 (Skype for Business Online Module)
+## Current version = 7.0.1994.0, 26 February 2018
+import-module skypeonlineconnector
 
 ## Get tenant login credentials
 if ($savedcreds) {
@@ -38,6 +36,7 @@ else {
 connect-msolservice -credential $cred
 write-host -foregroundcolor green "Now connected to Office 365 Admin service"
 
-#Connect to SharePoint Online Service
-connect-sposervice -url $tenanturl -credential $cred
-write-host -foregroundcolor green "Now connected to SharePoint Online services"
+#Connect to Skype for Business Online Service
+$sfboSession=new-csonlinesession -credential $cred
+import-pssession $sfboSession
+write-host -foregroundcolor green "Now connected to Skype for Business Online services"
