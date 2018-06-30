@@ -1,12 +1,15 @@
 ## CIAOPS
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Prerequisites = 1
+## Prerequisites = 2
 ## 1. Ensure msonline module installed or updated
+## 2. Ensure SharePoint online PowerShell module installed or updated
 
 ## Variables
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
+#Change <tenantname> to be your own tenant
+$tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL for tenant
 
 clear-host
 
@@ -16,6 +19,10 @@ clear-host
 ## ensure that install-module msonline has been run
 ## ensure that update-module msonline has been run to get latest module
 import-module msonline
+
+## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=35588 (SharePoint Online Module)
+## Current version = 16.0.7813.1200, 27 June 2018
+import-module microsoft.online.sharepoint.powershell -disablenamechecking
 
 ## Get tenant login credentials
 if ($savedcreds) {
@@ -31,7 +38,6 @@ else {
 connect-msolservice -credential $cred
 write-host -foregroundcolor darkgreen "Now connected to Office 365 Admin service"
 
-## Start Exchange Online session
-$Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://outlook.office365.com/powershell-liveid/?proxyMethod=RPS -Credential $Cred -Authentication Basic -AllowRedirection
-import-PSSession $Session
-write-host -foregroundcolor darkgreen "Now connected to Exchange Online services"
+#Connect to SharePoint Online Service
+connect-sposervice -url $tenanturl -credential $cred
+write-host -foregroundcolor darkgreen "Now connected to SharePoint Online services"
