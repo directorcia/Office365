@@ -19,10 +19,12 @@ clear-host
 ## ensure that install-module msonline has been run
 ## ensure that update-module msonline has been run to get latest module
 import-module msonline
+write-host -foregroundcolor green "MSOnline module loaded"
 
 ## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=35588 (SharePoint Online Module)
 ## Current version = 16.0.7813.1200, 27 June 2018
 import-module microsoft.online.sharepoint.powershell -disablenamechecking
+write-host -foregroundcolor green "SharePoint Online module loaded"
 
 ## Get tenant login credentials
 if ($savedcreds) {

@@ -17,10 +17,12 @@ clear-host
 ## ensure that install-module msonline has been run
 ## ensure that update-module msonline has been run to get latest module
 import-module msonline
+write-host -foregroundcolor green "MSOnline module loaded"
 
 ## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=39366 (Skype for Business Online Module)
 ## Current version = 7.0.1994.0, 26 February 2018
 import-module skypeonlineconnector
+write-host -foregroundcolor green "Skype for Business module loaded"
 
 ## Get tenant login credentials
 if ($savedcreds) {

@@ -16,6 +16,7 @@ clear-host
 ## ensure that install-module msonline has been run
 ## ensure that update-module msonline has been run to get latest module
 import-module msonline
+write-host -foregroundcolor green "MSOnline module loaded"
 
 ## Get tenant login credentials
 if ($savedcreds) {
