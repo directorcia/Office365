@@ -8,7 +8,7 @@
 ## Variables
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
-#Change <tenantname> to be your own tenant
+## Change <tenantname> to be your own tenant
 $tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL for tenant
 
 Clear-Host
