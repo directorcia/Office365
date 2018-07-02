@@ -3,6 +3,10 @@
 
 ## Prerequisites = 0
 
+Clear-Host
+
+write-host -foregroundcolor green "Script started"
+
 ## Variables
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials
 

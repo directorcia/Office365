@@ -11,7 +11,9 @@ $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if requir
 #Change <tenantname> to be your own tenant
 $tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL for tenant
 
-clear-host
+Clear-Host
+
+write-host -foregroundcolor green "Script started"
 
 ## set-executionpolicy remotesigned
 ## May be required once to allow ability to runs scripts in PowerShell

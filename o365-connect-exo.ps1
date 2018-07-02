@@ -8,7 +8,9 @@
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 
-clear-host
+Clear-Host
+
+write-host -foregroundcolor green "Script started"
 
 ## set-executionpolicy remotesigned
 ## May be required once to allow ability to runs scripts in PowerShell
