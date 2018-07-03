@@ -37,5 +37,5 @@ else {
 }
 
 ## Connect to AzuerAD service
-Connect-azuread -credential $credential
+Connect-azuread -credential $cred
 write-host -foregroundcolor green "Now connected to Azure AD Service"
