@@ -2,7 +2,7 @@
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 ## Description
-## Script designed to log into the Office 365 Secuity and Compliance Center when multi factor security is enabled
+## Script designed to log into the Office 365 Security and Compliance Center when multi factor security is enabled
 
 ## Prerequisites = 1
 ## 1. Ensure msonline MFA module installed or updated
