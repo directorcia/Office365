@@ -1,6 +1,9 @@
 ## CIAOPS
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
+## Description
+## Script designed to log into the Office 365 admin portal and the SharePoint Online portal
+
 ## Prerequisites = 2
 ## 1. Ensure msonline module installed or updated
 ## 2. Ensure SharePoint online PowerShell module installed or updated

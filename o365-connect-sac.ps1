@@ -1,6 +1,9 @@
 ## CIAOPS
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
+## Description
+## Script designed to log into the Office 365 Security and Compliance Center
+
 ## Prerequisites = 1
 ## 1. Ensure msonline module installed or updated
 

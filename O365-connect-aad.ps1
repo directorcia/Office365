@@ -1,6 +1,10 @@
 ## CIAOPS
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
+
+## Description
+## Script designed to log into the Azure AD portal
+
 ## Prerequisites = 1
 ## 1. Ensure azuread module installed or updated
 

@@ -1,6 +1,9 @@
 ## CIAOPS
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
+## Description
+## Script designed to log into the Skype for Business Online portal
+
 ## Prerequisites = 2
 ## 1. Ensure msonline module installed or updated
 ## 2. Ensure Skype for Business online PowerShell module installed or updated

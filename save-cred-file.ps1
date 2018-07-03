@@ -1,6 +1,9 @@
 ## CIAOPS
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
+## Description
+## Script designed save login credentials to a local XML file for later re-use
+
 ## Prerequisites = 0
 
 Clear-Host
