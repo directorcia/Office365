@@ -43,7 +43,7 @@ else {
 connect-msolservice -credential $cred
 write-host -foregroundcolor green "Now connected to Office 365 Admin service"
 
-#Connect to Skype for Business Online Service
+## Connect to Skype for Business Online Service
 $sfboSession=new-csonlinesession -credential $cred
 import-pssession $sfboSession
 write-host -foregroundcolor green "Now connected to Skype for Business Online services"
