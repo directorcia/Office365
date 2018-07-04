@@ -25,7 +25,6 @@ import-module microsoft.online.sharepoint.powershell -disablenamechecking
 write-host -foregroundcolor green "SharePoint Online module loaded"
 
 ## ensure that Exchange Online MFA modules has been run
-
 ## Download and install MFA cmdlets from - https://docs.microsoft.com/en-us/powershell/exchange/exchange-online/connect-to-exchange-online-powershell/mfa-connect-to-exchange-online-powershell?view=exchange-ps
 
 ## Connect to SharePoint Online Service

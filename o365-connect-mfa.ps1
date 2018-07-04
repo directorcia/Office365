@@ -15,7 +15,6 @@ write-host -foregroundcolor green "Script started"
 ## May be required once to allow ability to runs scripts in PowerShell
 
 ## ensure that Exchange Online MFA modules has been run
-
 ## Download and install MFA cmdlets from - https://docs.microsoft.com/en-us/powershell/exchange/exchange-online/connect-to-exchange-online-powershell/mfa-connect-to-exchange-online-powershell?view=exchange-ps
 
 Import-Module $((Get-ChildItem -Path $($env:LOCALAPPDATA+"\Apps\2.0\") `
