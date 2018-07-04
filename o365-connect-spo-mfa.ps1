@@ -4,8 +4,9 @@
 ## Description
 ## Script designed to log into the SharePoint Online portal when multi factor security is enabled
 
-## Prerequisites = 1
+## Prerequisites = 2
 ## 1. Ensure msonline MFA module installed or updated
+## 2. Ensure SharePoint online PowerShell module installed or updated
 
 ## Variables
 ## Change <tenantname> to be your own tenant
@@ -17,6 +18,11 @@ write-host -foregroundcolor green "Script started"
 
 ## set-executionpolicy remotesigned
 ## May be required once to allow ability to runs scripts in PowerShell
+
+## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=35588 (SharePoint Online Module)
+## Current version = 16.0.7813.1200, 27 June 2018
+import-module microsoft.online.sharepoint.powershell -disablenamechecking
+write-host -foregroundcolor green "SharePoint Online module loaded"
 
 ## ensure that Exchange Online MFA modules has been run
 
