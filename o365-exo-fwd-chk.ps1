@@ -9,7 +9,7 @@
 
 Clear-Host
 
-write-host -foregroundcolor green "Script started"
+write-host -foregroundcolor Cyan "`nScript started"
 
 ## Get all mailboxes
 $mailboxes = Get-Mailbox -ResultSize Unlimited
@@ -18,6 +18,8 @@ $mailboxes = Get-Mailbox -ResultSize Unlimited
 ## Green - no forwarding enabled and no forwarding address present
 ## Yellow - forwarding disabled but forwarding address present
 ## Red - forwarding enabled
+
+write-host -foregroundcolor Cyan "`nCheck Exchange Forwards"
  
 foreach ($mailbox in $mailboxes) {
     if ($mailbox.DeliverToMailboxAndForward) { ## if email forwarding is active
@@ -42,4 +44,33 @@ foreach ($mailbox in $mailboxes) {
         }
     }
 }
-write-host -foregroundcolor green "Script complete"
+
+write-host -foregroundcolor Cyan "`nCheck Outlook Rule Forwards"
+
+foreach ($mailbox in $mailboxes) 
+{
+  $rules = get-inboxrule -mailbox $mailbox.identity 
+  foreach ($rule in $rules)
+    {
+       If ($rule.enabled) {
+        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host "`nMailbox =",$mailbox.displayname,":",$mailbox.primarysmtpaddress,"`nSuspect Enabled Rule name -",$rule.name }      
+        If ($rule.forwardto) { write-host -ForegroundColor red "Forward to:",$rule.forwardto }
+        If ($rule.RedirectTo) { write-host -ForegroundColor red "Redirect to:",$rule.redirectto }
+        If ($rule.CopyToFolder) { write-host -ForegroundColor red "Copy to folder:",$rule.copytofolder }
+        if ($rule.DeleteMessage) { write-host -ForegroundColor Red "Delete message:", $rule.deletemessage }
+        if ($rule.ForwardAsAttachmentTo) { write-host -ForegroundColor Red "Forward as attachment to:",$rule.forwardasattachmentto}
+        if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor Red "Sent TXT msg to:",$rule.sendtextmessagenotificationto }
+        }
+        else {
+        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host "`nMailbox =",$mailbox.displayname,":",$mailbox.primarysmtpaddress,"`nSuspect Disabled Rule name -",$rule.name }      
+        If ($rule.forwardto) { write-host -ForegroundColor Yellow "Forward to:",$rule.forwardto }
+        If ($rule.RedirectTo) { write-host -ForegroundColor Yellow "Redirect to:",$rule.redirectto }
+        If ($rule.CopyToFolder) { write-host -ForegroundColor Yellow "Copy to folder:",$rule.copytofolder }
+        if ($rule.DeleteMessage) { write-host -ForegroundColor Yellow "Delete message:", $rule.deletemessage }
+        if ($rule.ForwardAsAttachmentTo) { write-host -ForegroundColor Yellow "Forward as attachment to:",$rule.forwardasattachmentto}
+        if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor Yellow "Sent TXT msg to:",$rule.sendtextmessagenotificationto }
+        }
+    }
+}
+
+write-host -foregroundcolor Cyan "`nScript complete"
