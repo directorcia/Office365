@@ -49,11 +49,12 @@ write-host -foregroundcolor Cyan "`nCheck Outlook Rule Forwards"
 
 foreach ($mailbox in $mailboxes) 
 {
+    Write-Host -foregroundcolor gray "Checking rules for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
   $rules = get-inboxrule -mailbox $mailbox.identity 
   foreach ($rule in $rules)
     {
        If ($rule.enabled) {
-        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host "`nMailbox =",$mailbox.displayname,":",$mailbox.primarysmtpaddress,"`nSuspect Enabled Rule name -",$rule.name }      
+        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host "`nSuspect Enabled Rule name -",$rule.name }      
         If ($rule.forwardto) { write-host -ForegroundColor red "Forward to:",$rule.forwardto }
         If ($rule.RedirectTo) { write-host -ForegroundColor red "Redirect to:",$rule.redirectto }
         If ($rule.CopyToFolder) { write-host -ForegroundColor red "Copy to folder:",$rule.copytofolder }
@@ -62,7 +63,7 @@ foreach ($mailbox in $mailboxes)
         if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor Red "Sent TXT msg to:",$rule.sendtextmessagenotificationto }
         }
         else {
-        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host "`nMailbox =",$mailbox.displayname,":",$mailbox.primarysmtpaddress,"`nSuspect Disabled Rule name -",$rule.name }      
+        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host "`nSuspect Disabled Rule name -",$rule.name }      
         If ($rule.forwardto) { write-host -ForegroundColor Yellow "Forward to:",$rule.forwardto }
         If ($rule.RedirectTo) { write-host -ForegroundColor Yellow "Redirect to:",$rule.redirectto }
         If ($rule.CopyToFolder) { write-host -ForegroundColor Yellow "Copy to folder:",$rule.copytofolder }
