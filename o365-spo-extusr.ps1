@@ -1,6 +1,8 @@
 ## CIAOPS
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-spo-extusr.ps1
+
 ## Description
 ## Script designed to log into the show the external SharePoint Online users across all site collections
 ## The script will also show external users for the OneDrive Site collection of the user who runs the script.
