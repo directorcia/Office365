@@ -5,9 +5,6 @@
 
 ## Description
 ## Script designed to log into the show the external SharePoint Online users across all site collections
-## The script will also show external users for the OneDrive Site collection of the user who runs the script.
-## By default, not even the global adminsitrator has rights into user's OneDrive.
-## For all user OneDrive's to be listed using the script, the user who runs this script wil need to be made a Site Collection administrator of all user's OneDrive sites
 
 ## Prerequisites = 1
 ## 1. Ensure SharePoint online PowerShell module installed or updated
