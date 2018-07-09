@@ -2,7 +2,7 @@
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 ## Crowd source settings for filtering - http://blog.ciaops.com/2018/06/spam-filtering-in-office-365best.html
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-spam-policy.ps1
 
 ## Description
 ## Script designed to configure a new Exchange Online spam filtering policy
