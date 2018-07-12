@@ -1,7 +1,7 @@
 ## CIAOPS
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Source = 
+## Source = https://github.com/directorcia/Office365/blob/master/o365-exo-addins.ps1
 
 ## Description
 ## Script designed to check which which add ins are present on each mailbox
