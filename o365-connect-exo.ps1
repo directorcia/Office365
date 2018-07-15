@@ -30,7 +30,7 @@ if ($savedcreds) {
 }
 else {
     ## Get creds manually
-    $cred=get-credential 
+    $cred=get-credential
 }
 
 ## Connect to Office 365 admin service

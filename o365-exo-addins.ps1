@@ -16,11 +16,6 @@ write-host -foregroundcolor Cyan "`nScript started"
 ## Get all mailboxes
 $mailboxes = Get-Mailbox -ResultSize Unlimited
 
-## Results
-## Green - no forwarding enabled and no forwarding address present
-## Yellow - forwarding disabled but forwarding address present
-## Red - forwarding enabled
-
 write-host -foregroundcolor Cyan "`nCheck Mailbox Add ins"
 
 foreach ($mailbox in $mailboxes) {
