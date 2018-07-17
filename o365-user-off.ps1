@@ -1,10 +1,12 @@
 ## CIAOPS
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-user-off.ps1
+
 ## Description
 ## Script designed to disable a user's access to Office 365 services
 
-## Prerequisites = 1
+## Prerequisites = 3
 ## 1. Ensure connected to Office 365 Azure AD
 ## 2. Ensure connected to Exchange Online
 ## 3. Ensure connected to SharePoint Online
@@ -32,10 +34,10 @@ write-host -foregroundcolor green "Found",$user.displayname
 Set-AzureADUser -objectid $user.ObjectId -AccountEnabled $false
 write-host -foregroundcolor green "Disabled login"
 
-## Invalidates all the refresh tokens used to obtain new access tokens for Office 365 applications by setting their expiry to the current date and time. 
-## When a user authenticates to connect to an Office 365 application, they create a session with that application. 
-## The session receives an access token and a refresh token from Azure Active Directory. 
-## An Office 365 access token is valid for an hour (the period can be changed if needed). 
+## Invalidates all the refresh tokens used to obtain new access tokens for Office 365 applications by setting their expiry to the current date and time.
+## When a user authenticates to connect to an Office 365 application, they create a session with that application.
+## The session receives an access token and a refresh token from Azure Active Directory.
+## An Office 365 access token is valid for an hour (the period can be changed if needed).
 ## When that period elapses, an automatic reauthentication process commences to obtain a new access token to allow the session to continue
 Revoke-AzureADUserAllRefreshToken -ObjectId $user.ObjectId
 write-host -foregroundcolor green "Revoked Token"
