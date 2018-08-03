@@ -1,7 +1,7 @@
 ## CIAOPS
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Source -
+## Source -https://github.com/directorcia/Office365/blob/master/o365-spo-getsharing.ps1
 
 ## Description
 ## Script designed to report onthe sharing state of SharePoint Online sites
