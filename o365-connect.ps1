@@ -20,6 +20,10 @@ write-host -foregroundcolor green "Script started"
 
 ## ensure that install-module msonline has been run
 ## ensure that update-module msonline has been run to get latest module
+
+## https://www.powershellgallery.com/packages/MSOnline/
+## Current version = 1.1.183.8, 18 May 2018
+
 import-module msonline
 write-host -foregroundcolor green "MSOnline module loaded"
 
@@ -30,7 +34,7 @@ if ($savedcreds) {
 }
 else {
     ## Get creds manually
-    $cred=get-credential 
+    $cred=get-credential
 }
 
 ## Connect to Office 365 admin service
