@@ -2,7 +2,7 @@
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 ## Description
-## Script designed to tenant emails to see whether they appear in the haveibeenpwned.com database
+## Script designed to check tenant emails to see whether they appear in the haveibeenpwned.com database
 ## Adapted from the original script by Elliot Munro - https://gcits.com/knowledge-base/check-office-365-accounts-against-have-i-been-pwned-breaches/
 
 ## Prerequisites = 2
