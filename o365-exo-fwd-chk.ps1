@@ -20,11 +20,11 @@ $mailboxes = Get-Mailbox -ResultSize Unlimited
 ## Red - forwarding enabled
 
 write-host -foregroundcolor Cyan "`nCheck Exchange Forwards"
- 
+
 foreach ($mailbox in $mailboxes) {
     if ($mailbox.DeliverToMailboxAndForward) { ## if email forwarding is active
         Write-host
-        Write-host "**********" -foregroundcolor red        
+        Write-host "**********" -foregroundcolor red
         Write-Host "Checking rules for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)" -foregroundColor Red
         Write-host "Forwarding address = $($mailbox.forwardingsmtpaddress)" -foregroundColor Red
         Write-host "**********" -foregroundcolor red
@@ -33,7 +33,7 @@ foreach ($mailbox in $mailboxes) {
     else {
         if ($mailbox.forwardingsmtpaddress){ ## if email forward email address has been set
             Write-host
-            Write-host "**********" -foregroundcolor yellow        
+            Write-host "**********" -foregroundcolor yellow
             Write-Host "Checking rules for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)" -foregroundColor yellow
             Write-host "Forwarding address = $($mailbox.forwardingsmtpaddress)" -foregroundColor yellow
             Write-host "**********" -foregroundcolor yellow
@@ -47,14 +47,14 @@ foreach ($mailbox in $mailboxes) {
 
 write-host -foregroundcolor Cyan "`nCheck Outlook Rule Forwards"
 
-foreach ($mailbox in $mailboxes) 
+foreach ($mailbox in $mailboxes)
 {
     Write-Host -foregroundcolor gray "Checking rules for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-  $rules = get-inboxrule -mailbox $mailbox.identity 
+  $rules = get-inboxrule -mailbox $mailbox.identity
   foreach ($rule in $rules)
     {
        If ($rule.enabled) {
-        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host "`nSuspect Enabled Rule name -",$rule.name }      
+        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host "`nSuspect Enabled Rule name -",$rule.name }
         If ($rule.forwardto) { write-host -ForegroundColor red "Forward to:",$rule.forwardto }
         If ($rule.RedirectTo) { write-host -ForegroundColor red "Redirect to:",$rule.redirectto }
         If ($rule.CopyToFolder) { write-host -ForegroundColor red "Copy to folder:",$rule.copytofolder }
@@ -63,7 +63,7 @@ foreach ($mailbox in $mailboxes)
         if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor Red "Sent TXT msg to:",$rule.sendtextmessagenotificationto }
         }
         else {
-        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host "`nSuspect Disabled Rule name -",$rule.name }      
+        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host "`nSuspect Disabled Rule name -",$rule.name }
         If ($rule.forwardto) { write-host -ForegroundColor Yellow "Forward to:",$rule.forwardto }
         If ($rule.RedirectTo) { write-host -ForegroundColor Yellow "Redirect to:",$rule.redirectto }
         If ($rule.CopyToFolder) { write-host -ForegroundColor Yellow "Copy to folder:",$rule.copytofolder }

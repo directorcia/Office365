@@ -34,7 +34,7 @@ if ($savedcreds) {
 }
 else {
     ## Get creds manually
-    $cred=get-credential 
+    $cred=get-credential
 }
 
 ## Connect to Office 365 admin service
@@ -42,10 +42,10 @@ connect-msolservice -credential $cred
 write-host -foregroundcolor green "Now connected to Office 365 Admin service"
 
 ## Connect to the Office 365 Security and Compliance Center
-Write-Output "Getting the Security & Compliance Center cmdlets" 
+Write-Output "Getting the Security & Compliance Center cmdlets"
 $Session = New-PSSession -ConfigurationName Microsoft.Exchange `
     -ConnectionUri https://ps.compliance.protection.outlook.com/powershell-liveid/ `
     -Credential $cred -Authentication Basic -AllowRedirection
- 
+
 Import-PSSession $Session
 write-host -foregroundcolor green "Now connected to Office 365 Security and Compliance Center"
