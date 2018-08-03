@@ -18,10 +18,10 @@ write-host
 
 write-host -ForegroundColor white "Sharing Capability Settings"
 Write-Host -ForegroundColor White "----------------------------------------"
-write-host -ForegroundColor white "* Disabled – external user sharing (share by email) and guest link sharing are both disabled"
-write-host -ForegroundColor white "* ExternalUserSharingOnly – external user sharing (share by email) is enabled, but guest link sharing is disabled"
-write-host -ForegroundColor white "* ExistingExternalUserSharingOnly - (DEFAULT) Allow sharing only with the external users that already exist in your organization’s directory"
-write-host -ForegroundColor white "* ExternalUserAndGuestSharing - external user sharing (share by email) and guest link sharing are both enabled"
+write-host -ForegroundColor white "* Disabled – external user sharing (share by email) and guest link sharing both disabled"
+write-host -ForegroundColor white "* ExternalUserSharingOnly – external user sharing (share by email) enabled, but guest link sharing disabled"
+write-host -ForegroundColor white "* ExistingExternalUserSharingOnly - (DEFAULT) Allow sharing only with external users that already exist in organisation’s directory"
+write-host -ForegroundColor white "* ExternalUserAndGuestSharing - external user sharing (share by email) and guest link sharing both enabled"
 Write-Host
 
 ## ensure that SharePoint Online module has been installed and loaded
