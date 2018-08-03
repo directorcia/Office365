@@ -18,23 +18,23 @@ write-host -foregroundcolor green "Script started"
 ## Script from Elliot start
 Connect-MsolService
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
- 
+
 $headers = @{
     "User-Agent"  = "$((Get-MsolCompanyInformation).DisplayName) Account Check"
     "api-version" = 2 }
- 
+
 $baseUri = "https://haveibeenpwned.com/api"
- 
+
 # To check for admin status
 $RoleId = (Get-MsolRole -RoleName "Company Administrator").ObjectId
-$Admins = (Get-MsolRoleMember -RoleObjectId $RoleId | Select EmailAddress)
+$Admins = (Get-MsolRoleMember -RoleObjectId $RoleId | Select-object EmailAddress)
 $Report = @()
 $Breaches=0
- 
+
 Write-Host "Fetching mailboxes to check..."
-$Users = (Get-Mailbox -RecipientTypeDetails UserMailbox -ResultSize Unlimited | Select UserPrincipalName, EmailAddresses, DisplayName)
+$Users = (Get-Mailbox -RecipientTypeDetails UserMailbox -ResultSize Unlimited | Select-object UserPrincipalName, EmailAddresses, DisplayName)
 Write-Host "Processing" $Users.count "mailboxes..."
-  
+
 ForEach ($user in $users) {
     $Emails = $User.emailaddresses | Where-Object {$_ -match "smtp:" -and $_ -notmatch ".onmicrosoft.com"}
     $IsAdmin = $False
@@ -49,14 +49,14 @@ ForEach ($user in $users) {
         }
         Catch {
             if($error[0].Exception.response.StatusCode -match "NotFound"){
-                Write-Host "No Breach detected for $email" 
+                Write-Host "No Breach detected for $email"
             }else{
                 Write-Host "Cannot retrieve results due to rate limiting or suspect IP. You may need to try a different computer"
             }
         }
         if ($BreachResult) {
-            $MSOUser = Get-MsolUser -UserPrincipalName $User.UserPrincipalName 
-            If ($Admins -Match $User.UserPrincipalName) {$IsAdmin = $True} 
+            $MSOUser = Get-MsolUser -UserPrincipalName $User.UserPrincipalName
+            If ($Admins -Match $User.UserPrincipalName) {$IsAdmin = $True}
             If ($MSOUser.StrongAuthenticationMethods -ne $Null) {$MFAUsed = $True}
             ForEach ($Breach in $BreachResult) {
                  $ReportLine = [PSCustomObject][ordered]@{
@@ -78,7 +78,7 @@ ForEach ($user in $users) {
                     IsTenantAdmin      = $IsAdmin
                     MFAUsed            = $MFAUsed
                 }
-             
+
                 $Report += $ReportLine
                 Write-Host "Breach detected for $email - $($breach.name)" -ForegroundColor Red
                 If ($IsAdmin -eq $True) {Write-Host "This is a tenant administrator account" -ForeGroundColor DarkRed}
@@ -92,5 +92,5 @@ ForEach ($user in $users) {
 If ($Breaches -gt 0) {
     $Report | Export-CSV $resultsfile -NoTypeInformation
     Write-Host "Total breaches found: " $Breaches " You can find a report in "$resultsfile }
-Else 
+Else
   { Write-Host "Hurray - no breaches found for your Office 365 mailboxes" }
