@@ -5,8 +5,9 @@
 ## Script designed to tenant emails to see whether they appear in the haveibeenpwned.com database
 ## Adapted from the original script by Elliot Munro - https://gcits.com/knowledge-base/check-office-365-accounts-against-have-i-been-pwned-breaches/
 
-## Prerequisites = 1
+## Prerequisites = 2
 ## 1. Ensure msonline MFA module installed or updated
+## 2. Ensure you have connected to Exchange Online
 
 ## Variables
 $resultsfile = "c:\downloads\results.csv"   ## local file with credentials if required
