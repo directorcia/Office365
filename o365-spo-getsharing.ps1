@@ -29,5 +29,6 @@ Write-Host
 Write-host -ForegroundColor Cyan "Getting all Sharepoint sites in tenant"
 
 get-sposite | Select-object url,sharingcapability
+Write-Host
 
 write-host -foregroundcolor Cyan "Script complete"
