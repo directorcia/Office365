@@ -29,7 +29,7 @@ if ($savedcreds) {
 }
 else {
     ## Get creds manually
-    $cred=get-credential 
+    $cred=get-credential
 }
 
 ## Connect to Azure AD Rights Management Service

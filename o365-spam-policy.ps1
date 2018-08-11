@@ -12,7 +12,7 @@
 
 ## Variables
 ## Separate multiple domains with comma (,) e.g."domain1.com", "domain2.com", "domain3.com"
-$domains = "M365B555418.onmicrosoft.com" 
+$domains = "M365B555418.onmicrosoft.com"
 $policyname = "Configured Policy"
 $rulename = "Configured Recipients"
 
@@ -47,8 +47,8 @@ $policyparams = @{
     'phishspamaction' = 'movetojmf';
     'spamaction' = 'movetojmf';
     'zapenabled' = $true
-    }
-    
+}
+
 new-hostedcontentfilterpolicy @policyparams
 
 write-host -foregroundcolor Cyan "Set new filter rule"
@@ -56,10 +56,10 @@ write-host -foregroundcolor Cyan "Set new filter rule"
 $ruleparams = @{
     'name' = $rulename;
     'hostedcontentfilterpolicy' = $policyname;     ## this needs to match the above policy name
-    'recipientdomainis' = $domains;     
+    'recipientdomainis' = $domains;
     'Enabled' = $true
     }
-    
+
 New-hostedcontentfilterrule @ruleparams
 
 write-host -foregroundcolor Cyan "Script complete"

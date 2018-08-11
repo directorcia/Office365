@@ -17,6 +17,7 @@ write-host -foregroundcolor green "Script started"
 
 ## ensure that install-module azuread has been run
 ## ensure that update-module azuread has been run to get latest module
+
 ## https://www.powershellgallery.com/packages/AzureAD/
 ## Current version = 2.0.1.16, 21 June 2018
 import-module azuread

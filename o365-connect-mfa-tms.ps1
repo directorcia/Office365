@@ -6,7 +6,6 @@
 
 ## Prerequisites = 1
 ## 1. Ensure Micosoft Teams Module is install or updated
-## 2. Ensure msonline MFA module installed or updated
 
 Clear-Host
 
@@ -21,9 +20,6 @@ write-host -foregroundcolor green "Script started"
 ## Current version = 0.9.3, 25 April 2018
 import-module MicrosoftTeams
 write-host -foregroundcolor green "Microsoft Teams module loaded"
-
-## ensure that Exchange Online MFA modules has been run
-## Download and install MFA cmdlets from - https://docs.microsoft.com/en-us/powershell/exchange/exchange-online/connect-to-exchange-online-powershell/mfa-connect-to-exchange-online-powershell?view=exchange-ps
 
 ## Connect to Microsoft Teams service
 ## You will be manually prompted to enter credentials and MFA
