@@ -2,7 +2,9 @@
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 ## Description
-## Script designed to check and report the status of mailbox in teh tenant
+## Script designed to check and report the status of mailbox in the tenant
+
+## Source - https://github.com/directorcia/Office365/blob/master/o365-mx-check.ps1
 
 ## Prerequisites = 1
 ## 1. Connected to Exchange Online
