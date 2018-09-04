@@ -5,7 +5,7 @@
 ## Script designed to check and report the time taken by Office 365 ATP to process a message
 ## original concept and code taken from - https://blog.kloud.com.au/2018/07/19/measure-o365-atp-safe-attachments-latency-using-powershell/
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-atp-timer.ps1
 
 ## Prerequisites = 4
 ## 1. Recipient must have ATP license assigned and ATP must be configured for tenant
