@@ -25,6 +25,8 @@ write-host -foregroundcolor green "Script started"
 ## https://www.powershellgallery.com/packages/MSOnline/
 ## Current version = 1.1.183.8, 18 May 2018
 
+clear-host
+
 import-module msonline
 write-host -foregroundcolor green "MSOnline module loaded"
 
