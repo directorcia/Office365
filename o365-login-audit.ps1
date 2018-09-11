@@ -4,7 +4,7 @@
 ## Description
 ## Script designed report on user logins from Office 365 Audit logs
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-login-audit.ps1
 
 ## Prerequisites = 1
 ## 1. Connected to Exchange Online
