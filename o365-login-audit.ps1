@@ -49,7 +49,7 @@ while ($AuditOutput) {
     ## $ConvertedOutput | Select-Object CreationTime,UserId,Operation,ClientIP 
     foreach ($Entry in $convertedoutput)
     {  
-        $return = "" | select Creationtime,Localtime,UserId,Operation,clientip
+        $return = "" | select-object Creationtime,Localtime,UserId,Operation,clientip
         $data = $Entry | Select-Object Creationtime,userid,operation,clientip
         $return.Creationtime = $data.CreationTime
         $return.localtime = [System.TimeZoneInfo]::ConvertTimeFromUtc($data.Creationtime, $TZ)

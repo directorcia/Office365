@@ -41,8 +41,8 @@ foreach($Message in $Messages)
 $final_data = @() ## initialise object
 foreach($MessageTrace in $Custom_Object)
 {
-    $Message = $MessageTrace | Get-MessageTraceDetail | sort Date
-    $Message_TimeDiff = ($Message | select -Last 1 | select Date).Date - ($Message | select -First 1 | select Date).Date
+    $Message = $MessageTrace | Get-MessageTraceDetail | sort-object Date
+    $Message_TimeDiff = ($Message | select-object -Last 1 | select-object Date).Date - ($Message | select-object -First 1 | select-object Date).Date
     $Final_Data += New-Object -TypeName psobject -Property ([ordered]@{'RecipientAddress'=$MessageTrace.'RecipientAddress';'MessageTraceId'=$MessageTrace.'MessageTraceId';'TotalMinutes'="{0:N3}" -f [decimal]$Message_TimeDiff.'TotalMinutes';'TotalSeconds'="{0:N2}" -f [decimal]$Message_TimeDiff.'TotalSeconds'})
     Remove-Variable -Name Message,Message_TimeDiff -ErrorAction SilentlyContinue
 } # End For each Message Trace in the custom object
