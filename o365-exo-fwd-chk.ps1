@@ -7,6 +7,9 @@
 ## Prerequisites = 1
 ## 1. Ensure connection to Exchange Online has already been completed
 
+## Variables
+$systemmessagecolor = "cyan"
+
 Clear-Host
 
 write-host -foregroundcolor Cyan "`nScript started"

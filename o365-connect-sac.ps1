@@ -8,6 +8,7 @@
 ## 1. Ensure msonline module installed or updated
 
 ## Variables
+$systemmessagecolor = "cyan"
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 

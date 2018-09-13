@@ -8,6 +8,9 @@
 ## 1. Ensure azuread module installed or updated
 ## 2. Ensure msonline MFA module installed or updated
 
+## Variables
+$systemmessagecolor = "cyan"
+
 Clear-Host
 
 write-host -foregroundcolor green "Script started"

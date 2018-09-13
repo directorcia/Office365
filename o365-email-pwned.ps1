@@ -12,6 +12,7 @@
 ## 2. Ensure you have connected to Exchange Online
 
 ## Variables
+$systemmessagecolor = "cyan"
 $resultsfile = "c:\downloads\results.csv"   ## local file with credentials if required
 
 Clear-Host

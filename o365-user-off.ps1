@@ -11,6 +11,9 @@
 ## 2. Ensure connected to Exchange Online
 ## 3. Ensure connected to SharePoint Online
 
+## Variables
+$systemmessagecolor = "cyan"
+
 Clear-Host
 
 write-host -foregroundcolor Cyan "Script start"

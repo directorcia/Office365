@@ -9,6 +9,7 @@
 ## 2. Ensure SharePoint online PowerShell module installed or updated
 
 ## Variables
+$systemmessagecolor = "cyan"
 ## Change <tenantname> to be your own tenant
 $tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL for tenant
 

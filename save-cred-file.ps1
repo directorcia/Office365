@@ -6,6 +6,9 @@
 
 ## Prerequisites = 0
 
+## Variables
+$systemmessagecolor = "cyan"
+
 Clear-Host
 
 write-host -foregroundcolor green "Script started"

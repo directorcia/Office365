@@ -7,6 +7,9 @@
 ## Prerequisites = 1
 ## 1. Ensure Micosoft Teams Module is install or updated
 
+## Variables
+$systemmessagecolor = "cyan"
+
 Clear-Host
 
 write-host -foregroundcolor green "Script started"

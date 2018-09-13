@@ -7,6 +7,7 @@
 ## Prerequisites = 0
 
 ## Variables
+$systemmessagecolor = "cyan"
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 

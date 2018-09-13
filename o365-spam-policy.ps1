@@ -11,6 +11,7 @@
 ## 1. Ensure Exchange online PowerShell module installed or updated
 
 ## Variables
+$systemmessagecolor = "cyan"
 ## Separate multiple domains with comma (,) e.g."domain1.com", "domain2.com", "domain3.com"
 $domains = "M365B555418.onmicrosoft.com"
 $policyname = "Configured Policy"

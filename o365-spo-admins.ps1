@@ -10,6 +10,7 @@
 ## 1. Ensure SharePoint online PowerShell module installed or updated
 
 ## Variables
+$systemmessagecolor = "cyan"
 
 Clear-Host
 

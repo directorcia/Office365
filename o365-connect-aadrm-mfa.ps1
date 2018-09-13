@@ -7,6 +7,7 @@
 ## Prerequisites = 0
 
 ## Variables
+$systemmessagecolor = "cyan"
 
 Clear-Host
 
