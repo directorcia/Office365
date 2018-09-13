@@ -4,6 +4,8 @@
 ## Description
 ## Script designed to check which email boxes have forwarding options set
 
+## Source - 
+
 ## Prerequisites = 1
 ## 1. Ensure connection to Exchange Online has already been completed
 

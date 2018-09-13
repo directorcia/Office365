@@ -4,6 +4,8 @@
 ## Description
 ## Script designed to log into the Skype for Business Online portal
 
+## Source - 
+
 ## Prerequisites = 2
 ## 1. Ensure msonline module installed or updated
 ## 2. Ensure Skype for Business online PowerShell module installed or updated

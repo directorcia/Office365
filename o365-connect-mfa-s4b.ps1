@@ -4,6 +4,8 @@
 ## Description
 ## Script designed to log into the Skype for Business Online portal with multi factor enabled
 
+## Source - 
+
 ## Prerequisites = 1
 ## 1. Ensure Skype for Business online PowerShell module installed or updated
 ## 2. Ensure msonline MFA module installed or updated

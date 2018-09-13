@@ -4,6 +4,8 @@
 ## Description
 ## Script designed to log into the SharePoint Online portal when multi factor security is enabled
 
+## Source - 
+
 ## Prerequisites = 2
 ## 1. Ensure msonline MFA module installed or updated
 ## 2. Ensure SharePoint online PowerShell module installed or updated
