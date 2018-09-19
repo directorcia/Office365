@@ -19,7 +19,7 @@ $systemmessagecolor = "cyan"
 
 Clear-Host
 
-write-host -foregroundcolor Cyan "Script start"
+write-host -foregroundcolor $systemmessagecolor "Script start"
 
 $useremail=read-host -prompt 'Enter user email address'
 try {   ## See whether input matches a user in Azure AD
@@ -82,4 +82,4 @@ write-host -foregroundcolor green "Disabled Outlook"
 ## It can take up to an hour to sign out from all devices.
 Revoke-SPOUserSession -user $useremail -Confirm:$false
 
-write-host -foregroundcolor cyan "Ending script"
+write-host -foregroundcolor $systemmessagecolor "Ending script"

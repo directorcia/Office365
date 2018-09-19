@@ -17,7 +17,7 @@ $systemmessagecolor = "cyan"
 
 Clear-Host
 
-write-host -foregroundcolor Cyan "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started"
 write-host
 
 write-host -ForegroundColor white "Sharing Capability Settings"
@@ -30,8 +30,8 @@ Write-Host
 
 ## ensure that SharePoint Online module has been installed and loaded
 
-Write-host -ForegroundColor Cyan "Getting all Sharepoint sites in tenant"
+Write-host -ForegroundColor $systemmessagecolor "Getting all Sharepoint sites in tenant"
 
 get-sposite | Select-object url,sharingcapability
 
-write-host -foregroundcolor Cyan "Script complete"
+write-host -foregroundcolor $systemmessagecolor "Script complete"

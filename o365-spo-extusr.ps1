@@ -17,11 +17,11 @@ $systemmessagecolor = "cyan"
 
 Clear-Host
 
-write-host -foregroundcolor Cyan "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## ensure that SharePoint Online modeule has been installed and loaded
 
-Write-host -ForegroundColor Cyan "Getting all Sharepoint sites in tenant"
+Write-host -ForegroundColor $systemmessagecolor "Getting all Sharepoint sites in tenant"
 $SiteCollections  = Get-SPOSite -Limit All
 
 foreach ($site in $SiteCollections) ## Loop through all Site Collections in tenant
@@ -37,4 +37,4 @@ catch { ## this is where any error handling will appear if required
 }
 }
 
-write-host -foregroundcolor Cyan "Script complete"
+write-host -foregroundcolor $systemmessagecolor "Script complete"

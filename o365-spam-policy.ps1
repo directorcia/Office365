@@ -22,9 +22,9 @@ $rulename = "Configured Recipients"
 
 Clear-Host
 
-write-host -foregroundcolor Cyan "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started"
 
-write-host -foregroundcolor Cyan "Set new spam policy"
+write-host -foregroundcolor $systemmessagecolor "Set new spam policy"
 
 $policyparams = @{
     "name" = $policyname;
@@ -66,4 +66,4 @@ $ruleparams = @{
 
 New-hostedcontentfilterrule @ruleparams
 
-write-host -foregroundcolor Cyan "Script complete"
+write-host -foregroundcolor $systemmessagecolor "Script complete"

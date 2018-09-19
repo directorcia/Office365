@@ -17,16 +17,16 @@ $systemmessagecolor = "cyan"
 
 Clear-Host
 
-write-host -foregroundcolor Cyan "`nScript started"
+write-host -foregroundcolor $systemmessagecolor "`nScript started"
 
 ## Get all mailboxes
 $mailboxes = Get-Mailbox -ResultSize Unlimited
 
-write-host -foregroundcolor Cyan "`nCheck Mailbox Add ins"
+write-host -foregroundcolor $systemmessagecolor "`nCheck Mailbox Add ins"
 
 foreach ($mailbox in $mailboxes) {
     write-host "Mailbox =",$mailbox.primarysmtpaddress
     get-app -mailbox $mailbox.primarysmtpaddress | Select-Object displayname,enabled,appversion | Format-Table
 }
 
-write-host -foregroundcolor Cyan "`nScript complete"
+write-host -foregroundcolor $systemmessagecolor "`nScript complete"

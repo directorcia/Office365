@@ -19,14 +19,14 @@ $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if requir
 
 Clear-Host
 
-write-host -foregroundcolor green "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## ensure that install-module -name microsoftteams has been run
 ## ensure that update-module -name microsoftteams has been run to get latest module
 ## https://www.powershellgallery.com/packages/MicrosoftTeams/
 ## Current version = 0.9.3, 25 April 2018
 import-module MicrosoftTeams
-write-host -foregroundcolor green "Microsoft Teams module loaded"
+write-host -foregroundcolor $systemmessagecolor "Microsoft Teams module loaded"
 
 ## Get tenant login credentials
 if ($savedcreds) {
@@ -40,4 +40,4 @@ else {
 
 ## Connect to Microsoft Teams service
 Connect-MicrosoftTeams -credential $cred
-write-host -foregroundcolor green "Now connected to Microsoft Teams Service"
+write-host -foregroundcolor $systemmessagecolor "Now connected to Microsoft Teams Service"

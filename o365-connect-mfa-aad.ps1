@@ -18,7 +18,7 @@ $systemmessagecolor = "cyan"
 
 Clear-Host
 
-write-host -foregroundcolor green "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## ensure that install-module azuread has been run
 ## ensure that update-module azuread has been run to get latest module
@@ -26,7 +26,7 @@ write-host -foregroundcolor green "Script started"
 ## https://www.powershellgallery.com/packages/AzureAD/
 ## Current version = 2.0.1.16, 21 June 2018
 import-module azuread
-write-host -foregroundcolor green "AzureAD module loaded"
+write-host -foregroundcolor $systemmessagecolor "AzureAD module loaded"
 
 ## ensure that Exchange Online MFA modules has been run
 ## Download and install MFA cmdlets from - https://docs.microsoft.com/en-us/powershell/exchange/exchange-online/connect-to-exchange-online-powershell/mfa-connect-to-exchange-online-powershell?view=exchange-ps
@@ -34,4 +34,4 @@ write-host -foregroundcolor green "AzureAD module loaded"
 ## Connect to Azure AD service
 ## You will be manually prompted to enter credentials and MFA
 Connect-AzureAD
-write-host -foregroundcolor green "Now connected to Azure AD Service with MFA"
+write-host -foregroundcolor $systemmessagecolor "Now connected to Azure AD Service with MFA"

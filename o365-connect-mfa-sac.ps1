@@ -17,15 +17,15 @@ $systemmessagecolor = "cyan"
 
 Clear-Host
 
-write-host -foregroundcolor green "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## ensure that Exchange Online MFA modules has been run
 ## Download and install MFA cmdlets from - https://docs.microsoft.com/en-us/powershell/exchange/exchange-online/connect-to-exchange-online-powershell/mfa-connect-to-exchange-online-powershell?view=exchange-ps
 
 $CompConnectionUri = "https://ps.compliance.protection.outlook.com/powershell-liveid/"
 Import-Module $((Get-ChildItem -Path $($env:LOCALAPPDATA + "\Apps\2.0\") -Filter Microsoft.Exchange.Management.ExoPowershellModule.dll -Recurse).FullName | ?{ $_ -notmatch "_none_" } | select -First 1)
-write-host -foregroundcolor green "Exchange Online MFA module loaded"
+write-host -foregroundcolor $systemmessagecolor "Exchange Online MFA module loaded"
 
 $Comp = New-EXOPSSession -ConnectionUri $CompConnectionUri -Credential $EXOcreds
 $CompImportresults = Import-PSSession $Comp -AllowClobber
-write-host -foregroundcolor green "Connected to Secruity and Compliance Center MFA"
+write-host -foregroundcolor $systemmessagecolor "Connected to Secruity and Compliance Center MFA"

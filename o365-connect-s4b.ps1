@@ -20,7 +20,7 @@ $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if requir
 
 Clear-Host
 
-write-host -foregroundcolor green "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## ensure that install-module msonline has been run
 ## ensure that update-module msonline has been run to get latest module
@@ -31,12 +31,12 @@ write-host -foregroundcolor green "Script started"
 clear-host
 
 import-module msonline
-write-host -foregroundcolor green "MSOnline module loaded"
+write-host -foregroundcolor $systemmessagecolor "MSOnline module loaded"
 
 ## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=39366 (Skype for Business Online Module)
 ## Current version = 7.0.1994.0, 26 February 2018
 import-module skypeonlineconnector
-write-host -foregroundcolor green "Skype for Business module loaded"
+write-host -foregroundcolor $systemmessagecolor "Skype for Business module loaded"
 
 ## Get tenant login credentials
 if ($savedcreds) {
@@ -50,9 +50,9 @@ else {
 
 ## Connect to Office 365 admin service
 connect-msolservice -credential $cred
-write-host -foregroundcolor green "Now connected to Office 365 Admin service"
+write-host -foregroundcolor $systemmessagecolor "Now connected to Office 365 Admin service"
 
 ## Connect to Skype for Business Online Service
 $sfboSession=new-csonlinesession -credential $cred
 import-pssession $sfboSession
-write-host -foregroundcolor green "Now connected to Skype for Business Online services"
+write-host -foregroundcolor $systemmessagecolor "Now connected to Skype for Business Online services"

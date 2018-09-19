@@ -18,12 +18,12 @@ $systemmessagecolor = "cyan"
 
 Clear-Host
 
-write-host -foregroundcolor green "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=39366 (Skype for Business Online Module)
 ## Current version = 7.0.1994.0, 26 February 2018
 import-module skypeonlineconnector
-write-host -foregroundcolor green "Skype for Business module loaded"
+write-host -foregroundcolor $systemmessagecolor "Skype for Business module loaded"
 
 ## ensure that Exchange Online MFA modules has been run
 ## Download and install MFA cmdlets from - https://docs.microsoft.com/en-us/powershell/exchange/exchange-online/connect-to-exchange-online-powershell/mfa-connect-to-exchange-online-powershell?view=exchange-ps
@@ -32,4 +32,4 @@ write-host -foregroundcolor green "Skype for Business module loaded"
 ## You will be manually prompted to enter your credentials and MFA
 $sfboSession=new-csonlinesession
 import-pssession $sfboSession
-write-host -foregroundcolor green "Now connected to Skype for Business Online services"
+write-host -foregroundcolor $systemmessagecolor "Now connected to Skype for Business Online services"

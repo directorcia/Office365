@@ -19,7 +19,7 @@ $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if requir
 
 Clear-Host
 
-write-host -foregroundcolor green "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## ensure that install-module msonline has been run
 ## ensure that update-module msonline has been run to get latest module
@@ -28,7 +28,7 @@ write-host -foregroundcolor green "Script started"
 ## Current version = 1.1.183.8, 18 May 2018
 
 import-module msonline
-write-host -foregroundcolor green "MSOnline module loaded"
+write-host -foregroundcolor $systemmessagecolor "MSOnline module loaded"
 
 ## Get tenant login credentials
 if ($savedcreds) {
@@ -42,7 +42,7 @@ else {
 
 ## Connect to Office 365 admin service
 connect-msolservice -credential $cred
-write-host -foregroundcolor green "Now connected to Office 365 Admin service"
+write-host -foregroundcolor $systemmessagecolor "Now connected to Office 365 Admin service"
 
 ## Connect to the Office 365 Security and Compliance Center
 Write-Output "Getting the Security & Compliance Center cmdlets"
@@ -51,4 +51,4 @@ $Session = New-PSSession -ConfigurationName Microsoft.Exchange `
     -Credential $cred -Authentication Basic -AllowRedirection
 
 Import-PSSession $Session
-write-host -foregroundcolor green "Now connected to Office 365 Security and Compliance Center"
+write-host -foregroundcolor $systemmessagecolor "Now connected to Office 365 Security and Compliance Center"

@@ -20,7 +20,7 @@ $resultsfile = "c:\downloads\results.csv"   ## local file with credentials if re
 
 Clear-Host
 
-write-host -foregroundcolor green "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## Script from Elliot start
 Connect-MsolService
