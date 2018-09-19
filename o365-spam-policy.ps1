@@ -17,6 +17,9 @@ $domains = "M365B555418.onmicrosoft.com"
 $policyname = "Configured Policy"
 $rulename = "Configured Recipients"
 
+## If you have running scripts that don't have a certificate, run this command once to disable that level of security
+## set-executionpolicy -executionpolicy bypass -scope currentuser -force
+
 Clear-Host
 
 write-host -foregroundcolor Cyan "Script started"

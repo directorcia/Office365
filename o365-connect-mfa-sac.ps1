@@ -12,12 +12,12 @@
 ## Variables
 $systemmessagecolor = "cyan"
 
+## If you have running scripts that don't have a certificate, run this command once to disable that level of security
+##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
+
 Clear-Host
 
 write-host -foregroundcolor green "Script started"
-
-## set-executionpolicy remotesigned
-## May be required once to allow ability to runs scripts in PowerShell
 
 ## ensure that Exchange Online MFA modules has been run
 ## Download and install MFA cmdlets from - https://docs.microsoft.com/en-us/powershell/exchange/exchange-online/connect-to-exchange-online-powershell/mfa-connect-to-exchange-online-powershell?view=exchange-ps

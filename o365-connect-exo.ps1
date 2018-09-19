@@ -14,12 +14,12 @@ $systemmessagecolor = "cyan"
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 
+## If you have running scripts that don't have a certificate, run this command once to disable that level of security
+##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
+
 Clear-Host
 
-write-host -foregroundcolor green "Script started"
-
-## set-executionpolicy remotesigned
-## May be required once to allow ability to runs scripts in PowerShell
+write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## ensure that install-module msonline has been run
 ## ensure that update-module msonline has been run to get latest module
@@ -42,9 +42,9 @@ else {
 
 ## Connect to Office 365 admin service
 connect-msolservice -credential $cred
-write-host -foregroundcolor green "Now connected to Office 365 Admin service"
+write-host -foregroundcolor $systemmessagecolor "Now connected to Office 365 Admin service"
 
 ## Start Exchange Online session
 $Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://outlook.office365.com/powershell-liveid/?proxyMethod=RPS -Credential $Cred -Authentication Basic -AllowRedirection
 import-PSSession $Session
-write-host -foregroundcolor green "Now connected to Exchange Online services"
+write-host -foregroundcolor $systemmessagecolor "Now connected to Exchange Online services"

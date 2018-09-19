@@ -14,12 +14,12 @@ $auditlogagelimitdefault = 90
 $retaindeleteditemsfordefault = 14
 $systemmessagecolor = "cyan"
 
+## If you have running scripts that don't have a certificate, run this command once to disable that level of security
+## set-executionpolicy -executionpolicy bypass -scope currentuser -force
+
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started"
-
-## set-executionpolicy remotesigned
-## May be required once to allow ability to runs scripts in PowerShell
 
 write-host -ForegroundColor $systemmessagecolor "Getting Mailboxes"
 $mailboxes=get-mailbox -ResultSize unlimited

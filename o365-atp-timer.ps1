@@ -17,6 +17,9 @@
 $systemmessagecolor = "cyan"
 $hourwindow = 1    ## hours window to check for sent messages. As messages age you may need to adjust this
 
+## If you have running scripts that don't have a certificate, run this command once to disable that level of security
+##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
+
 Clear-host
 
 write-host -foregroundcolor $systemmessagecolor "Script started"

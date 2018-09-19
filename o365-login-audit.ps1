@@ -34,6 +34,9 @@ $operation="userloginfailed","userloggedin" ## use this line to report all login
 ##$operation="userloginfailed" ## use this line to report failed logins
 ##$operation="userloggedin" ## use this line to report successful logins
 
+## If you have running scripts that don't have a certificate, run this command once to disable that level of security
+## set-executionpolicy -executionpolicy bypass -scope currentuser -force
+
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started"

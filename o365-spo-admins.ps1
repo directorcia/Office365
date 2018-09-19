@@ -12,11 +12,14 @@
 ## Variables
 $systemmessagecolor = "cyan"
 
+## If you have running scripts that don't have a certificate, run this command once to disable that level of security
+## set-executionpolicy -executionpolicy bypass -scope currentuser -force
+
 Clear-Host
 
 write-host -foregroundcolor Cyan "Script started"
 
-## ensure that SharePoint Online modeule has been installed and loaded
+## Ensure that SharePoint Online modeule has been installed and loaded
 
 Write-host -ForegroundColor Cyan "Getting all Sharepoint sites in tenant"
 $SiteCollections  = Get-SPOSite -Limit All

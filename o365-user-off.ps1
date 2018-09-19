@@ -14,12 +14,12 @@
 ## Variables
 $systemmessagecolor = "cyan"
 
+## If you have running scripts that don't have a certificate, run this command once to disable that level of security
+## set-executionpolicy -executionpolicy bypass -scope currentuser -force
+
 Clear-Host
 
 write-host -foregroundcolor Cyan "Script start"
-
-## set-executionpolicy remotesigned
-## May be required once to allow ability to runs scripts in PowerShell
 
 $useremail=read-host -prompt 'Enter user email address'
 try {   ## See whether input matches a user in Azure AD

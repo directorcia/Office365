@@ -14,12 +14,12 @@ $systemmessagecolor = "cyan"
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 
+## If you have running scripts that don't have a certificate, run this command once to disable that level of security
+##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
+
 Clear-Host
 
 write-host -foregroundcolor green "Script started"
-
-## set-executionpolicy remotesigned
-## May be required once to allow ability to runs scripts in PowerShell
 
 ## ensure that install-module msonline has been run
 ## ensure that update-module msonline has been run to get latest module

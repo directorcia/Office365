@@ -11,6 +11,9 @@
 ## Variables
 $systemmessagecolor = "cyan"
 
+## If you have running scripts that don't have a certificate, run this command once to disable that level of security
+## set-executionpolicy -executionpolicy bypass -scope currentuser -force
+
 Clear-Host
 
 write-host -foregroundcolor green "Script started"

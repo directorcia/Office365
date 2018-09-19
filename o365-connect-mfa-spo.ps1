@@ -15,12 +15,12 @@ $systemmessagecolor = "cyan"
 ## Change <tenantname> to be your own tenant
 $tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL for tenant
 
+## If you have running scripts that don't have a certificate, run this command once to disable that level of security
+##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
+
 Clear-Host
 
 write-host -foregroundcolor green "Script started"
-
-## set-executionpolicy remotesigned
-## May be required once to allow ability to runs scripts in PowerShell
 
 ## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=35588 (SharePoint Online Module)
 ## Current version = 16.0.7813.1200, 27 June 2018
