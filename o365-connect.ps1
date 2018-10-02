@@ -25,7 +25,7 @@ write-host -foregroundcolor $systemmessagecolor "Script started"
 ## ensure that update-module msonline has been run to get latest module
 
 ## https://www.powershellgallery.com/packages/MSOnline/
-## Current version = 1.1.183.8, 18 May 2018
+## Current version = 1.1.183.17, 4 August 2018
 
 import-module msonline
 write-host -foregroundcolor $systemmessagecolor "MSOnline module loaded"
