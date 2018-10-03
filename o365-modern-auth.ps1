@@ -4,7 +4,7 @@
 ## Description
 ## Enables modern authentication for a tenant
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-modern-auth.ps1
 
 ## Prerequisites = 1
 ## 1. Ensure connected to Skype for Business onlin
