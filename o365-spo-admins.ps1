@@ -4,7 +4,7 @@
 ## Source - https://github.com/directorcia/Office365/blob/master/o365-spo-admins.ps1
 
 ## Description
-## Script designed to log into the show the all the SharePoint Online Site COllection Administrators across all site collections
+## Script designed to log into the show the all the SharePoint Online Site Collection Administrators across all site collections
 
 ## Prerequisites = 1
 ## 1. Ensure SharePoint online PowerShell module installed or updated
