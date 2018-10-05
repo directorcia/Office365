@@ -6,6 +6,8 @@
 
 ## Source - 
 
+## Reference - https://docs.microsoft.com/en-us/office365/enterprise/use-the-centralized-deployment-powershell-cmdlets-to-manage-add-ins?redirectSourcePath=%252fen-us%252farticle%252fuse-the-centralized-deployment-powershell-cmdlets-to-manage-add-ins-94f4e86d-b8e5-42dd-b558-e6092f830ec9
+
 ## Prerequisites = 1
 ## 1. Ensure Skype for Business online PowerShell module installed or updated
 ## 2. Ensure msonline MFA module installed or updated
