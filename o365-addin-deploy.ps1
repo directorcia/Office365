@@ -23,7 +23,7 @@ write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## Deploy addins from Office store
 ## You will receive an error if the addin is already installed in tenant
-## Change the locale to suit yoru region
+## Change the locale to suit your region
 New-OrganizationAddIn -AssetId 'WA104381180' -Locale 'en-AU' -ContentMarket 'en-AU' ## Report Message
 New-OrganizationAddIn -AssetId 'WA104005406' -Locale 'en-AU' -ContentMarket 'en-AU' ## Message Header Analyzer
 New-OrganizationAddIn -AssetId 'WA104379803' -Locale 'en-AU' -ContentMarket 'en-AU' ## FindTime
