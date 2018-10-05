@@ -4,9 +4,7 @@
 ## Description
 ## Script designed to log into the Skype for Business Online portal with multi factor enabled
 
-## Source - 
-
-## Reference - https://docs.microsoft.com/en-us/office365/enterprise/use-the-centralized-deployment-powershell-cmdlets-to-manage-add-ins?redirectSourcePath=%252fen-us%252farticle%252fuse-the-centralized-deployment-powershell-cmdlets-to-manage-add-ins-94f4e86d-b8e5-42dd-b558-e6092f830ec9
+## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-mfa-s4b.ps1
 
 ## Prerequisites = 1
 ## 1. Ensure Skype for Business online PowerShell module installed or updated

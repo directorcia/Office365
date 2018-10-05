@@ -4,7 +4,7 @@
 ## Description
 ## Script designed to log into the Office 365 Centralized Deployment for add ins
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-ctrldply.ps1
 
 ## Prerequisites = 1
 ## 1. Ensure powershell cmdlest for Centralized deployment installed or updated
