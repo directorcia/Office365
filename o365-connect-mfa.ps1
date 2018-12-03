@@ -4,7 +4,7 @@
 ## Description
 ## Script designed to log into the Office 365 admin portal when multi factor security is enabled
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-mfa.ps1
 
 ## Prerequisites = 1
 ## 1. Ensure msonline MFA module installed or updated

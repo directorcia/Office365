@@ -4,7 +4,7 @@
 ## Description
 ## Script designed save login credentials to a local XML file for later re-use
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/save-cred-file.ps1
 
 ## Prerequisites = 0
 

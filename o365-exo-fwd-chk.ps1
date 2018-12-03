@@ -4,7 +4,7 @@
 ## Description
 ## Script designed to check which email boxes have forwarding options set
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-exo-fwd-chk.ps1
 
 ## Prerequisites = 1
 ## 1. Ensure connection to Exchange Online has already been completed

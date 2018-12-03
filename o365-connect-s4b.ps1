@@ -4,7 +4,7 @@
 ## Description
 ## Script designed to log into the Skype for Business Online portal
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-s4b.ps1
 
 ## Prerequisites = 2
 ## 1. Ensure msonline module installed or updated
