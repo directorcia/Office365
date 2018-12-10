@@ -1,3 +1,5 @@
+## https://docs.microsoft.com/en-us/azure/active-directory/users-groups-roles/licensing-service-plan-reference
+
 $Sku = @{
 	"AAD_BASIC"							     = "Azure Active Directory Basic"
 	"RMS_S_ENTERPRISE"					     = "Azure Active Directory Rights Management"
@@ -107,6 +109,7 @@ $Sku = @{
 	"EXCHANGEARCHIVE_ADDON"				     = "Exchange Online Archiving For Exchange Online"
 	"EXCHANGEDESKLESS"					     = "Exchange Online Kiosk"
 	"SPZA_IW"							     = "App Connect"
-    "SPB"                                    = "Microsoft 365 Business"
+	"SPB"                                    = "Microsoft 365 Business"
+	"SPE_E3"								 = "Microsoft 365 E3"
     "TEAMS1"                                 = "Microsoft Teams"
 }
