@@ -110,6 +110,13 @@ $Sku = @{
 	"EXCHANGEDESKLESS"					     = "Exchange Online Kiosk"
 	"SPZA_IW"							     = "App Connect"
 	"SPB"                                    = "Microsoft 365 Business"
+	"AAD_SMB"
+	"BPOS_S_TODO_1"							 = "Microsoft To Do"
+	"DESKLESS"
+	"EXCHANGE_S_ARCHIVE_ADDON"
+	"EXCHANGE_S_STANDARD"
+	"INTUNE_SMBIZ"
+	"WINBIZ"								 = "Windows 10 Business"
 	"SPE_E3"								 = "Microsoft 365 E3"
     "TEAMS1"                                 = "Microsoft Teams"
 }
