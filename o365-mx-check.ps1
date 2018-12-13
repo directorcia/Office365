@@ -52,7 +52,7 @@ foreach ($mailbox in $mailboxes){
         write-host -foregroundcolor red "  Retain Deleted items for (days) =",$mailbox.retaindeleteditemsfor
     }
 
-## mailboxes should not be forwarding to oteh email addresses
+## mailboxes should not be forwarding to other email addresses
 
     if ($mailbox.forwardingaddress -ne $null){
         write-host -foregroundcolor red "  Forwarding address =",$mailbox.forwardingaddress
