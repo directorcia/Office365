@@ -31,5 +31,7 @@ write-host -foregroundcolor $systemmessagecolor "Update Microsoft Online module"
 Update-Module -Name MSOnline -force
 write-host -foregroundcolor $systemmessagecolor "Update Azure module"
 Update-Module -name AzureRM -Force
+## New Az module
+## Update-Module -name Az -force
 
 write-host -foregroundcolor $systemmessagecolor "Finish Script"

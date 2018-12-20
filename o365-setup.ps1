@@ -2,7 +2,7 @@
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 ## Description
-## Script designed to cinstall the relevant Microsoft Online PowerShell modules
+## Script designed to install the relevant Microsoft Online PowerShell modules
 
 ## Source - https://github.com/directorcia/Office365/blob/master/o365-setup.ps1
 
@@ -31,5 +31,7 @@ write-host -foregroundcolor $systemmessagecolor "Install Microsoft Online module
 Install-Module -Name MSOnline -force
 write-host -foregroundcolor $systemmessagecolor "Install Azure module"
 Install-Module -name AzureRM -Force
+## New Az module
+## Install-Module -name Az -force
 
 write-host -foregroundcolor $systemmessagecolor "Finish Script"
