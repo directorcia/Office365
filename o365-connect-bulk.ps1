@@ -15,14 +15,14 @@ $processmessagecolor = "green"
 $warningmessagecolor = "yellow"
 
 $nomfa = $true      ## MFA not required for login
-$std = $false       ## MS Online connect
-$aad = $false       ## Azure AD connect
-$exo = $true        ## Exchange Online connect
-$s4b = $false       ## Skype for Business Online connect
-$sac = $false       ## Security and Compliance Center connect
-$spo = $false       ## SharePoint Online connect
-$tms = $false       ## Teams connect
-$aadrm = $false     ## Azure AD Rights Management connect
+$std = $false       ## MS Online connect required
+$aad = $false       ## Azure AD connect required
+$exo = $true        ## Exchange Online connect required
+$s4b = $false       ## Skype for Business Online connect required
+$sac = $false       ## Security and Compliance Center connect required
+$spo = $false       ## SharePoint Online connect required
+$tms = $false       ## Microsoft Teams connect required
+$aadrm = $false     ## Azure AD Rights Management connect required
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
