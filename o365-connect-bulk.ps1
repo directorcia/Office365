@@ -1,5 +1,5 @@
 param(
-    [switch]$mfa = $false,  ## MFA not required for login
+    [switch]$mfa = $false,  ## MFA login required
     [switch]$std = $false,  ## Microsoft Online connect required
     [switch]$aad = $false,  ## Azure AD connect required
     [switch]$exo = $false,  ## Exchange Online connect required
