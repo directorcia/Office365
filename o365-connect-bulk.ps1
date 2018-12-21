@@ -34,16 +34,16 @@ Clear-Host
 write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 
 if ($help) {
-    write-host $processmessagecolor "-mfa = MFA login required"
-    write-host $processmessagecolor "-std = Microsoft Online connect required"
-    write-host $processmessagecolor "-aad = Azure AD connect required"
-    write-host $processmessagecolor "-exo = Exchange Online connect required"
-    write-host $processmessagecolor "-s4b = Skype for Business Online connect required"
-    write-host $processmessagecolor "-sac = Security and Compliance Center connect required"
-    write-host $processmessagecolor "-spo = SharePoint Online connect required"
-    write-host $processmessagecolor "-tms = Microsoft Teams connect required"
-    write-host $processmessagecolor "-aadrm = Azure AD Rights Management connect required"
-    write-host $processmessagecolor "-help = Show help information"
+    write-host -foregroundcolor $processmessagecolor "-mfa = MFA login required"
+    write-host -foregroundcolor $processmessagecolor "-std = Microsoft Online connect required"
+    write-host -foregroundcolor $processmessagecolor "-aad = Azure AD connect required"
+    write-host -foregroundcolor $processmessagecolor "-exo = Exchange Online connect required"
+    write-host -foregroundcolor $processmessagecolor "-s4b = Skype for Business Online connect required"
+    write-host -foregroundcolor $processmessagecolor "-sac = Security and Compliance Center connect required"
+    write-host -foregroundcolor $processmessagecolor "-spo = SharePoint Online connect required"
+    write-host -foregroundcolor $processmessagecolor "-tms = Microsoft Teams connect required"
+    write-host -foregroundcolor $processmessagecolor "-aadrm = Azure AD Rights Management connect required"
+    write-host -foregroundcolor $processmessagecolor "-help = Show help information"
 }
 
 if ($mfa -eq $false) {
