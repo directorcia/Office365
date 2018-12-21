@@ -43,7 +43,7 @@ if ($help) {
     write-host -foregroundcolor $processmessagecolor "-spo = SharePoint Online connect required"
     write-host -foregroundcolor $processmessagecolor "-tms = Microsoft Teams connect required"
     write-host -foregroundcolor $processmessagecolor "-aadrm = Azure AD Rights Management connect required"
-    write-host -foregroundcolor $processmessagecolor "-help = Show help information"
+    write-host -foregroundcolor $processmessagecolor "-help = Show help information`n"
 }
 
 if ($mfa -eq $false) {
