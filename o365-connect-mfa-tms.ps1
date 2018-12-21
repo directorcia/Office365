@@ -4,7 +4,7 @@
 ## Description
 ## Script designed to log into Microsoft Teams with MFA enabled
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-mfa-tms.ps1
 
 ## Prerequisites = 1
 ## 1. Ensure Micosoft Teams Module is install or updated

@@ -4,7 +4,7 @@
 ## Description
 ## Script designed to log into Azure AD with MFA enabled
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-mfa-aad.ps1
 
 ## Prerequisites = 2
 ## 1. Ensure azuread module installed or updated

@@ -4,7 +4,7 @@
 ## Description
 ## Script designed to log into the Azure AD Rights Management module with MFA enabled
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-mfa-aadrm.ps1
 
 ## Prerequisites = 0
 

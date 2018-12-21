@@ -4,7 +4,7 @@
 ## Description
 ## Script designed to log into the Exchange Online Admin portal
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-exo.ps1
 
 ## Prerequisites = 1
 ## 1. Ensure msonline module installed or updated

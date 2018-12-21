@@ -4,7 +4,7 @@
 ## Description
 ## Script designed to log into the Azure AD portal
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/O365-connect-aad.ps1
 
 ## Prerequisites = 1
 ## 1. Ensure azuread module installed or updated
