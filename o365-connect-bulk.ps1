@@ -1,13 +1,14 @@
 param(
-    [switch]$mfa = $false,  ## MFA login required
-    [switch]$std = $false,  ## Microsoft Online connect required
-    [switch]$aad = $false,  ## Azure AD connect required
-    [switch]$exo = $false,  ## Exchange Online connect required
-    [switch]$s4b = $false,  ## Skype for Business Online connect required
-    [switch]$sac = $false,  ## Security and Compliance Center connect required
-    [switch]$spo = $false,  ## SharePoint Online connect required
-    [switch]$tms = $false,  ## Microsoft Teams connect required
-    [switch]$aadrm =$false  ## Azure AD Rights Management connect required
+    [switch]$mfa = $false,      ## MFA login required
+    [switch]$std = $false,      ## Microsoft Online connect required
+    [switch]$aad = $false,      ## Azure AD connect required
+    [switch]$exo = $false,      ## Exchange Online connect required
+    [switch]$s4b = $false,      ## Skype for Business Online connect required
+    [switch]$sac = $false,      ## Security and Compliance Center connect required
+    [switch]$spo = $false,      ## SharePoint Online connect required
+    [switch]$tms = $false,      ## Microsoft Teams connect required
+    [switch]$aadrm = $false,    ## Azure AD Rights Management connect required
+    [switch]$help = $false      ## Show help information
 )
 ## CIAOPS
 ## Script provided as is. Use at own risk. No guarantees or warranty provided.
@@ -31,6 +32,19 @@ $warningmessagecolor = "yellow"
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Start Script`n"
+
+if ($help) {
+    write-host $processmessagecolor "-mfa = MFA login required"
+    write-host $processmessagecolor "-std = Microsoft Online connect required"
+    write-host $processmessagecolor "-aad = Azure AD connect required"
+    write-host $processmessagecolor "-exo = Exchange Online connect required"
+    write-host $processmessagecolor "-s4b = Skype for Business Online connect required"
+    write-host $processmessagecolor "-sac = Security and Compliance Center connect required"
+    write-host $processmessagecolor "-spo = SharePoint Online connect required"
+    write-host $processmessagecolor "-tms = Microsoft Teams connect required"
+    write-host $processmessagecolor "-aadrm = Azure AD Rights Management connect required"
+    write-host $processmessagecolor "-help = Show help information"
+}
 
 if ($mfa -eq $false) {
     write-host -foregroundcolor $processmessagecolor "Start - Non MFA login"
