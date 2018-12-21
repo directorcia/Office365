@@ -4,7 +4,7 @@
 ## Description
 ## Script allow login to multiple MS Cloud services by calling individual scripts
 
-## Source - 
+## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-bulk.ps1
 
 ## Prerequisites = 1
 ## 1. All required scripts MUST be in the same directory as this script, so make sure you are in that directory before running this
