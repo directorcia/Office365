@@ -5,6 +5,7 @@
 ## Script designed report on user logins from Office 365 Audit logs
 
 ## Source - https://github.com/directorcia/Office365/blob/master/o365-login-audit.ps1
+## To get the version that exports to a CSV file sign up at http://www.ciaopspatron.com
 
 ## Prerequisites = 1
 ## 1. Connected to Exchange Online
