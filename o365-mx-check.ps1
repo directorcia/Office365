@@ -14,13 +14,14 @@ $auditlogagelimitdefault = 90
 $retaindeleteditemsfordefault = 14
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
+$errormessagecolor = "red"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 write-host -ForegroundColor $processmessagecolor "Getting Mailboxes"
 $mailboxes=get-mailbox -ResultSize unlimited
@@ -32,50 +33,50 @@ foreach ($mailbox in $mailboxes){
 ## all mailboxes should have auditing enabled
 
     if ($mailbox.auditenabled) {
-        write-host -foregroundcolor green "  Audit enabled =",$mailbox.AuditEnabled
+        write-host -foregroundcolor $processmessagecolor "  Audit enabled =",$mailbox.AuditEnabled
     } else {
-        write-host -foregroundcolor red "  Audit enabled =",$mailbox.AuditEnabled
+        write-host -foregroundcolor $errormessagecolor "  Audit enabled =",$mailbox.AuditEnabled
     }
 
 ## audit log limit for mailboxes shoudl be extended from default
 
     if ([timespan]::parse($mailbox.auditlogagelimit).days -gt $auditlogagelimitdefault) {
-        write-host -foregroundcolor green "  Audit login limit (days)",$mailbox.Auditlogagelimit
+        write-host -foregroundcolor $processmessagecolor "  Audit login limit (days)",$mailbox.Auditlogagelimit
     } else {
-        write-host -foregroundcolor red "  Audit login limit (days)",$mailbox.Auditlogagelimit
+        write-host -foregroundcolor $errormessagecolor "  Audit login limit (days)",$mailbox.Auditlogagelimit
     }
 
 ## all mailboxes should have their retained deleted item retention period extended to 30 days
 
     if ([timespan]::parse($mailbox.retaindeleteditemsfor).days -gt $retaindeleteditemsfordefault) {
-        write-host -foregroundcolor green "  Retain Deleted items for (days) =",$mailbox.retaindeleteditemsfor
+        write-host -foregroundcolor $processmessagecolor "  Retain Deleted items for (days) =",$mailbox.retaindeleteditemsfor
     } else {
-        write-host -foregroundcolor red "  Retain Deleted items for (days) =",$mailbox.retaindeleteditemsfor
+        write-host -foregroundcolor $errormessagecolor "  Retain Deleted items for (days) =",$mailbox.retaindeleteditemsfor
     }
 
 ## mailboxes should not be forwarding to other email addresses
 
     if ($mailbox.forwardingaddress -ne $null){
-        write-host -foregroundcolor red "  Forwarding address =",$mailbox.forwardingaddress
+        write-host -foregroundcolor $errormessagecolor "  Forwarding address =",$mailbox.forwardingaddress
     }
     if ($mailbox.forwardingsmtpaddress -ne $null){
-        write-host -foregroundcolor red "  Forwarding SMTP address =",$mailbox.forwardingsmtpaddress
+        write-host -foregroundcolor $errormessagecolor "  Forwarding SMTP address =",$mailbox.forwardingsmtpaddress
     }
 
 ## mailboxes should have litigation hold enabled
 
     if ($mailbox.LitigationHoldEnabled) {
-        write-host -foregroundcolor green "  Litigation hold =",$mailbox.litigationholdenabled
+        write-host -foregroundcolor $processmessagecolor "  Litigation hold =",$mailbox.litigationholdenabled
     } else {
-        write-host -foregroundcolor red "  Litigation hold =",$mailbox.litigationholdenabled
+        write-host -foregroundcolor $errormessagecolor "  Litigation hold =",$mailbox.litigationholdenabled
     }
 
 ## mailboxes should have archive enabled
 
     if ($mailbox.archivestatus -eq "active") {
-        Write-host -foregroundcolor Green "  Archive status =",$mailbox.archivestatus
+        Write-host -foregroundcolor $processmessagecolor "  Archive status =",$mailbox.archivestatus
     } else {
-        Write-host -foregroundcolor red "  Archive status =",$mailbox.archivestatus
+        Write-host -foregroundcolor $errormessagecolor "  Archive status =",$mailbox.archivestatus
     }
 
 ## report mailbox maximum send and receive sizes
@@ -87,17 +88,17 @@ foreach ($mailbox in $mailboxes){
 ## mailboxes should not have POP3 enabled
 
     if (-not $extramailbox.popenabled) {
-        write-host -foregroundcolor green "  POP3 enabled =",$extramailbox.popenabled
+        write-host -foregroundcolor $processmessagecolor "  POP3 enabled =",$extramailbox.popenabled
     } else {
-        write-host -foregroundcolor red "  POP3 enabled =",$extramailbox.popenabled
+        write-host -foregroundcolor $errormessagecolor "  POP3 enabled =",$extramailbox.popenabled
     }
 
 ## mailboxes should not have IMAP enabled
 
     if (-not $extramailbox.ImapEnabled) {
-        write-host -foregroundcolor green "  IMAP enabled =",$extramailbox.imapenabled
+        write-host -foregroundcolor $processmessagecolor "  IMAP enabled =",$extramailbox.imapenabled
     } else {
-        write-host -foregroundcolor red "  IMAP enabled =",$extramailbox.imapenabled
+        write-host -foregroundcolor $errormessagecolor "  IMAP enabled =",$extramailbox.imapenabled
     }
     write-host
 }
