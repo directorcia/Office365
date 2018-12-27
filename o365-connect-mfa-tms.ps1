@@ -11,6 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -24,9 +25,10 @@ write-host -foregroundcolor $systemmessagecolor "Script started"
 ## https://www.powershellgallery.com/packages/MicrosoftTeams/
 ## Current version = 0.9.3, 25 April 2018
 import-module MicrosoftTeams
-write-host -foregroundcolor $systemmessagecolor "Microsoft Teams module loaded"
+write-host -foregroundcolor $processmessagecolor "Microsoft Teams module loaded"
 
 ## Connect to Microsoft Teams service
 ## You will be manually prompted to enter credentials and MFA
 Connect-MicrosoftTeams
-write-host -foregroundcolor $systemmessagecolor "Now connected to Microsoft Teams Service"
+write-host -foregroundcolor $processmessagecolor "Now connected to Microsoft Teams Service`n"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

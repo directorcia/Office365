@@ -70,4 +70,4 @@ else {
     write-host -foregroundcolor $processmessagecolor "Finish - MFA login`n"                             
 }
 get-module | Select-Object version,Name
-write-host -foregroundcolor $systemmessagecolor "Finish Script`n"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

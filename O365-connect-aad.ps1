@@ -11,6 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 
@@ -19,14 +20,14 @@ $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if requir
 
 Clear-Host
 
-write-host -foregroundcolor green "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## ensure that install-module azuread has been run
 ## ensure that update-module azuread has been run to get latest module
 ## https://www.powershellgallery.com/packages/AzureAD/
 ## Current version = 2.0.1.16, 21 June 2018
 import-module azuread
-write-host -foregroundcolor green "AzureAD module loaded"
+write-host -foregroundcolor $processmessagecolor "AzureAD module loaded"
 
 ## Get tenant login credentials
 if ($savedcreds) {
@@ -40,4 +41,5 @@ else {
 
 ## Connect to AzuerAD service
 Connect-azuread -credential $cred
-write-host -foregroundcolor green "Now connected to Azure AD Service"
+write-host -foregroundcolor $processmessagecolor "Now connected to Azure AD Service`n"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

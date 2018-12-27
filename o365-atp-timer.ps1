@@ -52,4 +52,4 @@ foreach($MessageTrace in $Custom_Object)
 Write-host
 Write-host "Total additional time for ATP scanning =",$final_data.totalseconds,"seconds"
 Write-host
-write-host -foregroundcolor $systemmessagecolor "Script ended"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

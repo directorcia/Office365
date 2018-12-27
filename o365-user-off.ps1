@@ -13,6 +13,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -31,11 +32,11 @@ catch
     return
 }
 
-write-host -foregroundcolor green "Found",$user.displayname
+write-host -foregroundcolor $processmessagecolor "Found",$user.displayname
 
 ## Disable account to block user logins
 Set-AzureADUser -objectid $user.ObjectId -AccountEnabled $false
-write-host -foregroundcolor green "Disabled login"
+write-host -foregroundcolor $processmessagecolor "Disabled login"
 
 ## Invalidates all the refresh tokens used to obtain new access tokens for Office 365 applications by setting their expiry to the current date and time.
 ## When a user authenticates to connect to an Office 365 application, they create a session with that application.
@@ -43,43 +44,43 @@ write-host -foregroundcolor green "Disabled login"
 ## An Office 365 access token is valid for an hour (the period can be changed if needed).
 ## When that period elapses, an automatic reauthentication process commences to obtain a new access token to allow the session to continue
 Revoke-AzureADUserAllRefreshToken -ObjectId $user.ObjectId
-write-host -foregroundcolor green "Revoked Token"
+write-host -foregroundcolor $processmessagecolor "Revoked Token"
 
 ## The ActiveSyncEnabled parameter enables or disables Exchange ActiveSync for the mailbox.
 Set-CASMailbox $useremail -ActiveSyncEnabled $false
-write-host -foregroundcolor green "ActiveSync disabled"
+write-host -foregroundcolor $processmessagecolor "ActiveSync disabled"
 
 ## The OWAEnabled parameter enables or disables access to the mailbox by using Outlook on the web
 Set-casmailbox $useremail -owaenabled $false
-write-host -foregroundcolor green "OWA disabled"
+write-host -foregroundcolor $processmessagecolor "OWA disabled"
 
 ## TheActiveSyncAllowedDeviceIDs parameter specifies one or more Exchange ActiveSync device IDs that are allowed to synchronize with the mailbox.
 ## Setting this to $NULL clears the list of device IDs
 Set-casmailbox $useremail -activesyncalloweddeviceids $null
-write-host -foregroundcolor green "Removed allowed ActiveSync devices"
+write-host -foregroundcolor $processmessagecolor "Removed allowed ActiveSync devices"
 
 ## The MAPIEnabled parameter enables or disables access to the mailbox by using MAPI clients (for example, Outlook).
 Set-casmailbox $useremail -mapienabled $false
-write-host -foregroundcolor green "Disabled MAPI"
+write-host -foregroundcolor $processmessagecolor "Disabled MAPI"
 
 ## The OWAforDevicesEnabled parameter enables or disables access to the mailbox by using Outlook on the web for devices.
 Set-casmailbox $useremail -OWAforDevicesEnabled $false
-write-host -foregroundcolor green "Disabled MAPI fo devices"
+write-host -foregroundcolor $processmessagecolor "Disabled MAPI fo devices"
 
 ## The PopEnabled parameter enables or disables access to the mailbox by using POP3 clients.
 Set-casmailbox $useremail -popenabled $false
-write-host -foregroundcolor green "Disabled POP"
+write-host -foregroundcolor $processmessagecolor "Disabled POP"
 
 ## The ImapEnabled parameter enables or disables access to the mailbox by using IMAP4 clients.
 Set-casmailbox $useremail -imapenabled $false
-write-host -foregroundcolor green "Disabled IMAP"
+write-host -foregroundcolor $processmessagecolor "Disabled IMAP"
 
 ## The UniversalOutlookEnabled parameter enables or disables access to the mailbox by using Mail and Calendar
 Set-casmailbox $useremail -universaloutlookenabled $false
-write-host -foregroundcolor green "Disabled Outlook"
+write-host -foregroundcolor $processmessagecolor "Disabled Outlook"
 
 ## User will be signed out of browser, desktop and mobile applications accessing Office 365 resources across all devices.
 ## It can take up to an hour to sign out from all devices.
 Revoke-SPOUserSession -user $useremail -Confirm:$false
 
-write-host -foregroundcolor $systemmessagecolor "Ending script"
+write-host -foregroundcolor $systemmessagecolor "Script completed`n"

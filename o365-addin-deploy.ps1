@@ -38,4 +38,4 @@ Set-OrganizationAddInAssignments -ProductId 6046742c-3aee-485e-a4ac-92ab7199db2e
 Set-OrganizationAddInAssignments -ProductId 62916641-fc48-44ae-a2a3-163811f1c945 -AssignToEveryone $true ## Message Header Analyzer
 Set-OrganizationAddInAssignments -ProductId 9758a0e2-7861-440f-b467-1823144e5b65 -AssignToEveryone $true ## FindTime
 
-write-host -foregroundcolor $systemmessagecolor "Script Completed"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

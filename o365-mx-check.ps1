@@ -13,6 +13,7 @@
 $auditlogagelimitdefault = 90
 $retaindeleteditemsfordefault = 14
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -21,9 +22,9 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started"
 
-write-host -ForegroundColor $systemmessagecolor "Getting Mailboxes"
+write-host -ForegroundColor $processmessagecolor "Getting Mailboxes"
 $mailboxes=get-mailbox -ResultSize unlimited
-write-host -ForegroundColor $systemmessagecolor "Start checking mailboxes"
+write-host -ForegroundColor $processmessagecolor "Start checking mailboxes"
 write-host
 foreach ($mailbox in $mailboxes){
     write-host -foregroundcolor yellow -BackgroundColor Black "Mailbox =",$mailbox.displayname
@@ -100,6 +101,6 @@ foreach ($mailbox in $mailboxes){
     }
     write-host
 }
-write-host -ForegroundColor $systemmessagecolor "Finish checking mailboxes"
+write-host -ForegroundColor $processmessagecolor "Finish checking mailboxes"
 write-host
-write-host -ForegroundColor $systemmessagecolor "Finish script"
+write-host -foregroundcolor $systemmessagecolor "Script completed`n"

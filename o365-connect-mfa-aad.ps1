@@ -12,6 +12,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -26,7 +27,7 @@ write-host -foregroundcolor $systemmessagecolor "Script started"
 ## https://www.powershellgallery.com/packages/AzureAD/
 ## Current version = 2.0.1.16, 21 June 2018
 import-module azuread
-write-host -foregroundcolor $systemmessagecolor "AzureAD module loaded"
+write-host -foregroundcolor $processmessagecolor "AzureAD module loaded"
 
 ## ensure that Exchange Online MFA modules has been run
 ## Download and install MFA cmdlets from - https://docs.microsoft.com/en-us/powershell/exchange/exchange-online/connect-to-exchange-online-powershell/mfa-connect-to-exchange-online-powershell?view=exchange-ps
@@ -34,4 +35,5 @@ write-host -foregroundcolor $systemmessagecolor "AzureAD module loaded"
 ## Connect to Azure AD service
 ## You will be manually prompted to enter credentials and MFA
 Connect-AzureAD
-write-host -foregroundcolor $systemmessagecolor "Now connected to Azure AD Service with MFA"
+write-host -foregroundcolor $processmessagecolor "Now connected to Azure AD Service with MFA`n"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

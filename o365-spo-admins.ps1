@@ -11,7 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
-
+$processmessagecolor = "green"
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
@@ -21,12 +21,12 @@ write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## Ensure that SharePoint Online modeule has been installed and loaded
 
-Write-host -ForegroundColor $systemmessagecolor "Getting all Sharepoint sites in tenant"
+Write-host -ForegroundColor $processmessagecolor "Getting all Sharepoint sites in tenant"
 $SiteCollections  = Get-SPOSite -Limit All
 
 foreach ($site in $SiteCollections) ## Loop through all Site Collections in tenant
 {
-    Write-host -ForegroundColor Green "Checking site:",$site.url
+    Write-host -ForegroundColor $processmessagecolor "Checking site:",$site.url
 
     $siteusers = get-spouser -site $site.Url    ## get all users for that SharePoint site
     foreach ($siteuser in $siteusers){          ## loop through all the users in the site
@@ -36,4 +36,4 @@ foreach ($site in $SiteCollections) ## Loop through all Site Collections in tena
      }
      write-host
 }
-write-host -foregroundcolor $systemmessagecolor "Script complete"
+write-host -foregroundcolor $systemmessagecolor "Script completed`n"

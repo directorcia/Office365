@@ -11,7 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
-
+$processmessagecolor = "green"
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
@@ -30,8 +30,8 @@ Write-Host
 
 ## ensure that SharePoint Online module has been installed and loaded
 
-Write-host -ForegroundColor $systemmessagecolor "Getting all Sharepoint sites in tenant"
+Write-host -ForegroundColor $processmessagecolor "Getting all Sharepoint sites in tenant"
 
 get-sposite | Select-object url,sharingcapability
 
-write-host -foregroundcolor $systemmessagecolor "Script complete"
+write-host -foregroundcolor $systemmessagecolor "Script completed`n"

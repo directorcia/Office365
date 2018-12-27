@@ -11,7 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
-
+$processmessagecolor = "green"
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
@@ -19,19 +19,19 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Start Script"
 
-write-host -foregroundcolor $systemmessagecolor "Update Azure AD module"
+write-host -foregroundcolor $processmessagecolor "Update Azure AD module"
 Update-Module -Name AzureAD -force
-write-host -foregroundcolor $systemmessagecolor "Update Azure AD Right Management module"
+write-host -foregroundcolor $processmessagecolor "Update Azure AD Right Management module"
 Update-Module -Name AADRM -force
-write-host -foregroundcolor $systemmessagecolor "Update Teams Module"
+write-host -foregroundcolor $processmessagecolor "Update Teams Module"
 Update-Module -Name MicrosoftTeams -Force
-write-host -foregroundcolor $systemmessagecolor "Update SharePoint Online module"
+write-host -foregroundcolor $processmessagecolor "Update SharePoint Online module"
 Update-Module -Name Microsoft.Online.SharePoint.PowerShell -force
-write-host -foregroundcolor $systemmessagecolor "Update Microsoft Online module"
+write-host -foregroundcolor $processmessagecolor "Update Microsoft Online module"
 Update-Module -Name MSOnline -force
-write-host -foregroundcolor $systemmessagecolor "Update Azure module"
+write-host -foregroundcolor $processmessagecolor "Update Azure module"
 Update-Module -name AzureRM -Force
 ## New Az module
 ## Update-Module -name Az -force
 
-write-host -foregroundcolor $systemmessagecolor "Finish Script"
+write-host -foregroundcolor $systemmessagecolor "Script completed`n"

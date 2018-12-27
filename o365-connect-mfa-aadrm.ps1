@@ -10,6 +10,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
@@ -24,4 +25,5 @@ write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## Connect to Azure AD Rights Management Service
 connect-aadrmservice
-write-host -foregroundcolor $systemmessagecolor "Now connected to the Azure AD Rights Management Service"
+write-host -foregroundcolor $processmessagecolor "Now connected to the Azure AD Rights Management Service`n"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

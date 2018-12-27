@@ -11,7 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
-
+$processmessagecolor = "green"
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
@@ -21,12 +21,12 @@ write-host -foregroundcolor $systemmessagecolor "Script started"
 
 ## ensure that SharePoint Online modeule has been installed and loaded
 
-Write-host -ForegroundColor $systemmessagecolor "Getting all Sharepoint sites in tenant"
+Write-host -ForegroundColor $processmessagecolor "Getting all Sharepoint sites in tenant"
 $SiteCollections  = Get-SPOSite -Limit All
 
 foreach ($site in $SiteCollections) ## Loop through all Site Collections in tenant
 {
-    Write-host -ForegroundColor Green "Checking site:",$site.url
+    Write-host -ForegroundColor $processmessagecolor "Checking site:",$site.url
 
 try {
     for ($i=0;;$i+=50) { ## There is a return limit of 50 users so need to capture data if more than 50 external users
@@ -37,4 +37,4 @@ catch { ## this is where any error handling will appear if required
 }
 }
 
-write-host -foregroundcolor $systemmessagecolor "Script complete"
+write-host -foregroundcolor $systemmessagecolor "Script completed`n"

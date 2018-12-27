@@ -11,6 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -25,8 +26,9 @@ write-host -foregroundcolor $systemmessagecolor "Script started"
 Import-Module $((Get-ChildItem -Path $($env:LOCALAPPDATA+"\Apps\2.0\") `
 -Filter Microsoft.Exchange.Management.ExoPowershellModule.dll -Recurse ).FullName|?{$_ -notmatch "_none_"} `
 |select -First 1)
-write-host -foregroundcolor $systemmessagecolor "Exchange Online MFA module loaded"
+write-host -foregroundcolor $processmessagecolor "Exchange Online MFA module loaded"
 
 $EXOSession = New-ExoPSSession
 Import-PSSession $EXOSession
-write-host -foregroundcolor $systemmessagecolor "Connected to Exchange Online MFA"
+write-host -foregroundcolor $processmessagecolor "Connected to Exchange Online MFA`n"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

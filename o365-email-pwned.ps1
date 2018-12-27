@@ -101,3 +101,5 @@ If ($Breaches -gt 0) {
     Write-Host "Total breaches found: " $Breaches " You can find a report in "$resultsfile }
 Else
   { Write-Host "Hurray - no breaches found for your Office 365 mailboxes" }
+
+  write-host -foregroundcolor $systemmessagecolor "Script finished`n"

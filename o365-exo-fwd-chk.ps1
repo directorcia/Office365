@@ -11,6 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -27,7 +28,7 @@ $mailboxes = Get-Mailbox -ResultSize Unlimited
 ## Yellow - forwarding disabled but forwarding address present
 ## Red - forwarding enabled
 
-write-host -foregroundcolor $systemmessagecolor "`nCheck Exchange Forwards"
+write-host -foregroundcolor $processmessagecolor "`nCheck Exchange Forwards"
 
 foreach ($mailbox in $mailboxes) {
     if ($mailbox.DeliverToMailboxAndForward) { ## if email forwarding is active
@@ -53,7 +54,7 @@ foreach ($mailbox in $mailboxes) {
     }
 }
 
-write-host -foregroundcolor $systemmessagecolor "`nCheck Outlook Rule Forwards"
+write-host -foregroundcolor $processmessagecolor "`nCheck Outlook Rule Forwards"
 
 foreach ($mailbox in $mailboxes)
 {
@@ -82,4 +83,4 @@ foreach ($mailbox in $mailboxes)
     }
 }
 
-write-host -foregroundcolor $systemmessagecolor "`nScript complete"
+write-host -foregroundcolor $systemmessagecolor "`nScript complete`n"

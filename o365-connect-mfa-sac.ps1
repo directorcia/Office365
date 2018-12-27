@@ -11,6 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -28,4 +29,5 @@ write-host -foregroundcolor $systemmessagecolor "Exchange Online MFA module load
 
 $Comp = New-EXOPSSession -ConnectionUri $CompConnectionUri -Credential $EXOcreds
 $CompImportresults = Import-PSSession $Comp -AllowClobber
-write-host -foregroundcolor $systemmessagecolor "Connected to Secruity and Compliance Center MFA"
+write-host -foregroundcolor $processmessagecolor "Connected to Secruity and Compliance Center MFA`n"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

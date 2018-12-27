@@ -11,6 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 
@@ -28,7 +29,7 @@ write-host -foregroundcolor $systemmessagecolor "Script started"
 ## Current version = 1.1.183.17, 4 August 2018
 
 import-module msonline
-write-host -foregroundcolor $systemmessagecolor "MSOnline module loaded"
+write-host -foregroundcolor $processmessagecolor "MSOnline module loaded"
 
 ## Get tenant login credentials
 if ($savedcreds) {
@@ -42,4 +43,5 @@ else {
 
 ## Connect to Office 365 admin service
 connect-msolservice -credential $cred
-write-host -foregroundcolor $systemmessagecolor "Now connected to Office 365 Admin service"
+write-host -foregroundcolor $processmessagecolor "Now connected to Office 365 Admin service`n"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

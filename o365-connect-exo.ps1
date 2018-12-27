@@ -11,6 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 
@@ -47,4 +48,5 @@ write-host -foregroundcolor $systemmessagecolor "Now connected to Office 365 Adm
 ## Start Exchange Online session
 $Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://outlook.office365.com/powershell-liveid/?proxyMethod=RPS -Credential $Cred -Authentication Basic -AllowRedirection
 import-PSSession $Session
-write-host -foregroundcolor $systemmessagecolor "Now connected to Exchange Online services"
+write-host -foregroundcolor $processmessagecolor "Now connected to Exchange Online services`n"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

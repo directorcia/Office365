@@ -11,6 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 
@@ -36,4 +37,5 @@ else {
 
 ## Connect to Office 365 admin service
 Connect-OrganizationAddInService -credential $cred
-write-host -foregroundcolor $systemmessagecolor "Now connected to Office 365 Centralized Deployment"
+write-host -foregroundcolor $processmessagecolor "Now connected to Office 365 Centralized Deployment`n"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

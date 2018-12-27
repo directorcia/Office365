@@ -12,6 +12,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 ## Separate multiple domains with comma (,) e.g."domain1.com", "domain2.com", "domain3.com"
 $domains = "M365B555418.onmicrosoft.com"
 $policyname = "Configured Policy"
@@ -24,7 +25,7 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started"
 
-write-host -foregroundcolor $systemmessagecolor "Set new spam policy"
+write-host -foregroundcolor $processmessagecolor "Set new spam policy"
 
 $policyparams = @{
     "name" = $policyname;
@@ -55,7 +56,7 @@ $policyparams = @{
 
 new-hostedcontentfilterpolicy @policyparams
 
-write-host -foregroundcolor Cyan "Set new filter rule"
+write-host -foregroundcolor $processmessagecolor"Set new filter rule"
 
 $ruleparams = @{
     'name' = $rulename;
@@ -66,4 +67,4 @@ $ruleparams = @{
 
 New-hostedcontentfilterrule @ruleparams
 
-write-host -foregroundcolor $systemmessagecolor "Script complete"
+write-host -foregroundcolor $systemmessagecolor "Script completed`n"

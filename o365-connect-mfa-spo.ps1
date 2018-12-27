@@ -12,6 +12,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 ## Change <tenantname> to be your own tenant
 $tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL for tenant
 
@@ -25,7 +26,7 @@ write-host -foregroundcolor $systemmessagecolor "Script started"
 ## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=35588 (SharePoint Online Module)
 ## Current version = 16.0.7813.1200, 27 June 2018
 import-module microsoft.online.sharepoint.powershell -disablenamechecking
-write-host -foregroundcolor $systemmessagecolor "SharePoint Online module loaded"
+write-host -foregroundcolor $processmessagecolor "SharePoint Online module loaded"
 
 ## ensure that Exchange Online MFA modules has been run
 ## Download and install MFA cmdlets from - https://docs.microsoft.com/en-us/powershell/exchange/exchange-online/connect-to-exchange-online-powershell/mfa-connect-to-exchange-online-powershell?view=exchange-ps
@@ -33,4 +34,5 @@ write-host -foregroundcolor $systemmessagecolor "SharePoint Online module loaded
 ## Connect to SharePoint Online Service
 ## You will be manually prompted to login using MFA
 connect-sposervice -url $tenanturl
-write-host -foregroundcolor $systemmessagecolor "Now connected to SharePoint Online services MFA"
+write-host -foregroundcolor $processmessagecolor "Now connected to SharePoint Online services MFA`n"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

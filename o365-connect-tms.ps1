@@ -11,6 +11,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 
@@ -26,7 +27,7 @@ write-host -foregroundcolor $systemmessagecolor "Script started"
 ## https://www.powershellgallery.com/packages/MicrosoftTeams/
 ## Current version = 0.9.3, 25 April 2018
 import-module MicrosoftTeams
-write-host -foregroundcolor $systemmessagecolor "Microsoft Teams module loaded"
+write-host -foregroundcolor $processmessagecolor "Microsoft Teams module loaded"
 
 ## Get tenant login credentials
 if ($savedcreds) {
@@ -40,4 +41,5 @@ else {
 
 ## Connect to Microsoft Teams service
 Connect-MicrosoftTeams -credential $cred
-write-host -foregroundcolor $systemmessagecolor "Now connected to Microsoft Teams Service"
+write-host -foregroundcolor $processmessagecolor "Now connected to Microsoft Teams Service`n"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

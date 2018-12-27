@@ -12,6 +12,7 @@
 
 ## Variables
 $systemmessagecolor = "cyan"
+$processmessagecolor = "green"
 $startdate = "9/5/2018"     ## Starting date for audit log search MM/DD/YYYY
 $enddate = "9/11/2018"      ## Ending date for audit log search MM/DD/YYYY
 $sesid="0"                  ## change this if you want to re-reun the script multiple times in a single session
@@ -45,7 +46,7 @@ write-host -foregroundcolor $systemmessagecolor "Script started"
 # Loop will run until $AuditOutput returns null which equals that no more event objects exists from the specified date
 while ($AuditOutput) {
     # Search the defined date(s), SessionId + SessionCommand in combination with the loop will return and append 100 object per iteration until all objects are returned (minimum limit is 50k objects)
-    write-host -foregroundcolor $systemmessagecolor "Searching Audit logs. Please wait"
+    write-host -foregroundcolor $processmessagecolor "Searching Audit logs. Please wait"
     $AuditOutput = Search-UnifiedAuditLog -StartDate $StartDate -EndDate $EndDate -recordtype $recordtype -operations $operation -SessionId $sesid -SessionCommand ReturnLargeSet
     # Select and expand the nested object (AuditData) as it holds relevant reporting data. Convert output format from default JSON to enable export to csv
     $ConvertedOutput = $AuditOutput | Select-Object -ExpandProperty AuditData | ConvertFrom-Json
@@ -79,4 +80,4 @@ foreach ($result in $results){
 }
 
 write-host
-write-host -foregroundcolor $systemmessagecolor "Script Completed"
+write-host -foregroundcolor $systemmessagecolor "Script Completed`n"
