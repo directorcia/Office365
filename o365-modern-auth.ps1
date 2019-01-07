@@ -7,7 +7,7 @@
 ## Source - https://github.com/directorcia/Office365/blob/master/o365-modern-auth.ps1
 
 ## Prerequisites = 1
-## 1. Ensure connected to Skype for Business onlin
+## 1. Ensure connected to Skype for Business online
 ## 2. Ensure connected to Exchange Online
 
 ## Variables
