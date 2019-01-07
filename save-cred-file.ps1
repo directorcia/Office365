@@ -11,15 +11,14 @@
 ## Variables
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
+$credpath = "c:\downloads\tenant.xml"   ## local file with credentials
+
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
-
-## Variables
-$credpath = "c:\downloads\tenant.xml"   ## local file with credentials
 
 ## Save manually inputed creds to local file
 Get-Credential | Export-CliXml  -Path $credpath
