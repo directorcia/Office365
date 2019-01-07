@@ -20,7 +20,7 @@ $processmessagecolor = "green"
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script start"
+write-host -foregroundcolor $systemmessagecolor "Script start`n"
 
 $useremail=read-host -prompt 'Enter user email address'
 try {   ## See whether input matches a user in Azure AD

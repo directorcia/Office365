@@ -41,7 +41,7 @@ $operation="userloginfailed","userloggedin" ## use this line to report all login
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 # Loop will run until $AuditOutput returns null which equals that no more event objects exists from the specified date
 while ($AuditOutput) {

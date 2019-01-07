@@ -19,7 +19,7 @@ $processmessagecolor = "green"
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 ## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=39366 (Skype for Business Online Module)
 ## Current version = 7.0.1994.0, 26 February 2018

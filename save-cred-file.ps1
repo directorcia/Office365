@@ -16,7 +16,7 @@ $processmessagecolor = "green"
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 ## Variables
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials

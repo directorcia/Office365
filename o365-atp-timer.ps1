@@ -22,7 +22,7 @@ $hourwindow = 1    ## hours window to check for sent messages. As messages age y
 
 Clear-host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 Write-host
 
 $RecipientAddress = read-host -prompt 'Input recipient email address'

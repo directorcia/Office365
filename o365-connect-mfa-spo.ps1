@@ -21,7 +21,7 @@ $tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL 
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 ## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=35588 (SharePoint Online Module)
 ## Current version = 16.0.7813.1200, 27 June 2018

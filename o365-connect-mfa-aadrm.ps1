@@ -16,7 +16,7 @@ $processmessagecolor = "green"
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 ## ensure that install-module aadrm has been run
 ## ensure that update-module aadrm has been run to get latest module

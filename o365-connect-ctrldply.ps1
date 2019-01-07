@@ -20,7 +20,7 @@ $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if requir
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 ## https://www.microsoft.com/en-us/download/details.aspx?id=55267
 ## Version 1.2.0.0 Date = 26 April 2018

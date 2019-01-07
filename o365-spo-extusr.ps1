@@ -17,7 +17,7 @@ $processmessagecolor = "green"
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 ## ensure that SharePoint Online modeule has been installed and loaded
 

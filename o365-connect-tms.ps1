@@ -20,7 +20,7 @@ $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if requir
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 ## ensure that install-module -name microsoftteams has been run
 ## ensure that update-module -name microsoftteams has been run to get latest module

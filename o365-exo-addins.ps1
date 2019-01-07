@@ -18,7 +18,7 @@ $processmessagecolor = "green"
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "`nScript started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 ## Get all mailboxes
 $mailboxes = Get-Mailbox -ResultSize Unlimited

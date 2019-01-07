@@ -23,7 +23,7 @@ $rulename = "Configured Recipients"
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started'n"
 
 write-host -foregroundcolor $processmessagecolor "Set new spam policy"
 

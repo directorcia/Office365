@@ -19,7 +19,7 @@ $processmessagecolor = "green"
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 ## ensure that install-module azuread has been run
 ## ensure that update-module azuread has been run to get latest module

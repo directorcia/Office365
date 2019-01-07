@@ -19,7 +19,7 @@ $systemmessagecolor = "cyan"
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started"
+write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 ## Deploy addins from Office store
 ## You will receive an error if the addin is already installed in tenant
