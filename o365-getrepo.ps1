@@ -28,6 +28,7 @@ write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 
 $baseUri = "https://api.github.com/"
 $args = "repos/$Owner/$Repository/contents/$Path"
+[Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls,ssl3"  ## Avoid failure to create secure channel
 $wr = Invoke-WebRequest -Uri $($baseuri+$args)
 $objects = $wr.Content | ConvertFrom-Json
 $files = $objects | where {$_.type -eq "file"} | Select -exp download_url
