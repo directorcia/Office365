@@ -14,6 +14,7 @@
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 ## Change <tenantname> to be your own tenant
+$tenant_input = $true                   ## change to false if you don't wish to be prompted for the tenant name
 $tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL for tenant
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
@@ -22,6 +23,14 @@ $tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL 
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
+
+If ($tenant_input -eq $true){
+    # Prompt user for tenant name
+    $tenantname = Read-Host -prompt "Input tenant name (NOT full tenant URL)"
+    $tenanturl = "https://"+$tenantname+"-admin.sharepoint.com"
+    Write-host -ForegroundColor $processmessagecolor "SharePoint admin URL =",$tenanturl
+}
+
 
 ## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=35588 (SharePoint Online Module)
 ## Current version = 16.0.7813.1200, 27 June 2018

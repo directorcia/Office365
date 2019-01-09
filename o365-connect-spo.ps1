@@ -16,7 +16,8 @@ $processmessagecolor = "green"
 $savedcreds=$false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 ## Change <tenantname> to be your own tenant
-$tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL for tenant
+$tenant_input = $true                   ## change to false if you don't wish to be prompted for the tenant name
+$tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL for tenant if prompting not enabled
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -24,6 +25,13 @@ $tenanturl= "https://<tenantname>-admin.sharepoint.com" ## SharePoint Admin URL 
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
+
+If ($tenant_input -eq $true){
+    # Prompt user for tenant name
+    $tenantname = Read-Host -prompt "Input tenant name (NOT full tenant URL)"
+    $tenanturl = "https://"+$tenantname+"-admin.sharepoint.com"
+    Write-host -ForegroundColor $processmessagecolor "SharePoint admin URL =",$tenanturl
+}
 
 ## ensure that install-module msonline has been run
 ## ensure that update-module msonline has been run to get latest module
