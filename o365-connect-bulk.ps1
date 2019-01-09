@@ -60,7 +60,8 @@ if ($mfa -eq $false) {
 }                                                                                                                           
 else {
     write-host -foregroundcolor $processmessagecolor "Start - MFA login"
-    if ($std -or $exo) {.\o365-connect-mfa.ps1}
+    if ($std) {.\o365-connect.ps1}
+    if ($exo) {.\o365-connect-mfa.ps1}
     if ($aad) {.\o365-connect-mfa-aad.ps1}                                                                                                                                                                                                                                    
     if ($s4b) {.\o365-connect-mfa-s4b.ps1}                                                                                                                       
     if ($sac) {.\o365-connect-mfa-sac.ps1}                                                                                                                       
