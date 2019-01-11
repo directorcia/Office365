@@ -17,6 +17,10 @@ $errormessagecolor = "red"
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
+## Skype for Business Online Module is still a manual download and install here 
+## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=39366 (Skype for Business Online Module)
+## Current version = 7.0.1994.0, 26 February 2018
+
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Start Script`n"
