@@ -27,6 +27,8 @@ write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
+    write-host -foregroundcolor $processmessagecolor "NuGet provider"
+    Install-PackageProvider -Name NuGet -Force
     write-host -foregroundcolor $processmessagecolor "Install Azure AD module"
     Install-Module -Name AzureAD -force
     write-host -foregroundcolor $processmessagecolor "Install Azure AD Right Management module"
