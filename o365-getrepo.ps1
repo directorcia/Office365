@@ -26,6 +26,8 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 
+[Net.ServicePointManager]::SecurityProtocol = "tls12,tls11,tls,ssl3"  ## Avoid failure to create secure channel
+
 $baseUri = "https://api.github.com/"
 $args = "repos/$Owner/$Repository/contents/$Path"
 [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls,ssl3"  ## Avoid failure to create secure channel
