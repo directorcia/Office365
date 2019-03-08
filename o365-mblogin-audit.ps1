@@ -14,7 +14,8 @@ Prerequisites = 1
 ## Variables
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
-$startdate = $dateEnd.AddHours(-48)     ## Starting date for audit log search MM/DD/YYYY
+$hours = 48     ## number of hours to check across
+$startdate = $dateEnd.AddHours(-$hours)     ## Starting date for audit log search MM/DD/YYYY
 $enddate = get-date      ## Ending date for audit log search MM/DD/YYYY
 $sesid="0"                  ## change this if you want to re-reun the script multiple times in a single session
 $Results = @()              ## where the ultimate results end up
