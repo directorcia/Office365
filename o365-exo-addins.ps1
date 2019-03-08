@@ -30,5 +30,4 @@ foreach ($mailbox in $mailboxes) {
     get-app -mailbox $mailbox.primarysmtpaddress | Select-Object displayname,enabled,appversion | Format-Table
 }
 
-write-host -foregroundcolor $processmessagecolor "`nScript complete`n"
 write-host -foregroundcolor $systemmessagecolor "Script Completed`n"
