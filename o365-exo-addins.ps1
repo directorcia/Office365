@@ -27,7 +27,7 @@ write-host -foregroundcolor $processmessagecolor "`nCheck Mailbox Add ins"
 
 foreach ($mailbox in $mailboxes) {
     write-host "Mailbox =",$mailbox.primarysmtpaddress
-    get-app -mailbox $mailbox.primarysmtpaddress | Select-Object displayname,enabled,appversion | Format-Table
+    get-app -mailbox $mailbox.primarysmtpaddress | Select-Object displayname,providername,enabled,appversion | Format-Table
 }
 
 write-host -foregroundcolor $systemmessagecolor "Script Completed`n"
