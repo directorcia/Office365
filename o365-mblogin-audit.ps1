@@ -14,14 +14,14 @@ Prerequisites = 1
 ## Variables
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
-$hours = 48     ## number of hours to check across
-$enddate = get-date      ## Ending date for audit log search MM/DD/YYYY
+$hours = 48                                 ## number of hours to check across
+$enddate = get-date                         ## Ending date for audit log search MM/DD/YYYY
 $startdate = $enddate.AddHours(-$hours)     ## Starting date for audit log search MM/DD/YYYY
-$sesid="0"                  ## change this if you want to re-reun the script multiple times in a single session
-$Results = @()              ## where the ultimate results end up
+$sesid="0"                                  ## change this if you want to re-reun the script multiple times in a single session
+$Results = @()                              ## where the ultimate results end up
 $strCurrentTimeZone = (Get-WmiObject win32_timezone).StandardName           ## determine current local timezone
 $TZ = [System.TimeZoneInfo]::FindSystemTimeZoneById($strCurrentTimeZone)    ## for Timezone calculations
-$AuditOutput = 1            ## Set variable value to trigger loop below (can be anything)
+$AuditOutput = 1                            ## Set variable value to trigger loop below (can be anything)
 $convertedoutput=""
 <# Valid record types = 
 AzureActiveDirectory, AzureActiveDirectoryAccountLogon,AzureActiveDirectoryStsLogon, ComplianceDLPExchange
