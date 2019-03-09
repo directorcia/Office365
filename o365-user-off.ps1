@@ -1,15 +1,17 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-user-off.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-user-off.ps1
 
-## Description
-## Script designed to disable a user's access to Office 365 services
+Description
+Script designed to disable a user's access to Office 365 services
 
-## Prerequisites = 3
-## 1. Ensure connected to Office 365 Azure AD
-## 2. Ensure connected to Exchange Online
-## 3. Ensure connected to SharePoint Online
+Prerequisites = 3
+1. Ensure connected to Office 365 Azure AD
+2. Ensure connected to Exchange Online
+3. Ensure connected to SharePoint Online
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"
@@ -25,6 +27,8 @@ write-host -foregroundcolor $systemmessagecolor "Script start`n"
 $useremail=read-host -prompt 'Enter user email address'
 try {   ## See whether input matches a user in Azure AD
     $user= get-azureaduser -objectid $useremail -erroraction stop
+    write-host -ForegroundColor $processmessagecolor "Reset user's password on local AD if synced or in cloud"
+    Read-Host -prompt "Press any key to continue" 
 }
 catch
 {       # if there is no match provide warning and terminate script
