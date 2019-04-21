@@ -31,9 +31,9 @@ clear-host
 # Get OAuth token for a AAD Application (returned as $token)
 
 # Application (client) ID, tenant ID and secret
-$clientId = "e621f6e4-6367-45d7-8baa-a93abec4554f"
-$tenantId = "5243d63d-7632-4d07-a77e-de0fea1b77a4"
-$clientSecret = '4*^);_vK](3+.U}});]Ei?^>[a!u=$#.?^M=]))$/?Xd})8///t|'
+$clientId = "533d3257-a487-4a27-b233-d96bc2256f05"
+$tenantId = "6c23dd7a-647b-4067-baa0-f9f61e65a32f"
+$clientSecret = 'NX2s^!()&@+*@^)!_!+_'
 
 # Construct URI
 $uri = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token"
