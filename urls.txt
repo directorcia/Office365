@@ -7,6 +7,8 @@ https://admin.microsoft.com  - Administration portal
 https://portal.office.com/commerce/manage.aspx?empty=1 - Subscriptions view
 https://myapps.microsoft.com/ - End user web application portal
 https://portal.cloudappsecurity.com - Cloud app security portal
+https://outlook.office.com/owa - Outlook Web Access
+https://outlook.office365.com/ecp - Exchange admin center
 
 
 ## Security 
