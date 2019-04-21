@@ -1,0 +1,27 @@
+## Office 365 / Microsoft 365
+
+https://portal.office.com - Office 365 Home page
+https://login.microsoftonline.com - Office 365 Home page
+https://devicemanagement.microsoft.com = Device management portal
+https://admin.microsoft.com  - Administration portal
+https://portal.office.com/commerce/manage.aspx?empty=1 - Subscriptions view
+https://myapps.microsoft.com/ - End user web application portal
+https://portal.cloudappsecurity.com - Cloud app security portal
+
+
+## Security 
+https://portal.msrc.microsoft.com/en-us/engage/cars - Submit Abuse report. This form is to report suspected cyberattacks or abuse originating from Microsoft Online Services, such as Microsoft Azure, Bing, Outlook, One Drive, and Office 365. This includes malicious network activity originating from a Microsoft IP address. It also includes distribution of malicious content or other illicit or illegal material through a Microsoft Online Service.
+https://servicetrust.microsoft.com/ - Service trust portal. Review the available independent audit reports for Microsoft's Cloud services, which provide information about compliance with data protection standards and regulatory requirements, such as International Organization for Standardization (ISO), Service Organization Controls (SOC), National Institute of Standards and Technology (NIST), Federal Risk and Authorization Management Program (FedRAMP), and the General Data Protection Regulation (GDPR)
+https://www.microsoft.com/en-us/trustcenter - Trust center
+https://protection.office.com - Office 365 Security portal
+https://securescore.microsoft.com - Microsoft Secure Score
+
+
+## Azure
+
+https://portal.azure.com - Azure portal home page
+https://preview.portal.azure.com - Preview Azure portal home page
+
+## Other
+
+https://developer.microsoft.com/en-us/graph/graph-explorer - Microsoft Graph explorer
