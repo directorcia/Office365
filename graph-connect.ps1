@@ -13,6 +13,11 @@
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 
+# Application (client) ID, tenant ID and secret
+$clientId = "533d3257-a487-4a27-b233-d96bc2256f05"
+$tenantId = "6c23dd7a-647b-4067-baa0-f9f61e65a32f"
+$clientSecret = 'NX2s^!()&@+*@^)!_!+_'
+
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
@@ -23,17 +28,10 @@ write-host -foregroundcolor $systemmessagecolor "Script started`n"
 ## ensure that install-module msonline has been run
 ## ensure that update-module msonline has been run to get latest module
 
-clear-host
-
 ## Script from - https://www.lee-ford.co.uk/getting-started-with-microsoft-graph-with-powershell/
 
 # Azure AD OAuth Application Token for Graph API
 # Get OAuth token for a AAD Application (returned as $token)
-
-# Application (client) ID, tenant ID and secret
-$clientId = "533d3257-a487-4a27-b233-d96bc2256f05"
-$tenantId = "6c23dd7a-647b-4067-baa0-f9f61e65a32f"
-$clientSecret = 'NX2s^!()&@+*@^)!_!+_'
 
 # Construct URI
 $uri = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token"
