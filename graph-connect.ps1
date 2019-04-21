@@ -25,9 +25,6 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
-## ensure that install-module msonline has been run
-## ensure that update-module msonline has been run to get latest module
-
 ## Script from - https://www.lee-ford.co.uk/getting-started-with-microsoft-graph-with-powershell/
 
 # Azure AD OAuth Application Token for Graph API
