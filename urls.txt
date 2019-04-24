@@ -14,6 +14,7 @@ http://teamsdemo.office.com/ - Microsoft Teams Demo
 
 
 ## Security 
+
 https://portal.msrc.microsoft.com/en-us/engage/cars - Submit Abuse report. This form is to report suspected cyberattacks or abuse originating from Microsoft Online Services, such as Microsoft Azure, Bing, Outlook, One Drive, and Office 365. This includes malicious network activity originating from a Microsoft IP address. It also includes distribution of malicious content or other illicit or illegal material through a Microsoft Online Service.
 https://servicetrust.microsoft.com/ - Service trust portal. Review the available independent audit reports for Microsoft's Cloud services, which provide information about compliance with data protection standards and regulatory requirements, such as International Organization for Standardization (ISO), Service Organization Controls (SOC), National Institute of Standards and Technology (NIST), Federal Risk and Authorization Management Program (FedRAMP), and the General Data Protection Regulation (GDPR)
 https://www.microsoft.com/en-us/trustcenter - Trust center
