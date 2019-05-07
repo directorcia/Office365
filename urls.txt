@@ -12,6 +12,7 @@ https://outlook.office365.com/ecp - Exchange admin center
 https://to-do.office.com/ - To-do
 http://teamsdemo.office.com/ - Microsoft Teams Demo
 https://whiteboard.microsoft.com - Microsoft Whiteboard
+https://myanalytics.microsoft.com/ - MyAnalytics
 
 
 ## Security 
