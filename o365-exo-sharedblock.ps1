@@ -11,7 +11,7 @@
 ## 2. Connect to Azure AD
 
 ## Variables
-$secure = $true         ## $true = shared mailbox login will be automatically disabled, $false = report only
+$secure = $false         ## $true = shared mailbox login will be automatically disabled, $false = report only
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
