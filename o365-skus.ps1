@@ -118,5 +118,10 @@ $Sku = @{
 	"INTUNE_SMBIZ"							 = ""
 	"WINBIZ"								 = "Windows 10 Business"
 	"SPE_E3"								 = "Microsoft 365 E3"
-    "TEAMS1"                                 = "Microsoft Teams"
+	"TEAMS1"                                 = "Microsoft Teams"
+	"MCOPSTN1"								 = "Domestic Calling Plan"
+	"MCOPSTNC"								 = "Communication Credits"
+	"MCOPSTN2"								 = "Domestic and International Calling Plan"
+	"MCOMEETACPEA"							 = "Audio Conferencing Pay-Per-Minute"
+	"POWERAPPS_VIRAL"						 = "Microsoft PowerApps Plan 2 Trial"
 }
