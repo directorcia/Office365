@@ -18,6 +18,7 @@ https://compliance.microsoft.com - Microsoft Compliance center
 https://servicetrust.microsoft.com - Compliance manager
 https://forms.office.com - Microsoft Forms
 https://flow.microsoft.com - Microsoft Flow
+https://powerapps.microsoft.com - Microsoft PowerApps
 
 
 ## Security 
