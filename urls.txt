@@ -15,6 +15,7 @@ https://whiteboard.microsoft.com - Microsoft Whiteboard
 https://myanalytics.microsoft.com/ - MyAnalytics
 https://mysignins.microsoft.com/ - MFA setup and login audit for account
 https://compliance.microsoft.com - Microsoft Compliance center
+https://servicetrust.microsoft.com - Compliance manager
 
 
 ## Security 
