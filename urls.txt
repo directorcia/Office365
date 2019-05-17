@@ -14,6 +14,7 @@ http://teamsdemo.office.com/ - Microsoft Teams Demo
 https://whiteboard.microsoft.com - Microsoft Whiteboard
 https://myanalytics.microsoft.com/ - MyAnalytics
 https://mysignins.microsoft.com/ - MFA setup and login audit for account
+https://compliance.microsoft.com - Microsoft Compliance center
 
 
 ## Security 
