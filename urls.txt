@@ -11,6 +11,7 @@ https://outlook.office.com/owa - Outlook Web Access
 https://outlook.office365.com/ecp - Exchange admin center
 https://to-do.office.com/ - To-do
 http://teamsdemo.office.com/ - Microsoft Teams Demo
+https://admin.teams.microsoft.com/ - Teams Administration
 https://whiteboard.microsoft.com - Microsoft Whiteboard
 https://myanalytics.microsoft.com/ - MyAnalytics
 https://mysignins.microsoft.com/ - MFA setup and login audit for account
@@ -38,6 +39,7 @@ https://protection.office.com/gdprdashboard - GDPR Dashbaord
 https://portal.azure.com - Azure portal home page
 https://preview.portal.azure.com - Preview Azure portal home page
 https://shell.azure.com - Azure Cloud shell
+https://aad.portal.azure.com/ - Azure AD Administration
 
 ## Partner
 
