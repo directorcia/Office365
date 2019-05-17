@@ -37,6 +37,7 @@ https://protection.office.com/gdprdashboard - GDPR Dashbaord
 
 https://portal.azure.com - Azure portal home page
 https://preview.portal.azure.com - Preview Azure portal home page
+https://shell.azure.com - Azure Cloud shell
 
 ## Partner
 
@@ -45,3 +46,54 @@ https://partner.microsoft.com/en-au/community/australia-partner-hub - Microsoft 
 ## Other
 
 https://developer.microsoft.com/en-us/graph/graph-explorer - Microsoft Graph explorer
+
+## Twitter
+
+https://twitter.com/Windows - Windows
+https://twitter.com/msuspartner - Microsoft US Partner
+https://twitter.com/msPartner - Microsoft Partner
+https://twitter.com/MSFTnews - Microsoft stories and news
+https://twitter.com/msdev - Microsoft developer
+https://twitter.com/Microsoft - Microsoft
+https://twitter.com/MicrosoftMTP - Microsoft Threat Protection
+https://twitter.com/MicrosoftToDo - Microsoft To-do
+https://twitter.com/IntuneSuppTeam - Intune Support teamsdemo
+https://twitter.com/MS_ITPro - Microsoft IT Pro
+https://twitter.com/docsmsft - Microsoft docs
+https://twitter.com/msftsecresponse - Microsoft Security Response
+https://twitter.com/MicrosoftHelps - Microsoft Support
+https://twitter.com/msonenote - Microsoft OneNote
+https://twitter.com/SkypeBusiness - Skype for Business
+https://twitter.com/MS_Ignite - Microsoft Ignite
+https://twitter.com/MsftSecIntel - Microsoft Security Intelligence
+https://twitter.com/OfficeSmallBiz - Office small biz
+https://twitter.com/MicrosoftAUDev - Microsoft AU developer
+https://twitter.com/MSWindowsITPro - Windows IT Pro
+https://twitter.com/AzureBackup - Azure backup
+https://twitter.com/MSTCommunity - Microsoft Tech Community
+https://twitter.com/AzurePortal - Azure portal
+https://twitter.com/AzureSupport - Azure Support
+https://twitter.com/Microsoft365 - Microsoft 365
+https://twitter.com/OfficeSupport - Office Support
+https://twitter.com/MSFT365Status - Microsoft 365 Status
+https://twitter.com/msftsecurity - Microsoft Security
+https://twitter.com/MSIntune - Microsoft Intune
+https://twitter.com/MSFTMobility - Micosoft mobility
+https://twitter.com/azurestorage - Azure storage
+https://twitter.com/MSAU_Partner - Microsoft Partner Australia
+https://twitter.com/MicrosoftTeams - Microsoft Teams
+https://twitter.com/PowerApps - Microsoft PowerApps
+https://twitter.com/MicrosoftFlow - Microsoft Flow
+https://twitter.com/onedrive - Onedrive
+https://twitter.com/Office365 - Office 365
+https://twitter.com/MSCloud - Microsoft Cloud
+https://twitter.com/azuread - Azure AD
+https://twitter.com/Azure - Microsoft Azure
+https://twitter.com/MSPowerBI - Microsoft PowerBI
+https://twitter.com/Office365_Tech - Office 365 Community
+https://twitter.com/SharePoint - Microsoft SharePoint
+
+## Podcasts
+
+http://ciaops.podbean.com/ - CIAOPS Need to Know
+https://intrazone.libsyn.com/ - The Intrazone
