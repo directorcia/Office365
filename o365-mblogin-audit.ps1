@@ -1,14 +1,15 @@
-<#CIAOPS
+<# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Description
-Script designed report on mailbox logins from Office 365 Audit logs
+Description - Report on mailbox logins from Office 365 Audit logs
 
 Source - https://github.com/directorcia/Office365/blob/master/o365-mblogin-audit.ps1
-To get the version that exports to a CSV file sign up at http://www.ciaopspatron.com
 
 Prerequisites = 1
 1. Connected to Exchange Online
+
+More scripts available by joining http://www.ciaopspatron.com
+
 #>
 
 ## Variables

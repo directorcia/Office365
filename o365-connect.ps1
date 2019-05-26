@@ -1,13 +1,16 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script designed to log into the Office 365 admin portal
+Description - Log into the Office 365 admin portal
 
 ## Source - https://github.com/directorcia/Office365/blob/master/o365-connect.ps1
 
-## Prerequisites = 1
-## 1. Ensure msonline module installed or updated
+Prerequisites = 1
+1. Ensure msonline module installed or updated
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"
@@ -21,12 +24,6 @@ $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if requir
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
-
-## ensure that install-module msonline has been run
-## ensure that update-module msonline has been run to get latest module
-
-## https://www.powershellgallery.com/packages/MSOnline/
-## Current version = 1.1.183.17, 4 August 2018
 
 import-module msonline
 write-host -foregroundcolor $processmessagecolor "MSOnline module loaded"

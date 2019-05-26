@@ -10,16 +10,19 @@ param(
     [switch]$aadrm = $false,    ## Azure AD Rights Management connect required
     [switch]$help = $false      ## Show help information
 )
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script allow login to multiple MS Cloud services by calling individual scripts
+Description - Allow login to multiple MS Cloud services by calling individual scripts
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-bulk.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-connect-bulk.ps1
 
-## Prerequisites = 1
-## 1. All required scripts MUST be in the same directory as this script, so make sure you are in that directory before running this
+Prerequisites = 1
+1. All required scripts MUST be in the same directory as this script, so make sure you are in that directory before running this
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"

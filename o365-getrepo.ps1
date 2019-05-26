@@ -1,14 +1,17 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script designed to download all contents of /directorcia/office365 repository from GitHub
+Description - Download all contents of /directorcia/office365 repository from GitHub
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-getrepo.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-getrepo.ps1
 
-## Original concept - https://gist.github.com/chrisbrownie/f20cb4508975fb7fb5da145d3d38024a
+Original concept - https://gist.github.com/chrisbrownie/f20cb4508975fb7fb5da145d3d38024a
 
-## Prerequisites = 0
+Prerequisites = 0
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"

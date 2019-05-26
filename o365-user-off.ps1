@@ -3,13 +3,14 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Source - https://github.com/directorcia/Office365/blob/master/o365-user-off.ps1
 
-Description
-Script designed to disable a user's access to Office 365 services
+Description - Disable a user's access to Office 365 services
 
 Prerequisites = 3
 1. Ensure connected to Office 365 Azure AD
 2. Ensure connected to Exchange Online
 3. Ensure connected to SharePoint Online
+
+More scripts available by joining http://www.ciaopspatron.com
 
 #>
 

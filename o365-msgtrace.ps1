@@ -1,8 +1,7 @@
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Description
-Script designed to display a trace of all emails sent in recent hours to screen
+Description - Dsplay a trace of all emails sent in recent hours to screen
 
 Source - https://github.com/directorcia/Office365/blob/master/o365-msgtrace.ps1
 

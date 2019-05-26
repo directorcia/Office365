@@ -1,14 +1,16 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script designed report on user logins from Office 365 Audit logs
+Description - Report on user logins from Office 365 Audit logs
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-login-audit.ps1
-## To get the version that exports to a CSV file sign up at http://www.ciaopspatron.com
+Source - https://github.com/directorcia/Office365/blob/master/o365-login-audit.ps1
 
-## Prerequisites = 1
-## 1. Connected to Exchange Online
+Prerequisites = 1
+1. Connected to Exchange Online
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"

@@ -1,13 +1,16 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script designed to install the relevant Microsoft Online PowerShell modules
+## Description - Install the relevant Microsoft Online PowerShell modules
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-setup.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-setup.ps1
 
-## Prerequisites = 1
-## 1. Run PowerShell environment as an administrator
+Prerequisites = 1
+1. Run PowerShell environment as an administrator
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"
@@ -16,10 +19,6 @@ $errormessagecolor = "red"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
-
-## Skype for Business Online Module is still a manual download and install here 
-## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=39366 (Skype for Business Online Module)
-## Current version = 7.0.1994.0, 26 February 2018
 
 Clear-Host
 

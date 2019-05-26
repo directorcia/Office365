@@ -1,17 +1,21 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Source -https://github.com/directorcia/Office365/blob/master/o365-spo-getsharing.ps1
+Source -https://github.com/directorcia/Office365/blob/master/o365-spo-getsharing.ps1
 
-## Description
-## Script designed to report onthe sharing state of SharePoint Online sites
+Description - Report onthe sharing state of SharePoint Online sites
 
-## Prerequisites = 1
-## 1. Ensure SharePoint online PowerShell module installed or updated
+Prerequisites = 1
+1. Ensure SharePoint online PowerShell module installed or updated
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
+
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 

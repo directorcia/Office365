@@ -1,14 +1,17 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script to repoort and potentially disable interactive logins to shared mailboxes
+Description - Report and potentially disable interactive logins to shared mailboxes
 
 ## Source - https://github.com/directorcia/Office365/blob/master/o365-exo-sharedblock.ps1
 
-## Prerequisites = 2
-## 1. Connected to Exchange Online
-## 2. Connect to Azure AD
+Prerequisites = 2
+1. Connected to Exchange Online
+2. Connect to Azure AD
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $secure = $false         ## $true = shared mailbox login will be automatically disabled, $false = report only

@@ -1,15 +1,18 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script designed to deploy popular Outlook addins centrally
+Description - Deploy popular Outlook addins centrally
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-addin-deploy.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-addin-deploy.ps1
 
-## Reference - https://docs.microsoft.com/en-us/office365/enterprise/use-the-centralized-deployment-powershell-cmdlets-to-manage-add-ins
+Reference - https://docs.microsoft.com/en-us/office365/enterprise/use-the-centralized-deployment-powershell-cmdlets-to-manage-add-ins
 
-## Prerequisites = 1
-## 1. Ensure connected to the Office 365 Central Deployment Service
+Prerequisites = 1
+1. Ensure connected to the Office 365 Central Deployment Service
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"

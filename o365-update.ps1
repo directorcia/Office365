@@ -1,13 +1,16 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script designed to update all the relevant Microsoft Online PowerShell modules
+Description - Update all the relevant Microsoft Online PowerShell modules
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-update.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-update.ps1
 
 ## Prerequisites = 1
 ## 1. Run PowerShell environment as an administrator
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"

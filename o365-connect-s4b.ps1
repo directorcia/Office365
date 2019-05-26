@@ -1,14 +1,17 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script designed to log into the Skype for Business Online portal
+Description - Log into the Skype for Business Online portal
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-s4b.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-connect-s4b.ps1
 
-## Prerequisites = 2
-## 1. Ensure msonline module installed or updated
-## 2. Ensure Skype for Business online PowerShell module installed or updated
+Prerequisites = 2
+1. Ensure msonline module installed or updated
+2. Ensure Skype for Business online PowerShell module installed or updated
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"
@@ -17,25 +20,15 @@ $savedcreds=$false                      ## false = manually enter creds, True = 
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
-##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
+## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
-## ensure that install-module msonline has been run
-## ensure that update-module msonline has been run to get latest module
-
-## https://www.powershellgallery.com/packages/MSOnline/
-## Current version = 1.1.183.8, 18 May 2018
-
-clear-host
-
 import-module msonline
 write-host -foregroundcolor $processmessagecolor "MSOnline module loaded"
 
-## Download and install https://www.microsoft.com/en-au/download/details.aspx?id=39366 (Skype for Business Online Module)
-## Current version = 7.0.1994.0, 31 January 2019
 import-module skypeonlineconnector
 write-host -foregroundcolor $processmessagecolor "Skype for Business module loaded"
 

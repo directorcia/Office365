@@ -1,18 +1,21 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script designed to log into the Office 365 Centralized Deployment for add ins
+Description - Log into the Office 365 Centralized Deployment for add ins
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-ctrldply.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-connect-ctrldply.ps1
 
-## Prerequisites = 1
-## 1. Ensure powershell cmdlest for Centralized deployment installed or updated
+Prerequisites = 1
+1. Ensure powershell cmdlest for Centralized deployment installed or updated
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
-$savedcreds=$false                      ## false = manually enter creds, True = from file
+$savedcreds = $false                      ## false = manually enter creds, True = from file
 $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if required
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
@@ -21,9 +24,6 @@ $credpath = "c:\downloads\tenant.xml"   ## local file with credentials if requir
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
-
-## https://www.microsoft.com/en-us/download/details.aspx?id=55267
-## Version 1.2.0.0 Date = 26 April 2018
 
 ## Get tenant login credentials
 if ($savedcreds) {

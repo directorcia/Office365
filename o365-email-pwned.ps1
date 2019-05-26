@@ -1,15 +1,18 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-email-pwned.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-email-pwned.ps1
 
-## Description
-## Script designed to check tenant emails to see whether they appear in the haveibeenpwned.com database
-## Adapted from the original script by Elliot Munro - https://gcits.com/knowledge-base/check-office-365-accounts-against-have-i-been-pwned-breaches/
+Description - Check tenant emails to see whether they appear in the haveibeenpwned.com database
+Adapted from the original script by Elliot Munro - https://gcits.com/knowledge-base/check-office-365-accounts-against-have-i-been-pwned-breaches/
 
-## Prerequisites = 2
-## 1. Ensure msonline MFA module installed or updated
-## 2. Ensure you have connected to Exchange Online
+Prerequisites = 2
+1. Ensure msonline MFA module installed or updated
+2. Ensure you have connected to Exchange Online
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"

@@ -1,12 +1,15 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script designed save login credentials to a local XML file for later re-use
+Description - Save login credentials to a local XML file for later re-use
 
-## Source - https://github.com/directorcia/Office365/blob/master/save-cred-file.ps1
+Source - https://github.com/directorcia/Office365/blob/master/save-cred-file.ps1
 
-## Prerequisites = 0
+Prerequisites = 0
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"

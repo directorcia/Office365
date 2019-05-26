@@ -1,14 +1,17 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
-## Crowd source settings for filtering - http://blog.ciaops.com/2018/06/spam-filtering-in-office-365best.html
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
+Crowd source settings for filtering - http://blog.ciaops.com/2018/06/spam-filtering-in-office-365best.html
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-spam-policy.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-spam-policy.ps1
 
-## Description
-## Script designed to configure a new Exchange Online spam filtering policy
+Description - Configure a new Exchange Online spam filtering policy
 
-## Prerequisites = 1
-## 1. Ensure Exchange online PowerShell module installed or updated
+Prerequisites = 1
+1. Ensure Exchange online PowerShell module installed or updated
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"

@@ -1,15 +1,18 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Enables modern authentication for a tenant
+Description - Enables modern authentication for a tenant
 
 ## Source - https://github.com/directorcia/Office365/blob/master/o365-modern-auth.ps1
 
-## Prerequisites = 3
-## 1. Ensure connected to Skype for Business online
-## 2. Ensure connected to Exchange Online
-## 3. Ensure connected to Sharepoint Online
+Prerequisites = 3
+1. Ensure connected to Skype for Business online
+2. Ensure connected to Exchange Online
+3. Ensure connected to Sharepoint Online
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"

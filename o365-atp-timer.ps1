@@ -1,29 +1,31 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script designed to check and report the time taken by Office 365 ATP to process a message
-## original concept and code taken from - https://blog.kloud.com.au/2018/07/19/measure-o365-atp-safe-attachments-latency-using-powershell/
+Description - Check and report the time taken by Office 365 ATP to process a message
+original concept and code taken from - https://blog.kloud.com.au/2018/07/19/measure-o365-atp-safe-attachments-latency-using-powershell/
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-atp-timer.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-atp-timer.ps1
 
-## Prerequisites = 4
-## 1. Recipient must have ATP license assigned and ATP must be configured for tenant
-## 2. Connected to Exchange Online
-## 3. Send two emails to recipient, first WITHOUT attachment, second WITH attachment
-## 4. Wait until both messages are fully delivered to Inbox
+Prerequisites = 4
+1. Recipient must have ATP license assigned and ATP must be configured for tenant
+2. Connected to Exchange Online
+3. Send two emails to recipient, first WITHOUT attachment, second WITH attachment
+4. Wait until both messages are fully delivered to Inbox
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"
 $hourwindow = 1    ## hours window to check for sent messages. As messages age you may need to adjust this
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
-##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
+## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
 Clear-host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
-Write-host
 
 $RecipientAddress = read-host -prompt 'Input recipient email address'
 

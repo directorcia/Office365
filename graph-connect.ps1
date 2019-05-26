@@ -1,13 +1,16 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Description
-## Script designed to connect to the Microsoft Graph
+Description - Connect to the Microsoft Graph
 
-## Source - https://github.com/directorcia/Office365/blob/master/graph-connect.ps1
+Source - https://github.com/directorcia/Office365/blob/master/graph-connect.ps1
 
-## Prerequisites = 1
-## 1. Azure AD app setup per - https://blog.ciaops.com/2019/04/17/using-interactive-powershell-to-access-the-microsoft-graph/
+Prerequisites = 1
+1. Azure AD app setup per - https://blog.ciaops.com/2019/04/17/using-interactive-powershell-to-access-the-microsoft-graph/
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"

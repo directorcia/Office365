@@ -1,8 +1,7 @@
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Description
-Script designed to check which email boxes have forwarding options set.
+Description - Check which email boxes have forwarding options set.
 Will check mailbox forwarding, rules set by Outlook client and Sweep setting
 
 Source - https://github.com/directorcia/Office365/blob/master/o365-exo-fwd-chk.ps1

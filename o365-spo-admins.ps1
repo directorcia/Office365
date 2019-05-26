@@ -1,13 +1,16 @@
-## CIAOPS
-## Script provided as is. Use at own risk. No guarantees or warranty provided.
+<# CIAOPS
+Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-## Source - https://github.com/directorcia/Office365/blob/master/o365-spo-admins.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-spo-admins.ps1
 
-## Description
-## Script designed to log into the show the all the SharePoint Online Site Collection Administrators across all site collections
+Description - Log into the show the all the SharePoint Online Site Collection Administrators across all site collections
 
-## Prerequisites = 1
-## 1. Ensure SharePoint online PowerShell module installed or updated
+Prerequisites = 1
+1. Ensure SharePoint online PowerShell module installed or updated
+
+More scripts available by joining http://www.ciaopspatron.com
+
+#>
 
 ## Variables
 $systemmessagecolor = "cyan"
