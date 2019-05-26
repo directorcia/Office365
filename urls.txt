@@ -21,6 +21,7 @@ https://servicetrust.microsoft.com - Compliance manager
 https://forms.office.com - Microsoft Forms
 https://flow.microsoft.com - Microsoft Flow
 https://powerapps.microsoft.com - Microsoft PowerApps
+https://admin.microsoft.com/Adminportal/Home?source=applauncher#/setupwizard - Microsoft 365 Business Set up wizard
 
 
 ## Security 
