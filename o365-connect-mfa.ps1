@@ -1,12 +1,12 @@
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Description - Log into the Office 365 admin portal when multi factor security is enabled
+Description - Log into the Office 365 admin portal using MFA
 
-Source - https://github.com/directorcia/Office365/blob/master/o365-connect-mfa.ps1
+## Source - https://github.com/directorcia/Office365/blob/master/o365-connect-mfa.ps1
 
 Prerequisites = 1
-1. Ensure msonline MFA module installed or updated
+1. Ensure msonline module installed or updated
 
 More scripts available by joining http://www.ciaopspatron.com
 
@@ -17,18 +17,16 @@ $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
-##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
+## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
-Import-Module $((Get-ChildItem -Path $($env:LOCALAPPDATA+"\Apps\2.0\") `
--Filter Microsoft.Exchange.Management.ExoPowershellModule.dll -Recurse ).FullName|?{$_ -notmatch "_none_"} `
-|select -First 1)
-write-host -foregroundcolor $processmessagecolor "Exchange Online MFA module loaded"
+import-module msonline
+write-host -foregroundcolor $processmessagecolor "MSOnline module loaded"
 
-$EXOSession = New-ExoPSSession
-Import-PSSession $EXOSession
-write-host -foregroundcolor $processmessagecolor "Connected to Exchange Online MFA`n"
+## Connect to Office 365 admin service
+connect-msolservice
+write-host -foregroundcolor $processmessagecolor "Now connected to Office 365 Admin service`n"
 write-host -foregroundcolor $systemmessagecolor "Script Completed`n"
