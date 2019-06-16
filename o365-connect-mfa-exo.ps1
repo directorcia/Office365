@@ -3,7 +3,7 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Log to Exchange Online when multi factor security is enabled
 
-Source - https://github.com/directorcia/Office365/blob/master/o365-connect-mfa.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-connect-mfa-exo.ps1
 
 Prerequisites = 1
 1. Ensure msonline MFA module installed or updated
