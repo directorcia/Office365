@@ -6,7 +6,7 @@ Description - Log into the Office 365 Centralized Deployment for add ins with MF
 Source - https://github.com/directorcia/Office365/blob/master/o365-connect-mfa-ctrldply.ps1
 
 Prerequisites = 1
-1. Ensure powershell cmdlest for Centralized deployment installed or updated
+1. Ensure powershell cmdlest for Centralized deployment installed or updated. Note - This module doesn't current support MFA accounts
 
 More scripts available by joining http://www.ciaopspatron.com
 
