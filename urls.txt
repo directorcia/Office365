@@ -36,6 +36,8 @@ https://security.microsoft.com/ - MIcrosoft 365 Security Center
 https://protection.office.com/gdprdashboard - GDPR Dashbaord
 https://securitycenter.windows.com - Microsoft Defender ATP Console
 https://sender.office.com/ - Office 365 Anti-Spam IP Delist Portal
+https://protection.office.com/managealerts - Activity Alerts
+https://protection.office.com/alertpolicies - Protection Alerts
 
 
 ## Azure
