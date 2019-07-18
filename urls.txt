@@ -22,7 +22,8 @@ https://forms.office.com - Microsoft Forms
 https://flow.microsoft.com - Microsoft Flow
 https://powerapps.microsoft.com - Microsoft PowerApps
 https://admin.microsoft.com/Adminportal/Home?source=applauncher#/setupwizard - Microsoft 365 Business Set up wizard
-
+https://<tenantname>-admin.sharepoint.com/_layouts/15/online/SiteCollections.aspx - Classic SharePoint Administration portal
+https://<tenantname>-admin.sharepoint.com/_layouts/15/online/AdminHome.aspx# - Modern SharePoint Administration portal
 
 ## Security 
 
