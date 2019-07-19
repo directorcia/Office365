@@ -22,7 +22,8 @@ https://forms.office.com - Microsoft Forms
 https://flow.microsoft.com - Microsoft Flow
 https://powerapps.microsoft.com - Microsoft PowerApps
 https://admin.microsoft.com/Adminportal/Home?source=applauncher#/setupwizard - Microsoft 365 Business Set up wizard
-
+https://<tenantname>-admin.sharepoint.com/_layouts/15/online/SiteCollections.aspx - Classic SharePoint Administration portal
+https://<tenantname>-admin.sharepoint.com/_layouts/15/online/AdminHome.aspx# - Modern SharePoint Administration portal
 
 ## Security 
 
@@ -36,6 +37,8 @@ https://security.microsoft.com/ - MIcrosoft 365 Security Center
 https://protection.office.com/gdprdashboard - GDPR Dashbaord
 https://securitycenter.windows.com - Microsoft Defender ATP Console
 https://sender.office.com/ - Office 365 Anti-Spam IP Delist Portal
+https://protection.office.com/managealerts - Activity Alerts
+https://protection.office.com/alertpolicies - Protection Alerts
 
 
 ## Azure
