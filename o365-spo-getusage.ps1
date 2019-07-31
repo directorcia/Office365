@@ -25,7 +25,7 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
-$sposites=get-sposite -IncludePersonalSite $false | Sort-Object StorageUsageCurrent -Descending          ## get all non-ODFB sites
+$sposites=get-sposite -IncludePersonalSite $false -limit all | Sort-Object StorageUsageCurrent -Descending          ## get all non-ODFB sites
 Write-host -foregroundcolor $sectionmessagecolor "*** Current SharePoint Site Usage ***`n"
 foreach ($sposite in $sposites) {                           ## loop through all of these sites
     $mbsize=$sposite.StorageUsageCurrent                    ## save total size to a variable to be formatted later
