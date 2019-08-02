@@ -50,6 +50,8 @@ https://preview.portal.azure.com - Preview Azure portal home page
 https://shell.azure.com - Azure Cloud shell
 https://aad.portal.azure.com/ - Azure AD Administration
 https://account.activedirectory.windowsazure.com/ - User Azure AD portal
+https://portal.atp.azure.com - Azure ATP
+
 ## Partner
 
 https://partner.microsoft.com/en-au/community/australia-partner-hub - Microsoft Australia Partner Hub
