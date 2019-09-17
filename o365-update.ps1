@@ -25,7 +25,7 @@ Clear-Host
 write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
+If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     write-host -foregroundcolor $processmessagecolor "Update Azure AD module"
     Update-Module -Name AzureAD -force
     write-host -foregroundcolor $processmessagecolor "Update Azure AD Right Management module"
@@ -37,11 +37,14 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Online module"
     Update-Module -Name MSOnline -force
     write-host -foregroundcolor $processmessagecolor "Update Azure module"
-    Update-Module -name AzureRM -Force
+    ## Old Azure module
+    ## Update-Module -name AzureRM -Force
     ## New Az module
-    ## Update-Module -name Az -force
+    Update-Module -name Az -force
+    write-host -foregroundcolor $processmessagecolor "Update SharePoint PnP module"
+    update-Module SharePointPnPPowerShellOnline -Force
 }
-Else{
-     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
+Else {
+    write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
 }
 write-host -foregroundcolor $systemmessagecolor "Script completed`n"

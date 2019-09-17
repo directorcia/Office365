@@ -25,7 +25,7 @@ Clear-Host
 write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
+If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     write-host -foregroundcolor $processmessagecolor "NuGet provider"
     Install-PackageProvider -Name NuGet -Force
     write-host -foregroundcolor $processmessagecolor "Install Azure AD module"
@@ -39,9 +39,12 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     write-host -foregroundcolor $processmessagecolor "Install Microsoft Online module"
     Install-Module -Name MSOnline -force
     write-host -foregroundcolor $processmessagecolor "Install Azure module"
-    Install-Module -name AzureRM -Force
+    ## Old Azuer module
+    ## Install-Module -name AzureRM -Force
     ## New Az module
-    ## Install-Module -name Az -force
+    Install-Module -name Az -force
+    write-host -foregroundcolor $processmessagecolor "Install SharePoint PnP module"
+    Install-Module SharePointPnPPowerShellOnline -Force
 }
 else {
     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
