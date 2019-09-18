@@ -44,7 +44,7 @@ foreach ($mailbox in $mailboxes) {
         Write-host
         Write-host -foregroundcolor $errormessagecolor "**********" 
         Write-Host -foregroundColor $errormessagecolor "Checking rules for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)" 
-        Write-host -foregroundColor $errormessagecolor "Forwarding address = $($mailbox.forwardingsmtpaddress)" 
+        Write-host -foregroundColor $errormessagecolor "Forwarding address = $($mailbox.forwardingsmtpaddress)" 
         Write-host -foregroundcolor $errormessagecolor "**********" 
         write-host
     }
@@ -53,7 +53,7 @@ foreach ($mailbox in $mailboxes) {
             Write-host
             Write-host -foregroundcolor $warnmessagecolor "**********" 
             Write-Host -foregroundColor $warnmessagecolor "Checking rules for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)"
-            Write-host -foregroundColor $warnmessagecolor "Forwarding address = $($mailbox.forwardingsmtpaddress)"
+            Write-host -foregroundColor $warnmessagecolor "Forwarding address = $($mailbox.forwardingsmtpaddress)"
             Write-host -foregroundcolor $warnmessagecolor "**********"
             write-host
         }
@@ -99,7 +99,7 @@ foreach ($mailbox in $mailboxes)
     if ($rule.enabled) { ## if Sweep is active
         Write-host -foregroundcolor $errormessagecolor "`n**********" 
         Write-Host -foregroundcolor $errormessagecolor "Sweep rules enabled for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-        Write-host -foregroundColor $errormessagecolor "Name = ",$rule.name
+        Write-host -foregroundColor $errormessagecolor "Name = ",$rule.name
         Write-host -foregroundColor $errormessagecolor "Source Folder = ",$rule.sourcefolder 
         write-host -foregroundColor $errormessagecolor "Destination folder = ",$rule.destinationfolder
         Write-host -foregroundColor $errormessagecolor "Keep for days = ",$rule.keepfordays
