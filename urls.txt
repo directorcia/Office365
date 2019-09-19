@@ -51,6 +51,7 @@ https://shell.azure.com - Azure Cloud shell
 https://aad.portal.azure.com/ - Azure AD Administration
 https://account.activedirectory.windowsazure.com/ - User Azure AD portal
 https://portal.atp.azure.com - Azure ATP
+https://status.azure.com - Azure Status
 
 ## Partner
 
