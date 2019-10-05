@@ -3,7 +3,7 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Display all PowerShell copnsole colour combinations
 
-Source - 
+Source - https://github.com/directorcia/Office365/blob/master/text-colour.ps1
 
 Prerequisites = 0
 
