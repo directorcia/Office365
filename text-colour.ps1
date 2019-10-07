@@ -57,7 +57,6 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
-
 foreach ($bgcount in $bg) {
     Foreach ($fgcount in $fg) {
         Write-host "Foreground =", $fgcount, "/ Background =", $bgcount
