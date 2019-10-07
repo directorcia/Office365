@@ -21,7 +21,7 @@ Clear-Host
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
 $mcasuri = "<your MCAS URI here>"                    ## This MUST be changed before the script will run correctly
-$mcastoken = "your MCAS Token here"                  ## This MUST be changed before the script will run correctly
+$mcastoken = "<your MCAS Token here>"                  ## This MUST be changed before the script will run correctly
 
 $endpoint = "alerts"
 
