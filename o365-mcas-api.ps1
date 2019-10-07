@@ -3,10 +3,10 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Get data from Microsoft Cloud App Security
 
-Source - 
+Source - https://github.com/directorcia/Office365/blob/master/o365-mcas-api.ps1
 
 Prerequisites = 1
-1. Create an API Token in your tenant via - 
+1. Create an API Token in your tenant via - https://blog.ciaops.com/2019/10/08/connecting-to-cloud-app-security-api/
 
 More scripts available by joining http://www.ciaopspatron.com
 
