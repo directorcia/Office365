@@ -41,6 +41,7 @@ https://securitycenter.windows.com - Microsoft Defender ATP Console
 https://sender.office.com/ - Office 365 Anti-Spam IP Delist Portal
 https://protection.office.com/managealerts - Activity Alerts
 https://protection.office.com/alertpolicies - Protection Alerts
+https://protection.office.com/reportsubmission - Submit security report
 
 
 ## Azure
