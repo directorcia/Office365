@@ -18,6 +18,7 @@ More scripts available by joining http://www.ciaopspatron.com
 ## Variables
 ## Change these prior to running script 
 $scidentity = "user@domain.com.au"              ## User to be enabled full email address
+$scphone = "+61XXXXXXXXX"                       ## User phone number
 $scfqdn = "sbcXXX.teams.switchconnect.com.au"   ## Full Switch connect provided domain
 
 Clear-Host
@@ -44,15 +45,15 @@ New-CsOnlineVoiceRoute -Identity "AU-National" -NumberPattern "^\+61\d{9}$" -Onl
 
 Read-Host -Prompt "Press [Enter] to continue"
 
-New-CsOnlineVoiceRoute -Identity "AU-International" -NumberPattern "^\+(?!(61190))([1-9]\d{9,})$" -OnlinePstnGatewayList $scfqdn -Priority 1 -OnlinePstnUsages “Australia”
+New-CsOnlineVoiceRoute -Identity "AU-International" -NumberPattern "^\+(?!(61190))([1-9]\d{9,})$" -OnlinePstnGatewayList $scfqdn -Priority 1 -OnlinePstnUsages "Australia"
 
 Read-Host -Prompt "Press [Enter] to continue"
 
-New-CsOnlineVoiceRoutingPolicy "Australia" -OnlinePstnUsages “Australia”
+New-CsOnlineVoiceRoutingPolicy "Australia" -OnlinePstnUsages "Australia"
 
 Read-Host -Prompt "Press [Enter] to continue"
 
-Set-CsUser -Identity $scidentity -EnterpriseVoiceEnabled $true -HostedVoiceMail $true -OnPremLineURI tel:+61288980703
+Set-CsUser -Identity $scidentity -EnterpriseVoiceEnabled $true -HostedVoiceMail $true -OnPremLineURI tel:$scphone
 
 Read-Host -Prompt "Press [Enter] to continue"
 
