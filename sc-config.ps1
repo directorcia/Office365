@@ -24,44 +24,44 @@ Clear-Host
 
 write-host -foregroundcolor cyan "Script started`n"
 
-New-CSOnlinePSTNGateway –FQDN $scfqdn -SipSignallingPort 5061 -MaxConcurrentSessions 10 -ForwardPai $false -ForwardCallHistory $true -Enabled $true
+New-CSOnlinePSTNGateway -FQDN $scfqdn -SipSignallingPort 5061 -MaxConcurrentSessions 10 -ForwardPai $false -ForwardCallHistory $true -Enabled $true
 
-Read-Host -Prompt " -- Press Enter to continue"
+Read-Host -Prompt "Press [Enter] to continue"
 
-Set-CsOnlinePstnUsage -Identity Global -Usage @{Add = "Australia” }
+Set-CsOnlinePstnUsage -Identity Global -Usage @{Add = "Australia"}
 
-Read-Host -Prompt " -- Press Enter to continue"
+Read-Host -Prompt "Press [Enter] to continue"
 
 New-CsOnlineVoiceRoute -Identity "AU-Emergency" -NumberPattern "^+000$" -OnlinePstnGatewayList $scfqdn -Priority 1 -OnlinePstnUsages "Australia"
 
-Read-Host -Prompt " -- Press Enter to continue"
+Read-Host -Prompt "Press [Enter] to continue"
 
 New-CsOnlineVoiceRoute -Identity "AU-Service" -NumberPattern "^\+61(1\d{2,8})$" -OnlinePstnGatewayList $scfqdn -Priority 1 -OnlinePstnUsages "Australia"
 
-Read-Host -Prompt " -- Press Enter to continue"
+Read-Host -Prompt "Press [Enter] to continue"
 
 New-CsOnlineVoiceRoute -Identity "AU-National" -NumberPattern "^\+61\d{9}$" -OnlinePstnGatewayList $scfqdn -Priority 1 -OnlinePstnUsages "Australia"
 
-Read-Host -Prompt " -- Press Enter to continue"
+Read-Host -Prompt "Press [Enter] to continue"
 
 New-CsOnlineVoiceRoute -Identity "AU-International" -NumberPattern "^\+(?!(61190))([1-9]\d{9,})$" -OnlinePstnGatewayList $scfqdn -Priority 1 -OnlinePstnUsages “Australia”
 
-Read-Host -Prompt " -- Press Enter to continue"
+Read-Host -Prompt "Press [Enter] to continue"
 
 New-CsOnlineVoiceRoutingPolicy "Australia" -OnlinePstnUsages “Australia”
 
-Read-Host -Prompt " -- Press Enter to continue"
+Read-Host -Prompt "Press [Enter] to continue"
 
 Set-CsUser -Identity $scidentity -EnterpriseVoiceEnabled $true -HostedVoiceMail $true -OnPremLineURI tel:+61288980703
 
-Read-Host -Prompt " -- Press Enter to continue"
+Read-Host -Prompt "Press [Enter] to continue"
 
 Grant-CsOnlineVoiceRoutingPolicy -Identity $scidentity -PolicyName Australia
 
-Read-Host -Prompt " -- Press Enter to continue"
+Read-Host -Prompt "Press [Enter] to continue"
 
 Get-CsOnlineUser -Identity $scidentity | Format-List -Property FirstName, LastName, EnterpriseVoiceEnabled, HostedVoiceMail, LineURI, UsageLocation, UserPrincipalName, WindowsEmailAddress, SipAddress, OnPremLineURI, OnlineVoiceRoutingPolicy, TeamsCallingPolicy, dialplan, TeamsInteropPolicy
 
-Read-Host -Prompt " -- Press Enter to continue"
+Read-Host -Prompt "Press [Enter] to continue"
 
 write-host -foregroundcolor cyan "`nScript completed`n"
