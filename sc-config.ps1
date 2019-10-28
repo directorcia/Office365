@@ -1,7 +1,7 @@
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Source - 
+Source - https://github.com/directorcia/Office365/blob/master/sc-config.ps1
 
 Description - Configuration for Switch Connect enablement and Teams calling
 
