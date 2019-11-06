@@ -9,6 +9,7 @@ https://myapps.microsoft.com/ - End user web application portal
 https://portal.cloudappsecurity.com - Cloud app security portal
 https://outlook.office.com/owa - Outlook Web Access
 https://outlook.office365.com/ecp - Exchange admin center
+https://admin.exchange.microsoft.com - Exchange admin center
 https://to-do.office.com/ - To-do
 http://teamsdemo.office.com/ - Microsoft Teams Demo
 https://teams.microsoft.com/ - Microsoft Teams
