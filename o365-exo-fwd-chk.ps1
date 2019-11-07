@@ -57,7 +57,7 @@ write-host -foregroundcolor $processmessagecolor "Check Outlook Rule Forwards - 
 foreach ($mailbox in $mailboxes)
 {
   Write-Host -foregroundcolor gray "Outlook forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-  $rules = get-inboxrule -mailbox $mailbox.identity
+  $rules = get-inboxrule -mailbox $mailbox.userprincipalname
   foreach ($rule in $rules)
     {
        If ($rule.enabled) {
@@ -86,7 +86,7 @@ write-host -foregroundcolor $processmessagecolor "Check Sweep Rules - Start`n"
 foreach ($mailbox in $mailboxes)
 {
   Write-Host -foregroundcolor gray "Sweep forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-  $rules = get-sweeprule -mailbox $mailbox.identity
+  $rules = get-sweeprule -mailbox $mailbox.userprinicpalname
   foreach ($rule in $rules) {
     if ($rule.enabled) { ## if Sweep is active 
         Write-Host -foregroundcolor $errormessagecolor "`nSweep rules enabled for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
