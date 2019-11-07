@@ -86,7 +86,7 @@ write-host -foregroundcolor $processmessagecolor "Check Sweep Rules - Start`n"
 foreach ($mailbox in $mailboxes)
 {
   Write-Host -foregroundcolor gray "Sweep forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-  $rules = get-sweeprule -mailbox $mailbox.userprinicpalname
+  $rules = get-sweeprule -mailbox $mailbox.userprincipalname
   foreach ($rule in $rules) {
     if ($rule.enabled) { ## if Sweep is active 
         Write-Host -foregroundcolor $errormessagecolor "`nSweep rules enabled for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
