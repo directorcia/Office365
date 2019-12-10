@@ -20,9 +20,10 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
-$mcasuri = "<your MCAS URI here>"                    ## This MUST be changed before the script will run correctly
+$mcasuri = "<your MCAS URI here>"                    ## This MUST be changed before the script will run correctly. Note URI format is full web address including https://
+## e.g. https://tenantname.us.portal.cloudappsecurity.com
 $mcastoken = "<your MCAS Token here>"                  ## This MUST be changed before the script will run correctly
-
+## e.g. HtsYSNUasismYwewgatgsHTMPQFSB7GSw429nsgsiwemw81gfs6nw01n62nsgfvaGHKw7M72hshsbvs6702iJj782902HJsaoanweuiAnonopnma072802nASlolana0nmapJNsn8hajBNAu2kb
 $endpoint = "alerts"
 
 $response = Invoke-RestMethod `
