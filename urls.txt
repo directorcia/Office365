@@ -36,7 +36,7 @@ https://www.microsoft.com/en-us/trustcenter - Trust center
 https://protection.office.com - Office 365 Security portal
 https://securescore.microsoft.com - Microsoft Secure Score
 https://portal.cloudappsecurity.com - Office 365 Cloud App security
-https://security.microsoft.com/ - MIcrosoft 365 Security Center
+https://security.microsoft.com/ - Microsoft 365 Security Center
 https://protection.office.com/gdprdashboard - GDPR Dashbaord
 https://securitycenter.windows.com - Microsoft Defender ATP Console
 https://sender.office.com/ - Office 365 Anti-Spam IP Delist Portal
@@ -44,6 +44,7 @@ https://protection.office.com/managealerts - Activity Alerts
 https://protection.office.com/alertpolicies - Protection Alerts
 https://protection.office.com/reportsubmission - Submit security report
 https://passwordreset.microsoftonline.com - Azure AD Password reset
+https://protection.office.com/antispam - Exchange Anti spam console
 
 
 ## Azure
