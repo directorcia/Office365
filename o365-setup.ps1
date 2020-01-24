@@ -38,6 +38,8 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     Install-Module -Name Microsoft.Online.SharePoint.PowerShell -force
     write-host -foregroundcolor $processmessagecolor "Install Microsoft Online module"
     Install-Module -Name MSOnline -force
+    write-host -foregroundcolor $processmessagecolor "Install Exchange Online V2 module"
+    Install-Module -Name ExchangeOnlineManagement
     write-host -foregroundcolor $processmessagecolor "Install Azure module"
     ## Old Azuer module
     ## Install-Module -name AzureRM -Force
