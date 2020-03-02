@@ -39,6 +39,7 @@ https://portal.cloudappsecurity.com - Office 365 Cloud App security
 https://security.microsoft.com/ - Microsoft 365 Security Center
 https://protection.office.com/gdprdashboard - GDPR Dashbaord
 https://securitycenter.windows.com - Microsoft Defender ATP Console
+https://portal.azure.com/#blade/Microsoft_AAD_IAM/ActiveDirectoryMenuBlade/SignIns - Azure AD Sign ins
 https://sender.office.com/ - Office 365 Anti-Spam IP Delist Portal
 https://protection.office.com/managealerts - Activity Alerts
 https://protection.office.com/alertpolicies - Protection Alerts
