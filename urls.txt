@@ -48,6 +48,7 @@ https://protection.office.com/antispam - Exchange Anti spam console
 https://account.activedirectory.windowsazure.com/usermanagement/mfasettings.aspx - MFA Settings
 https://compliance.microsoft.com/compliancescore - Compliance Score
 http://protection.office.com/quarantine - View quantined emails and files
+https://protection.office.com/insightdashboard - Security and Compliance report dashboard
 
 
 ## Azure
