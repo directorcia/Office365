@@ -49,6 +49,7 @@ https://account.activedirectory.windowsazure.com/usermanagement/mfasettings.aspx
 https://compliance.microsoft.com/compliancescore - Compliance Score
 http://protection.office.com/quarantine - View quantined emails and files
 https://protection.office.com/insightdashboard - Security and Compliance report dashboard
+https://protection.office.com/unifiedauditlog - Audit logs
 
 
 ## Azure
