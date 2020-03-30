@@ -3,6 +3,7 @@
 https://portal.office.com - Office 365 Home page
 https://login.microsoftonline.com - Office 365 Home page
 https://devicemanagement.microsoft.com = Device management portal
+https://endpoint.microsoft.com/ - Endpoint Manager
 https://admin.microsoft.com  - Administration portal
 https://portal.office.com/commerce/manage.aspx?empty=1 - Subscriptions view
 https://myapps.microsoft.com/ - End user web application portal
