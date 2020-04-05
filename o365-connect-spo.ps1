@@ -29,13 +29,6 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
-If ($tenant_input -eq $true){
-    # Prompt user for tenant name
-    $tenantname = Read-Host -prompt "Input tenant name (NOT full tenant URL)"
-    $tenanturl = "https://"+$tenantname+"-admin.sharepoint.com"
-    Write-host -ForegroundColor $processmessagecolor "SharePoint admin URL =",$tenanturl
-}
-
 import-module msonline
 write-host -foregroundcolor $processmessagecolor "MSOnline module loaded"
 
@@ -45,16 +38,30 @@ write-host -foregroundcolor $processmessagecolor "SharePoint Online module loade
 ## Get tenant login credentials
 if ($savedcreds) {
     ## Get creds from local file
-    $cred =import-clixml -path $credpath
+    $cred = import-clixml -path $credpath
 }
 else {
     ## Get creds manually
-    $cred=get-credential
+    $cred = get-credential
 }
 
 ## Connect to Office 365 admin service
 connect-msolservice -credential $cred
 write-host -foregroundcolor $processmessagecolor "Now connected to Office 365 Admin service"
+
+If ($tenant_input -eq $true) {
+    write-host -foregroundcolor $processmessagecolor "Determining SharePoint Administration URL"
+    $domains = get-msoldomain
+    foreach ($domain in $domains) {
+        if ($domain.name.contains('onmicrosoft')) {
+            $onname = $domain.name.split(".")
+            $tenantname = $onname[0]
+        }
+    }
+    $tenanturl = "https://" + $tenantname + "-admin.sharepoint.com"
+}
+
+Write-host -ForegroundColor $processmessagecolor "SharePoint admin URL =", $tenanturl
 
 #Connect to SharePoint Online Service
 connect-sposervice -url $tenanturl -credential $cred

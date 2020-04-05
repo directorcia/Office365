@@ -27,12 +27,23 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
-If ($tenant_input -eq $true){
-    # Prompt user for tenant name
-    $tenantname = Read-Host -prompt "Input tenant name (NOT full tenant URL)"
-    $tenanturl = "https://"+$tenantname+"-admin.sharepoint.com"
-    Write-host -ForegroundColor $processmessagecolor "SharePoint admin URL =",$tenanturl
+## Connect to Office 365 admin service
+connect-msolservice
+write-host -foregroundcolor $processmessagecolor "Now connected to Office 365 Admin service"
+
+If ($tenant_input -eq $true) {
+    write-host -foregroundcolor $processmessagecolor "Determining SharePoint Administration URL"
+    $domains = get-msoldomain
+    foreach ($domain in $domains) {
+        if ($domain.name.contains('onmicrosoft')) {
+            $onname = $domain.name.split(".")
+            $tenantname = $onname[0]
+        }
+    }
+$tenanturl = "https://" + $tenantname + "-admin.sharepoint.com"
 }
+
+Write-host -ForegroundColor $processmessagecolor "SharePoint admin URL =", $tenanturl
 
 import-module microsoft.online.sharepoint.powershell -disablenamechecking
 write-host -foregroundcolor $processmessagecolor "SharePoint Online module loaded"
