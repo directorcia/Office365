@@ -28,6 +28,7 @@ https://<tenantname>-admin.sharepoint.com/_layouts/15/online/SiteCollections.asp
 https://<tenantname>-admin.sharepoint.com/_layouts/15/online/AdminHome.aspx# - Modern SharePoint Administration portal
 https://config.office.com - Client configuration
 https://<tenantname>.sharepoint.com/sites/sitecollection/_layouts/15/StorMan.aspx - SharePoint Site Storage metrics
+https://workplaceanalytics.office.com/ - Workplace Analytics
 
 ## Security 
 
