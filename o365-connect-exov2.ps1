@@ -24,9 +24,9 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
-Import-Module ExchangeOnlineManagement
+Import-Module ExchangeOnlineManagement | Out-Null
 write-host -foregroundcolor $processmessagecolor "Exchange Online V2 module loaded"
-Connect-ExchangeOnline -ShowProgress $true
+Connect-ExchangeOnline -ShowProgress $false | Out-Null
 
 write-host -foregroundcolor $processmessagecolor "Connected to Exchange Online`n"
 write-host -foregroundcolor $systemmessagecolor "Script Completed`n"
