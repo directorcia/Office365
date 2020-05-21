@@ -18,6 +18,9 @@ https://admin.teams.microsoft.com/ - Teams Administration
 https://whiteboard.microsoft.com - Microsoft Whiteboard
 https://myanalytics.microsoft.com/ - MyAnalytics
 https://mysignins.microsoft.com/ - MFA setup and login audit for account
+https://myaccess.microsoft.com - My access portal
+https://myapplications.microsoft.com/ - My applications portal
+https://myworkaccount.microsoft.com - My work account portal
 https://compliance.microsoft.com - Microsoft Compliance center
 https://servicetrust.microsoft.com - Compliance manager
 https://forms.office.com - Microsoft Forms
