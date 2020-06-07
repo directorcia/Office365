@@ -1,12 +1,12 @@
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Source = https://github.com/directorcia/Office365/blob/master/o365-exo-addins.ps1
+Description - Log into the Azure AD Rights Management module with MFA enabled
 
-Description - Check which which add ins are present on each mailbox
+Source - https://github.com/directorcia/Office365/blob/master/o365-connect-mfa-aadrm.ps1
 
 Prerequisites = 1
-1. Ensure connection to Exchange Online has already been completed
+1. Ensure AADRM module is installeed or updated
 
 More scripts available by joining http://www.ciaopspatron.com
 
@@ -23,14 +23,7 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
-## Get all mailboxes
-$mailboxes = Get-Mailbox -ResultSize Unlimited
-
-write-host -foregroundcolor $processmessagecolor "`nCheck Mailbox Add ins"
-
-foreach ($mailbox in $mailboxes) {
-    write-host "Mailbox =",$mailbox.primarysmtpaddress
-    get-app -mailbox $mailbox.userprincipalname | Select-Object displayname, providername, enabled, appversion | Format-Table
-}
-
+## Connect to Azure AD Rights Management Service
+connect-aadrmservice
+write-host -foregroundcolor $processmessagecolor "Now connected to the Azure AD Rights Management Service`n"
 write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

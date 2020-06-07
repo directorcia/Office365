@@ -6,9 +6,10 @@ Source - https://github.com/directorcia/Office365/blob/master/o365-email-pwned.p
 Description - Check tenant emails to see whether they appear in the haveibeenpwned.com database
 Adapted from the original script by Elliot Munro - https://gcits.com/knowledge-base/check-office-365-accounts-against-have-i-been-pwned-breaches/
 
-Prerequisites = 2
+Prerequisites = 3
 1. Ensure msonline MFA module installed or updated
 2. Ensure you have connected to Exchange Online
+3. The Have I Been Pwned API is no longer free to use. You’ll need to purchase an API key from https://haveibeenpwned.com/API/Key – right now it’s about $3.50 USD per month. 
 
 More scripts available by joining http://www.ciaopspatron.com
 

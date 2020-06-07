@@ -3,12 +3,14 @@
 https://portal.office.com - Office 365 Home page
 https://login.microsoftonline.com - Office 365 Home page
 https://devicemanagement.microsoft.com = Device management portal
+https://endpoint.microsoft.com/ - Endpoint Manager
 https://admin.microsoft.com  - Administration portal
 https://portal.office.com/commerce/manage.aspx?empty=1 - Subscriptions view
 https://myapps.microsoft.com/ - End user web application portal
 https://portal.cloudappsecurity.com - Cloud app security portal
 https://outlook.office.com/owa - Outlook Web Access
 https://outlook.office365.com/ecp - Exchange admin center
+https://admin.exchange.microsoft.com - Exchange admin center
 https://to-do.office.com/ - To-do
 http://teamsdemo.office.com/ - Microsoft Teams Demo
 https://teams.microsoft.com/ - Microsoft Teams
@@ -16,6 +18,9 @@ https://admin.teams.microsoft.com/ - Teams Administration
 https://whiteboard.microsoft.com - Microsoft Whiteboard
 https://myanalytics.microsoft.com/ - MyAnalytics
 https://mysignins.microsoft.com/ - MFA setup and login audit for account
+https://myaccess.microsoft.com - My access portal
+https://myapplications.microsoft.com/ - My applications portal
+https://myworkaccount.microsoft.com - My work account portal
 https://compliance.microsoft.com - Microsoft Compliance center
 https://servicetrust.microsoft.com - Compliance manager
 https://forms.office.com - Microsoft Forms
@@ -26,6 +31,7 @@ https://<tenantname>-admin.sharepoint.com/_layouts/15/online/SiteCollections.asp
 https://<tenantname>-admin.sharepoint.com/_layouts/15/online/AdminHome.aspx# - Modern SharePoint Administration portal
 https://config.office.com - Client configuration
 https://<tenantname>.sharepoint.com/sites/sitecollection/_layouts/15/StorMan.aspx - SharePoint Site Storage metrics
+https://workplaceanalytics.office.com/ - Workplace Analytics
 
 ## Security 
 
@@ -35,12 +41,20 @@ https://www.microsoft.com/en-us/trustcenter - Trust center
 https://protection.office.com - Office 365 Security portal
 https://securescore.microsoft.com - Microsoft Secure Score
 https://portal.cloudappsecurity.com - Office 365 Cloud App security
-https://security.microsoft.com/ - MIcrosoft 365 Security Center
+https://security.microsoft.com/ - Microsoft 365 Security Center
 https://protection.office.com/gdprdashboard - GDPR Dashbaord
 https://securitycenter.windows.com - Microsoft Defender ATP Console
 https://sender.office.com/ - Office 365 Anti-Spam IP Delist Portal
 https://protection.office.com/managealerts - Activity Alerts
 https://protection.office.com/alertpolicies - Protection Alerts
+https://protection.office.com/reportsubmission - Submit security report
+https://passwordreset.microsoftonline.com - Azure AD Password reset
+https://protection.office.com/antispam - Exchange Anti spam console
+https://account.activedirectory.windowsazure.com/usermanagement/mfasettings.aspx - MFA Settings
+https://compliance.microsoft.com/compliancescore - Compliance Score
+http://protection.office.com/quarantine - View quantined emails and files
+https://protection.office.com/insightdashboard - Security and Compliance report dashboard
+https://protection.office.com/unifiedauditlog - Audit logs
 
 
 ## Azure
@@ -51,6 +65,7 @@ https://shell.azure.com - Azure Cloud shell
 https://aad.portal.azure.com/ - Azure AD Administration
 https://account.activedirectory.windowsazure.com/ - User Azure AD portal
 https://portal.atp.azure.com - Azure ATP
+https://status.azure.com - Azure Status
 
 ## Partner
 
@@ -105,10 +120,16 @@ https://twitter.com/Azure - Microsoft Azure
 https://twitter.com/MSPowerBI - Microsoft PowerBI
 https://twitter.com/Office365_Tech - Office 365 Community
 https://twitter.com/SharePoint - Microsoft SharePoint
-https://twitter.com/AndroidAtMsft - Andoif at Microsoft
+https://twitter.com/AndroidAtMsft - Andoid at Microsoft
+https://twitter.com/windowsATP - Microsoft Defender ATP
+https://twitter.com/MicrosoftGraph - Microsoft Graph
 
 
 ## Podcasts
 
 http://ciaops.podbean.com/ - CIAOPS Need to Know
 https://intrazone.libsyn.com/ - The Intrazone
+http://syncup.mpsn.libsynpro.com/ - Sync Up, A OneDrive Podcast
+https://www.messagecentershow.com/ - The Message Center Show
+https://podcasts.apple.com/us/podcast/microsoft-mechanics-podcast/id1181810899 - Microsoft Mechanics
+http://modernworkplace.mpsn.libsynpro.com/ - Modern workplace

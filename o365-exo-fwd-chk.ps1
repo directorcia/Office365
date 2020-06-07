@@ -36,76 +36,68 @@ write-host -foregroundcolor $processmessagecolor "Get all mailbox details - Fini
 ## Yellow - forwarding disabled but forwarding address present
 ## Red - forwarding enabled
 
-write-host -foregroundcolor $processmessagecolor "Check Exchange Forwards - Start"
+write-host -foregroundcolor $processmessagecolor "Check Mailbox Forwards - Start`n"
 
 foreach ($mailbox in $mailboxes) {
-    Write-Host -foregroundColor Gray "Checking rules for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
+    Write-Host -foregroundColor Gray "Mailbox forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
     if ($mailbox.DeliverToMailboxAndForward) { ## if email forwarding is active
-        Write-host
-        Write-host -foregroundcolor $errormessagecolor "**********" 
-        Write-Host -foregroundColor $errormessagecolor "Checking rules for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)" 
-        Write-host -foregroundColor $errormessagecolor "Forwarding address = $($mailbox.forwardingsmtpaddress)" 
-        Write-host -foregroundcolor $errormessagecolor "**********" 
-        write-host
+        Write-Host -foregroundColor $errormessagecolor "`nMailbox forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)" 
+        Write-host -foregroundColor $errormessagecolor "Forwarding address = $($mailbox.forwardingsmtpaddress)`n" 
     }
     else {
         if ($mailbox.forwardingsmtpaddress){ ## if email forward email address has been set
-            Write-host
-            Write-host -foregroundcolor $warnmessagecolor "**********" 
-            Write-Host -foregroundColor $warnmessagecolor "Checking rules for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)"
-            Write-host -foregroundColor $warnmessagecolor "Forwarding address = $($mailbox.forwardingsmtpaddress)"
-            Write-host -foregroundcolor $warnmessagecolor "**********"
-            write-host
+            Write-Host -foregroundColor $warnmessagecolor "`nMailbox forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)"
+            Write-host -foregroundColor $warnmessagecolor "Forwarding address = $($mailbox.forwardingsmtpaddress)`n"
         }
     }
 }
-write-host -foregroundcolor $processmessagecolor "Check Exchange Forwards - Finish`n"
-write-host -foregroundcolor $processmessagecolor "Check Outlook Rule Forwards - Start"
+write-host -foregroundcolor $processmessagecolor "`nCheck Exchange Forwards - Finish`n"
+write-host -foregroundcolor $processmessagecolor "Check Outlook Rule Forwards - Start`n"
 
 foreach ($mailbox in $mailboxes)
 {
-  Write-Host -foregroundcolor gray "Checking rules for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-  $rules = get-inboxrule -mailbox $mailbox.identity
+  Write-Host -foregroundcolor gray "Outlook forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
+  $rules = get-inboxrule -mailbox $mailbox.userprincipalname
   foreach ($rule in $rules)
     {
        If ($rule.enabled) {
-        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $warnmessagecolor "`nSuspect Enabled Rule name -",$rule.name }
+        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo -or $rule.movetofolder) { write-host -ForegroundColor $warnmessagecolor "`nSuspect Enabled Rule name -",$rule.name }
         If ($rule.forwardto) { write-host -ForegroundColor $errormessagecolor "Forward to:",$rule.forwardto,"`n" }
         If ($rule.RedirectTo) { write-host -ForegroundColor $errormessagecolor "Redirect to:",$rule.redirectto,"`n" }
         If ($rule.CopyToFolder) { write-host -ForegroundColor $errormessagecolor "Copy to folder:",$rule.copytofolder,"`n" }
         if ($rule.DeleteMessage) { write-host -ForegroundColor $errormessagecolor "Delete message:", $rule.deletemessage,"`n" }
         if ($rule.ForwardAsAttachmentTo) { write-host -ForegroundColor $errormessagecolor "Forward as attachment to:",$rule.forwardasattachmentto, "`n"}
         if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $errormessagecolor "Sent TXT msg to:",$rule.sendtextmessagenotificationto, "`n" }
-        }
+        if ($rule.movetofolder) { write-host -ForegroundColor $errormessagecolor "Move to folder:", $rule.movetofolder, "`n" }
+    }
         else {
-        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $warnmessagecolor "`nSuspect Disabled Rule name -",$rule.name }
+        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo -or $rulemovetofolder) { write-host -ForegroundColor $warnmessagecolor "`nSuspect Disabled Rule name -",$rule.name }
         If ($rule.forwardto) { write-host -ForegroundColor $warnmessagecolor "Forward to:",$rule.forwardto,"`n" }
         If ($rule.RedirectTo) { write-host -ForegroundColor $warnmessagecolor "Redirect to:",$rule.redirectto,"`n" }
         If ($rule.CopyToFolder) { write-host -ForegroundColor $warnmessagecolor "Copy to folder:",$rule.copytofolder,"`n" }
         if ($rule.DeleteMessage) { write-host -ForegroundColor $warnmessagecolor "Delete message:", $rule.deletemessage,"`n" }
         if ($rule.ForwardAsAttachmentTo) { write-host -ForegroundColor $warnmessagecolor "Forward as attachment to:",$rule.forwardasattachmentto,"`n"}
         if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $warnmessagecolor "Sent TXT msg to:",$rule.sendtextmessagenotificationto,"`n" }
+        if ($rule.movetofolder) { write-host -ForegroundColor $errormessagecolor "Move to folder:", $rule.movetofolder, "`n" }
         }
     }
 }
-write-host -foregroundcolor $processmessagecolor "Check Outlook Rule Forwards - Finish`n"
-write-host -foregroundcolor $processmessagecolor "Check Sweep Rules - Start"
+write-host -foregroundcolor $processmessagecolor "`nCheck Outlook Rule Forwards - Finish`n"
+write-host -foregroundcolor $processmessagecolor "Check Sweep Rules - Start`n"
 
 foreach ($mailbox in $mailboxes)
 {
-  Write-Host -foregroundcolor gray "Checking rules for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-  $rules = get-sweeprule -mailbox $mailbox.identity
+  Write-Host -foregroundcolor gray "Sweep forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
+  $rules = get-sweeprule -mailbox $mailbox.userprincipalname
   foreach ($rule in $rules) {
-    if ($rule.enabled) { ## if Sweep is active
-        Write-host -foregroundcolor $errormessagecolor "`n**********" 
-        Write-Host -foregroundcolor $errormessagecolor "Sweep rules enabled for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-        Write-host -foregroundColor $errormessagecolor "Name = ",$rule.name
+    if ($rule.enabled) { ## if Sweep is active 
+        Write-Host -foregroundcolor $errormessagecolor "`nSweep rules enabled for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
+        Write-host -foregroundColor $errormessagecolor "Name = ",$rule.name
         Write-host -foregroundColor $errormessagecolor "Source Folder = ",$rule.sourcefolder 
         write-host -foregroundColor $errormessagecolor "Destination folder = ",$rule.destinationfolder
-        Write-host -foregroundColor $errormessagecolor "Keep for days = ",$rule.keepfordays
-        Write-host -foregroundcolor $errormessagecolor "**********"
+        Write-host -foregroundColor $errormessagecolor "Keep for days = ",$rule.keepfordays"`n"
         }
     }
 }
-write-host -foregroundcolor $processmessagecolor "Check Sweep Rules - Finish`n"
+write-host -foregroundcolor $processmessagecolor "`nCheck Sweep Rules - Finish`n"
 write-host -foregroundcolor $systemmessagecolor "Script complete`n"
