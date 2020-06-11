@@ -24,9 +24,21 @@ Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
 
-Import-Module ExchangeOnlineManagement
+Try {
+    Import-Module ExchangeOnlineManagement | Out-Null
+}
+catch {
+    Write-Host -ForegroundColor $errormessagecolor "[001] - Failed to import Exchange module - ", $_.Exception.Message
+    exit 1
+}
 write-host -foregroundcolor $processmessagecolor "Exchange Online V2 module loaded"
-Connect-ExchangeOnline -ShowProgress $true
+try {
+    Connect-ExchangeOnline -ShowProgress $false | Out-Null
+}
+catch {
+       Write-Host -ForegroundColor $errormessagecolor "[002] - Failed to connect to Exchange Online - ", $_.Exception.Message
+       exit 2 
+}
 
 write-host -foregroundcolor $processmessagecolor "Connected to Exchange Online`n"
 write-host -foregroundcolor $systemmessagecolor "Script Completed`n"

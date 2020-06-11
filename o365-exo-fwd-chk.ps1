@@ -61,22 +61,24 @@ foreach ($mailbox in $mailboxes)
   foreach ($rule in $rules)
     {
        If ($rule.enabled) {
-        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $warnmessagecolor "`nSuspect Enabled Rule name -",$rule.name }
+        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo -or $rule.movetofolder) { write-host -ForegroundColor $warnmessagecolor "`nSuspect Enabled Rule name -",$rule.name }
         If ($rule.forwardto) { write-host -ForegroundColor $errormessagecolor "Forward to:",$rule.forwardto,"`n" }
         If ($rule.RedirectTo) { write-host -ForegroundColor $errormessagecolor "Redirect to:",$rule.redirectto,"`n" }
         If ($rule.CopyToFolder) { write-host -ForegroundColor $errormessagecolor "Copy to folder:",$rule.copytofolder,"`n" }
         if ($rule.DeleteMessage) { write-host -ForegroundColor $errormessagecolor "Delete message:", $rule.deletemessage,"`n" }
         if ($rule.ForwardAsAttachmentTo) { write-host -ForegroundColor $errormessagecolor "Forward as attachment to:",$rule.forwardasattachmentto, "`n"}
         if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $errormessagecolor "Sent TXT msg to:",$rule.sendtextmessagenotificationto, "`n" }
-        }
+        if ($rule.movetofolder) { write-host -ForegroundColor $errormessagecolor "Move to folder:", $rule.movetofolder, "`n" }
+    }
         else {
-        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $warnmessagecolor "`nSuspect Disabled Rule name -",$rule.name }
+        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo -or $rulemovetofolder) { write-host -ForegroundColor $warnmessagecolor "`nSuspect Disabled Rule name -",$rule.name }
         If ($rule.forwardto) { write-host -ForegroundColor $warnmessagecolor "Forward to:",$rule.forwardto,"`n" }
         If ($rule.RedirectTo) { write-host -ForegroundColor $warnmessagecolor "Redirect to:",$rule.redirectto,"`n" }
         If ($rule.CopyToFolder) { write-host -ForegroundColor $warnmessagecolor "Copy to folder:",$rule.copytofolder,"`n" }
         if ($rule.DeleteMessage) { write-host -ForegroundColor $warnmessagecolor "Delete message:", $rule.deletemessage,"`n" }
         if ($rule.ForwardAsAttachmentTo) { write-host -ForegroundColor $warnmessagecolor "Forward as attachment to:",$rule.forwardasattachmentto,"`n"}
         if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $warnmessagecolor "Sent TXT msg to:",$rule.sendtextmessagenotificationto,"`n" }
+        if ($rule.movetofolder) { write-host -ForegroundColor $errormessagecolor "Move to folder:", $rule.movetofolder, "`n" }
         }
     }
 }
