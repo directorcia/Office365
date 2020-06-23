@@ -91,9 +91,9 @@ foreach ($mailbox in $mailboxes) {
 ## Audit log limit for mailboxes should be extended from default
 
     if ([timespan]::parse($mailbox.auditlogagelimit).days -gt $auditlogagelimitdefault) {
-        write-host -foregroundcolor $processmessagecolor "  Audit login limit (days) =",($mailbox.Auditlogagelimit).split('.')[0]
+        write-host -foregroundcolor $processmessagecolor "  Audit log limit (days) =",($mailbox.Auditlogagelimit).split('.')[0]
     } else {
-        write-host -foregroundcolor $errormessagecolor "  Audit login limit (days) =",($mailbox.Auditlogagelimit).split('.')[0]
+        write-host -foregroundcolor $errormessagecolor "  Audit log limit (days) =",($mailbox.Auditlogagelimit).split('.')[0]
     }
 
 ## Mailboxes should have their retained deleted item retention period extended to 30 days
