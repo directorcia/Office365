@@ -64,14 +64,14 @@ write-host -ForegroundColor $processmessagecolor "Start checking mailboxes`n"
 $results = @()
 foreach ($mailbox in $mailboxes) {
     <#          ----- Truncate Long email addresses ----- #>
-    if ($mailbox.userprincipalname.length -gt 70) {
-        $upn = $mailbox.userprincipalname.substring(0,70)+"..."
+    if ($mailbox.userprincipalname.length -gt 60) {
+        $upn = $mailbox.userprincipalname.substring(0,60)+"..."
     }
     else {
         $upn = $mailbox.userprincipalname
     }
-    if ($mailbox.PrimarySMTPAddress.length -gt 70) {
-        $primsmtp = $mailbox.PrimarySMTPAddress.substring(0,70)+"..."
+    if ($mailbox.PrimarySMTPAddress.length -gt 60) {
+        $primsmtp = $mailbox.PrimarySMTPAddress.substring(0,60)+"..."
     }
     else {
         $primsmtp = $mailbox.PrimarySMTPAddress
@@ -159,7 +159,7 @@ foreach ($mailbox in $mailboxes) {
         }
     }
     else {
-        write-host -ForegroundColor $errormessagecolor "  Further mailbox details not found -",$reason.substring(0,70),"..."
+        write-host -ForegroundColor $errormessagecolor "  Further mailbox details not found -",$reason.substring(0,60),"..."
     }
     $results+=[PSCustomObject]@{
         Displayname = $mailbox.Displayname;
