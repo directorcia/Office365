@@ -21,6 +21,7 @@ https://mysignins.microsoft.com/ - MFA setup and login audit for account
 https://myaccess.microsoft.com - My access portal
 https://myapplications.microsoft.com/ - My applications portal
 https://myworkaccount.microsoft.com - My work account portal
+https://myprofile.microsoft.com - Profile information
 https://compliance.microsoft.com - Microsoft Compliance center
 https://servicetrust.microsoft.com - Compliance manager
 https://forms.office.com - Microsoft Forms
@@ -32,6 +33,10 @@ https://<tenantname>-admin.sharepoint.com/_layouts/15/online/AdminHome.aspx# - M
 https://config.office.com - Client configuration
 https://<tenantname>.sharepoint.com/sites/sitecollection/_layouts/15/StorMan.aspx - SharePoint Site Storage metrics
 https://workplaceanalytics.office.com/ - Workplace Analytics
+https://portal.microsoft.com/adminportal/home#/networkperformance - Network performance
+https://admin.microsoft.com/AdminPortal/Home#/servicehealth - Service Health
+https://admin.microsoft.com/AdminPortal/Home#/MessageCenter - Message center
+
 
 ## Security 
 
