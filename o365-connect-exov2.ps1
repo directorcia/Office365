@@ -16,6 +16,7 @@ More scripts available by joining http://www.ciaopspatron.com
 ## Variables
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
+$errormessagecolor = "red"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
