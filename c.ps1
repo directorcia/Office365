@@ -94,7 +94,7 @@ catch {
 
 foreach ($result in $results) {
     foreach ($script in $scripts) {
-        if ($result -eq $script.service) {
+        if ($result.service -eq $script.service) {
             $run=".\"+$script.Name
             if (-not [string]::isnullorempty($script.module)) {             ## If a PowerShell module is required to be installed?
                 if (get-module -listavailable -name $script.module) {       ## Has the Online PowerShell module been loaded?
