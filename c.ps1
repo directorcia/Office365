@@ -63,12 +63,12 @@ $scripts += [PSCustomObject]@{
     Module = "";    
 }
 $scripts += [PSCustomObject]@{
-    Name = "o365-connect-mfa-addrm.ps1";
+    Name = "o365-connect-mfa-aadrm.ps1";
     Service = "Azure AD Rights Management";
     Module = "AADRM"    
 }
 $scripts += [PSCustomObject]@{
-    Name = "o365-connect-mfa-add.ps1";
+    Name = "o365-connect-mfa-aad.ps1";
     Service = "Azure AD";
     Module = "AzureAD"    
 }
@@ -84,7 +84,7 @@ $scripts += [PSCustomObject]@{
 }
 
 try {
-    $results = $scripts.service | Out-GridView -PassThru -title "Select services to connect to (Multiple selections permitted) "
+    $results = $scripts | select-object service | Sort-Object Service | Out-GridView -PassThru -title "Select services to connect to (Multiple selections permitted) "
 }
 catch {
     write-host -ForegroundColor yellow -backgroundcolor $errormessagecolor "`n[001] - Error getting options`n"
@@ -94,7 +94,7 @@ catch {
 
 foreach ($result in $results) {
     foreach ($script in $scripts) {
-        if ($result -eq $script.service) {
+        if ($result.service -eq $script.service) {
             $run=".\"+$script.Name
             if (-not [string]::isnullorempty($script.module)) {             ## If a PowerShell module is required to be installed?
                 if (get-module -listavailable -name $script.module) {       ## Has the Online PowerShell module been loaded?
