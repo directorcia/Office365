@@ -34,7 +34,7 @@ write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 $baseUri = "https://api.github.com/"
 $args = "repos/$Owner/$Repository/contents/$Path"
 [Net.ServicePointManager]::SecurityProtocol = "tls12, tls11, tls,ssl3"  ## Avoid failure to create secure channel
-$wr = Invoke-WebRequest -Uri $($baseuri+$args)
+$wr = Invoke-WebRequest -Uri $($baseuri+$args) -UseBasicParsing
 $objects = $wr.Content | ConvertFrom-Json
 $files = $objects | where {$_.type -eq "file"} | Select -exp download_url
 $directories = $objects | where {$_.type -eq "dir"}
@@ -55,7 +55,7 @@ if (-not (Test-Path $DestinationPath)) {
 foreach ($file in $files) {
     $fileDestination = Join-Path $DestinationPath (Split-Path $file -Leaf)
    try {
-       Invoke-WebRequest -Uri $file -OutFile $fileDestination -ErrorAction Stop -Verbose
+       Invoke-WebRequest -Uri $file -OutFile $fileDestination -ErrorAction Stop -Verbose -UseBasicParsing
        "Grabbed '$($file)' to '$fileDestination'"
   } catch {
        throw "Unable to download '$($file.path)'"
