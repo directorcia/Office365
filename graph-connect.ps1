@@ -57,7 +57,7 @@ $uri = "https://graph.microsoft.com/v1.0/security/alerts"
 $method = "GET"
 
 # Run Graph API query 
-$query = Invoke-WebRequest -Method $method -Uri $uri -ContentType "application/json" -Headers @{Authorization = "Bearer $token"} -ErrorAction Stop
+$query = Invoke-WebRequest -Method $method -Uri $uri -ContentType "application/json" -Headers @{Authorization = "Bearer $token"} -ErrorAction Stop -UseBasicParsing
 
 $query
 
