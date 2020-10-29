@@ -48,6 +48,8 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     Install-Module -name Az -force
     write-host -foregroundcolor $processmessagecolor "Install SharePoint PnP module"
     Install-Module SharePointPnPPowerShellOnline -Force
+    write-host -foregroundcolor $processmessagecolor "Install Microsoft Graph Module"
+    Install-Module -Name Microsoft.Graph -force
 }
 else {
     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
