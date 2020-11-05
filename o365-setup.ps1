@@ -30,8 +30,9 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     Install-PackageProvider -Name NuGet -Force
     write-host -foregroundcolor $processmessagecolor "Install Azure AD module"
     Install-Module -Name AzureAD -force
-    write-host -foregroundcolor $processmessagecolor "Install Azure AD Right Management module"
-    Install-Module -Name AADRM -force
+    write-host -foregroundcolor $processmessagecolor "Install Azure Information Protection module"
+    Install-module -name aipservice -Force
+##    Install-Module -Name AADRM -force                       ## Support for the AADRM module ends July 15, 2020
     write-host -foregroundcolor $processmessagecolor "Install Teams Module"
     Install-Module -Name MicrosoftTeams -Force
     write-host -foregroundcolor $processmessagecolor "Install SharePoint Online module"

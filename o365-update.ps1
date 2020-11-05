@@ -28,8 +28,9 @@ $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Pri
 If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     write-host -foregroundcolor $processmessagecolor "Update Azure AD module"
     Update-Module -Name AzureAD -force
-    write-host -foregroundcolor $processmessagecolor "Update Azure AD Right Management module"
-    Update-Module -Name AADRM -force
+    write-host -foregroundcolor $processmessagecolor "Update Azure Information Protection module"
+    Update-Module -name aipservice -Force
+##    Update-Module -Name AADRM -force                 ## Support for the AADRM module ends July 15, 2020
     write-host -foregroundcolor $processmessagecolor "Update Teams Module"
     Update-Module -Name MicrosoftTeams -Force
     write-host -foregroundcolor $processmessagecolor "Update SharePoint Online module"
