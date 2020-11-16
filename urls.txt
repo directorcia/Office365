@@ -31,14 +31,22 @@ https://powerapps.microsoft.com - Microsoft PowerApps
 https://admin.microsoft.com/Adminportal/Home?source=applauncher#/setupwizard - Microsoft 365 Business Set up wizard
 https://<tenantname>-admin.sharepoint.com/_layouts/15/online/SiteCollections.aspx - Classic SharePoint Administration portal
 https://<tenantname>-admin.sharepoint.com/_layouts/15/online/AdminHome.aspx# - Modern SharePoint Administration portal
-https://config.office.com - Client configuration
+https://config.office.com - App Admin Center
 https://<tenantname>.sharepoint.com/sites/sitecollection/_layouts/15/StorMan.aspx - SharePoint Site Storage metrics
 https://workplaceanalytics.office.com/ - Workplace Analytics
 https://portal.microsoft.com/adminportal/home#/networkperformance - Network performance
 https://admin.microsoft.com/AdminPortal/Home#/servicehealth - Service Health
 https://admin.microsoft.com/AdminPortal/Home#/MessageCenter - Message center
 https://portal.microsoft.com/adminportal/home#/networkperformance - Network performance
-
+https://admin.microsoft.com/sharepoint - SharePoint Admin Center
+https://admin.onedrive.com - OneDrve Admin Center
+https://admin.powerplatform.microsoft.com/ - Power Platform Admin Center
+https://web.microsoftstream.com/admin - Stream Admin Center
+https://businessstore.microsoft.com/ - Microsoft Store for Business
+https://educationstore.microsoft.com/ - Microsoft Store for Education
+https://testconnectivity.microsoft.com - Microsoft Remote Connectivity Analyzer
+https://connectivity.office.com/ - Microsoft 365 network connectivity test
+https://cqd.teams.microsoft.com/ - Microsoft Call Quality Dashboard
 
 ## Security 
 
@@ -66,7 +74,8 @@ https://protection.office.com/unifiedauditlog - Audit logs
 https://protection.office.com/campaigns - Email spam campaigns dashboard
 https://protection.office.com/configurationAnalyzer - Configuration Analyzer
 https://security.microsoft.com/restrictedusers - Restricted users portal
-
+https://o365atp.com/ - Office 365 ATP Safe Links Decoder
+https://mha.azurewebsites.net/ - Message Header Analyzer
 
 ## Azure
 
@@ -77,6 +86,7 @@ https://aad.portal.azure.com/ - Azure AD Administration
 https://account.activedirectory.windowsazure.com/ - User Azure AD portal
 https://portal.atp.azure.com - Azure ATP
 https://status.azure.com - Azure Status
+https://www.qnamaker.ai/ - Q and A Maker
 
 ## Partner
 
@@ -85,6 +95,8 @@ https://partner.microsoft.com/en-au/community/australia-partner-hub - Microsoft 
 ## Other
 
 https://developer.microsoft.com/en-us/graph/graph-explorer - Microsoft Graph explorer
+https://www.whatismytenantid.com/ - What is my Microsoft Azure and Office 365 tenant ID?
+https://o365.rocks/ - Tenant Availability Check
 
 ## Twitter
 
