@@ -52,7 +52,7 @@ else {
         write-host -foregroundcolor gray "    is more current that reported latest version:",$version    
     } else {
         write-host -foregroundcolor $errormessagecolor "Local version =",$localdefender.AntispywareSignatureVersion
-        write-host -forgroundcolor $errormessagecolor "    is less current that web latest version:",$version
+        write-host -foregroundcolor $errormessagecolor "    is less current that web latest version:",$version
     }
 }
 
