@@ -1,0 +1,26 @@
+Email
+-----
+Mail flow best practices for Exchange Online and Office 365 - https://docs.microsoft.com/en-us/exchange/mail-flow-best-practices/mail-flow-best-practices
+Best practices for configuring standalone EOP - https://docs.microsoft.com/en-us/microsoft-365/security/office-365-security/best-practices-for-configuring-eop?view=o365-worldwide
+Recommended settings for EOP and Office 365 ATP security - https://docs.microsoft.com/en-us/microsoft-365/security/office-365-security/recommended-settings-for-eop-and-office365-atp?view=o365-worldwide
+Microsoft 365 and Office 365 email migration performance and best practices - https://docs.microsoft.com/en-us/Exchange/mailbox-migration/office-365-migration-best-practices
+
+Security
+--------
+CISA - Microsoft 365 Recommendations - https://www.us-cert.gov/ncas/alerts/aa20-120a
+Center for Internet Security (CIS) benchmarks - https://docs.microsoft.com/en-us/microsoft-365/compliance/offering-cis-benchmark?view=o365-worldwide
+Configure your Microsoft 365 tenant for increased security - https://docs.microsoft.com/en-us/microsoft-365/security/office-365-security/tenant-wide-setup-for-increased-security?view=o365-worldwide
+Best practices for Conditional Access in Azure Active Directory - https://docs.microsoft.com/en-gb/azure/active-directory/conditional-access/best-practices
+NIST Cybersecurity Framework - https://www.nist.gov/cyberframework
+Small Business Cyber Security Guide - https://www.cyber.gov.au/acsc/small-and-medium-businesses/acsc-small-business-guide
+Microsoft password policy recommendations - https://docs.microsoft.com/en-us/microsoft-365/admin/misc/password-policy-recommendations?view=o365-worldwide
+Responding to a compromised email account - https://docs.microsoft.com/en-us/microsoft-365/security/office-365-security/responding-to-a-compromised-email-account?view=o365-worldwide
+Hardening Microsoft Office 365 ProPlus, Office 2019 and Office 2016 - https://www.cyber.gov.au/acsc/view-all-content/publications/hardening-microsoft-office-365-proplus-office-2019-and-office-2016
+
+MCAS
+----
+Cloud App Security best practices - https://docs.microsoft.com/en-us/cloud-app-security/best-practices
+
+OneDrive
+--------
+Recommended OneDrive sync app configuration - https://docs.microsoft.com/en-us/onedrive/ideal-state-configuration
