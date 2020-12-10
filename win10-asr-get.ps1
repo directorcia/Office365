@@ -111,7 +111,8 @@ write-host -ForegroundColor Gray -backgroundcolor blue "Attack Surface Reduction
 $count = 0 
 
 if (-not [string]::isnullorempty($results.AttackSurfaceReductionRules_ids)) {
-    foreach ($id in $results.AttackSurfaceReductionRules_Ids) {
+    foreach ($id in $asrrules.GUID) {
+    ##foreach ($id in $results.AttackSurfaceReductionRules_Ids) {
         $enabled = $results.AttackSurfaceReductionRules_actions[$count]
         switch ($id) {
             "BE9BA2D9-53EA-4CDC-84E5-9B1EEEE46550" {$index=0;break}
