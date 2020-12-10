@@ -141,7 +141,7 @@ if (-not [string]::isnullorempty($results.AttackSurfaceReductionRules_ids)) {
     }
 }
 else {
-    write-host -foregroundcolor $errormessagecolor "ASR rules empty"
+    write-host -foregroundcolor $errormessagecolor $asrrules.count"ASR rules empty"
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nScript completed`n"
