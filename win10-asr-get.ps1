@@ -141,9 +141,7 @@ if (-not [string]::isnullorempty($results.AttackSurfaceReductionRules_ids)) {
     }
 }
 else {
-    foreach ($asrrule in $asrrules) {
-        write-host -foregroundcolor red $asrrule.name,"= Not Enabled"
-    }
+    write-host -foregroundcolor $errormessagecolor "ASR rules empty"
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nScript completed`n"
