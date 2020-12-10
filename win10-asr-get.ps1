@@ -131,11 +131,11 @@ if (-not [string]::isnullorempty($results.AttackSurfaceReductionRules_ids)) {
             "7674ba52-37eb-4a4f-a9a1-f0f9a1619a2c" {$index=13;break}
             "e6db77e5-3df2-4cf1-b95a-636979351e5b" {$index=14;break}
         }
-        if ($enabled -eq 1) {
-            write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]
-        } 
-        else {
-            write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]
+        switch ($enabled) {
+            0 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
+            1 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
+            2 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
+            default {write-host -foregroundcolor $errormessagecolor $asrrules[$index].name"= Not found"; break}
         }
         $count++
     }
