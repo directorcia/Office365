@@ -29,6 +29,7 @@ Cyber Essentials: Requirements for IT infrastructure - https://www.ncsc.gov.uk/f
 Securing privileged access for hybrid and cloud deployments in Azure AD - https://docs.microsoft.com/en-us/azure/active-directory/roles/security-planning
 Securing privileged access - https://docs.microsoft.com/en-us/security/compass/overview
 Securing devices as part of the privileged access story - https://docs.microsoft.com/en-us/security/compass/concept-azure-managed-workstation
+Top 10 ways to secure Microsoft 365 for business plans - https://docs.microsoft.com/en-us/microsoft-365/admin/security-and-compliance/secure-your-business-data?view=o365-worldwide
 
 MCAS
 ----
