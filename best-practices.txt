@@ -30,6 +30,8 @@ Securing privileged access for hybrid and cloud deployments in Azure AD - https:
 Securing privileged access - https://docs.microsoft.com/en-us/security/compass/overview
 Securing devices as part of the privileged access story - https://docs.microsoft.com/en-us/security/compass/concept-azure-managed-workstation
 Top 10 ways to secure Microsoft 365 for business plans - https://docs.microsoft.com/en-us/microsoft-365/admin/security-and-compliance/secure-your-business-data?view=o365-worldwide
+End user device (EUD) security guidance - https://www.ncsc.gov.uk/collection/end-user-device-security/platform-specific-guidance
+NSA Cybersecurity Advisories & Technical Guidance - https://www.nsa.gov/What-We-Do/Cybersecurity/Advisories-Technical-Guidance/
 
 MCAS
 ----

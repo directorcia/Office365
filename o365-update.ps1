@@ -49,6 +49,8 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     update-Module SharePointPnPPowerShellOnline -Force
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Graph module"
     Update-Module -Name Microsoft.Graph -Force
+    write-host -foregroundcolor $processmessagecolor "Update Windows Autopilot Module"
+    Update-Module -Name WindowsAutoPilotIntune -force
 }
 Else {
     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
