@@ -83,8 +83,8 @@ $scripts += [PSCustomObject]@{
     Module = "Az.Accounts"  
 }
 $scripts += [PSCustomObject]@{
-    Name = "win10-connect-autopilot.ps1";
-    Service = "Windows Autopilot";  
+    Name = "Intune-connect.ps1";
+    Service = "Intune";  
     Module = "Microsoft.Graph.Intune"  
 }
 
