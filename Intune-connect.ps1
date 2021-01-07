@@ -16,6 +16,7 @@ More scripts available by joining http://www.ciaopspatron.com
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
+$warningmessagecolor = "yellow"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -23,6 +24,14 @@ $errormessagecolor = "red"
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
+
+if (Get-Module -ListAvailable -Name windowsautopilotintune) {
+    Write-Host -foregroundcolor $processmessagecolor "Window Autopilot module found"
+} 
+else {
+    Write-Host -foregroundcolor $warningmessagecolor "[Warning] - Windows Autopilot module not found."
+    write-host -foregroundcolor $warningmessagecolor "Install this module if you want to use Windows Autopilot commands"
+}
 
 Try {
     Import-Module Microsoft.Graph.Intune | Out-Null
