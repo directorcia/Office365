@@ -16,6 +16,23 @@ More scripts available by joining http://www.ciaopspatron.com
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
+$warningmessagecolor = "yellow"
+
+Function test-install($modulename) {
+    if (Get-Module -ListAvailable -Name $modulename) {          ## If module exists then update
+        update-module -name $modulename -force
+    } 
+    else {                                                      ## If module doesn't exist then prompt to update
+        do {
+            write-host -foregroundcolor $warningmessagecolor -nonewline "    [Warning]"$modulename" module not found. "
+            $result = Read-host -prompt "Install this module (Y/N)?"
+        } until (-not [string]::isnullorempty($result))
+        if ($result -eq 'Y' -or $result -eq 'y') {
+            write-host -foregroundcolor $processmessagecolor "Installing module",$modulename
+            install-Module -Name $modulename -Force
+        }
+    }
+}
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -27,30 +44,28 @@ write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     write-host -foregroundcolor $processmessagecolor "Update Azure AD module"
-    Update-Module -Name AzureAD -force
+    test-install -modulename AzureAD
     write-host -foregroundcolor $processmessagecolor "Update Azure Information Protection module"
-    Update-Module -name aipservice -Force
-##    Update-Module -Name AADRM -force                 ## Support for the AADRM module ends July 15, 2020
+    test-install -modulename AIPService
     write-host -foregroundcolor $processmessagecolor "Update Teams Module"
-    Update-Module -Name MicrosoftTeams -Force
+    test-install -modulename MicrosoftTeams
     write-host -foregroundcolor $processmessagecolor "Update SharePoint Online module"
-    Update-Module -Name Microsoft.Online.SharePoint.PowerShell -force
+    test-install -modulename Microsoft.Online.SharePoint.PowerShell
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Online module"
-    Update-Module -Name MSOnline -force
+    test-install -modulename MSOnline
     write-host -foregroundcolor $processmessagecolor "Update Exchange Online V2 module"
-    Update-Module PowershellGet -Force
-    Update-Module -Name ExchangeOnlineManagement -force
+    test-install -modulename PowershellGet
+    test-install -modulename ExchangeOnlineManagement
     write-host -foregroundcolor $processmessagecolor "Update Azure module"
-    ## Old Azure module
-    ## Update-Module -name AzureRM -Force
-    ## New Az module
-    Update-Module -name Az -force
+    test-install -modulename Az 
     write-host -foregroundcolor $processmessagecolor "Update SharePoint PnP module"
-    update-Module SharePointPnPPowerShellOnline -Force
+    test-install -modulename SharePointPnPPowerShellOnline
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Graph module"
-    Update-Module -Name Microsoft.Graph -Force
+    test-install -modulename Microsoft.Graph 
     write-host -foregroundcolor $processmessagecolor "Update Intune Module"
-    Update-Module -Name Microsoft.Graph.Intune -force
+    test-install -modulename Microsoft.Graph.Intune 
+    write-host -foregroundcolor $processmessagecolor "Update Windows Autopilot Module"
+    test-install -modulename WindowsAutoPilotIntune
 }
 Else {
     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
