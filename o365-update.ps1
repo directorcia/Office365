@@ -49,7 +49,7 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     update-Module SharePointPnPPowerShellOnline -Force
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Graph module"
     Update-Module -Name Microsoft.Graph -Force
-    write-host -foregroundcolor $processmessagecolor "Update Windows Autopilot Module"
+    write-host -foregroundcolor $processmessagecolor "Update Intune Module"
     Update-Module -Name Microsoft.Graph.Intune -force
 }
 Else {
