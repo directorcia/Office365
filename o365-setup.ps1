@@ -53,6 +53,8 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     Install-Module -Name Microsoft.Graph -force
     write-host -foregroundcolor $processmessagecolor "Install Intune Module"
     Install-Module -Name Microsoft.Graph.Intune -force
+    write-host -foregroundcolor $processmessagecolor "Install Autopilot Module"
+    Update-Module -Name WindowsAutoPilotIntune -force
 }
 else {
     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
