@@ -1,7 +1,7 @@
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Description - Log into Microsoft Teams with MFA enabled
+Description - Log into Microsoft Intune
 
 Source - https://github.com/directorcia/Office365/blob/master/Intune-connect.ps1
 
