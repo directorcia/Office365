@@ -1,3 +1,6 @@
+param(                         ## if no parameters used then don't prompt to install missing modules, just install them
+    [switch]$prompt = $false   ## if -prompt used then prompt to install missing modules
+)
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
@@ -19,15 +22,40 @@ $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
 
 Function test-install($modulename) {
-    if (Get-Module -ListAvailable -Name $modulename) {          ## If module exists then update
-        update-module -name $modulename -force
-    } 
+    if (Get-InstalledModule -Name $modulename) {          ## If module exists then update
+        #get version of the module (selects the first if there are more versions installed)
+        $version = (Get-InstalledModule -name $modulename) | Sort-Object Version -Descending  | Select-Object Version -First 1
+        #get version of the module in psgallery
+        $psgalleryversion = Find-Module -Name $modulename | Sort-Object Version -Descending | Select-Object Version -First 1
+        #convert to string for comparison
+        $stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
+        $a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
+        #convert to string for comparison
+        $onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
+        $b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
+        #version compare
+        if ([version]"$a" -ge [version]"$b") {
+            Write-Host -foregroundcolor $processmessagecolor "    Local module $a greater or equal to Gallery module $b"
+            write-host -foregroundcolor $processmessagecolor "    No update required`n"
+        }
+        else {
+            Write-Host -foregroundcolor $warningmessagecolor "    Local module $a lower version than Gallery module $b"
+            write-host -foregroundcolor $warningmessagecolor "    Will be updated"
+            update-module -name $modulename -force
+            Write-Host
+        }
+    }
     else {                                                      ## If module doesn't exist then prompt to update
-        do {
-            write-host -foregroundcolor $warningmessagecolor -nonewline "    [Warning]"$modulename" module not found. "
-            $result = Read-host -prompt "Install this module (Y/N)?"
-        } until (-not [string]::isnullorempty($result))
-        if ($result -eq 'Y' -or $result -eq 'y') {
+        write-host -foregroundcolor $warningmessagecolor -nonewline "    [Warning]"$modulename" module not found. "
+        if ($prompt) {
+            do {
+                $result = Read-host -prompt "Install this module (Y/N)?"
+            } until (-not [string]::isnullorempty($result))
+            if ($result -eq 'Y' -or $result -eq 'y') {
+                write-host -foregroundcolor $processmessagecolor "Installing module",$modulename
+                install-Module -Name $modulename -Force
+            }
+        } else {
             write-host -foregroundcolor $processmessagecolor "Installing module",$modulename
             install-Module -Name $modulename -Force
         }
@@ -40,6 +68,7 @@ Function test-install($modulename) {
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Start Script`n"
+write-host -ForegroundColor $processmessagecolor "Prompt to install missing modules =",$prompt"`n"
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -53,8 +82,9 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     test-install -modulename Microsoft.Online.SharePoint.PowerShell
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Online module"
     test-install -modulename MSOnline
-    write-host -foregroundcolor $processmessagecolor "Update Exchange Online V2 module"
+    write-host -foregroundcolor $processmessagecolor "Update PowerShellget module"
     test-install -modulename PowershellGet
+    write-host -foregroundcolor $processmessagecolor "Update Exchange Online V2 module"
     test-install -modulename ExchangeOnlineManagement
     write-host -foregroundcolor $processmessagecolor "Update Azure module"
     test-install -modulename Az 
@@ -62,9 +92,8 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     test-install -modulename SharePointPnPPowerShellOnline
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Graph module"
     test-install -modulename Microsoft.Graph 
-    write-host -foregroundcolor $processmessagecolor "Update Intune Module"
-    test-install -modulename Microsoft.Graph.Intune 
     write-host -foregroundcolor $processmessagecolor "Update Windows Autopilot Module"
+    ## will also update dependent AzureAD and Microsoft.Graph.Intune modules
     test-install -modulename WindowsAutoPilotIntune
 }
 Else {

@@ -43,7 +43,7 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     Install-Module PowershellGet -Force
     Install-Module -Name ExchangeOnlineManagement -force
     write-host -foregroundcolor $processmessagecolor "Install Azure module"
-    ## Old Azuer module
+    ## Old Azure module
     ## Install-Module -name AzureRM -Force
     ## New Az module
     Install-Module -name Az -force
@@ -51,9 +51,8 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     Install-Module SharePointPnPPowerShellOnline -Force
     write-host -foregroundcolor $processmessagecolor "Install Microsoft Graph Module"
     Install-Module -Name Microsoft.Graph -force
-    write-host -foregroundcolor $processmessagecolor "Install Intune Module"
-    Install-Module -Name Microsoft.Graph.Intune -force
     write-host -foregroundcolor $processmessagecolor "Install Windows Autopilot Module"
+    ## will also update dependent AzureAD and Microsoft.Graph.Intune modules
     Install-Module -Name WindowsAutoPilotIntune -force
 }
 else {
