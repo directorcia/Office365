@@ -47,6 +47,7 @@ https://educationstore.microsoft.com/ - Microsoft Store for Education
 https://testconnectivity.microsoft.com - Microsoft Remote Connectivity Analyzer
 https://connectivity.office.com/ - Microsoft 365 network connectivity test
 https://cqd.teams.microsoft.com/ - Microsoft Call Quality Dashboard
+https://mystaff.microsoft.com - Management portal for first line workers
 
 ## Security 
 
