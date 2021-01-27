@@ -89,7 +89,7 @@ $scripts += [PSCustomObject]@{
 }
 $scripts += [PSCustomObject]@{
     Name = "msgraph-connect.ps1";
-    Service = "Intune";  
+    Service = "Graph";  
     Module = "Microsoft.Graph"  
 }
 
