@@ -43,6 +43,7 @@ else {
 }
 $results = get-azureadserviceprincipal| sort-object displayname | Out-GridView -PassThru -title "Select Enterprise Application (Multiple selections permitted)"
 foreach ($result in $results) {             # loop through all selected options
+    write-host -foregroundcolor $processmessagecolor "Commencing",$result.displayname
     # Get Service Principal using objectId
     $sp = Get-AzureADServicePrincipal -ObjectId $results.ObjectId
     # Menu selection for USer or Admin consent types
@@ -58,6 +59,7 @@ foreach ($result in $results) {             # loop through all selected options
     $consentselects = $consenttype | Out-GridView -PassThru -title "Select Consent type (Multiple selections permitted)"
 
     foreach ($consentselect in $consentselects) {           # Loop through all selected options
+        write-host -foregroundcolor $processmessagecolor "Commencing",$consentselect.Name
         # Get all delegated permissions for the service principal
         $spOAuth2PermissionsGrants = Get-AzureADOAuth2PermissionGrant -All $true | Where-Object { $_.clientId -eq $sp.ObjectId }
         $info = $spOAuth2PermissionsGrants | Where-Object { $_.consenttype -eq $consentselect.type }
@@ -70,7 +72,7 @@ foreach ($result in $results) {             # loop through all selected options
                 $selectusers = $usernames | select-object Displayname, userprincipalname, objectid | sort-object Displayname | Out-GridView -PassThru -title "Select Consent type (Multiple selections permitted)"
                 foreach ($selectuser in $selectusers) {       # Loop through all selected options
                     $infoscope = $info | Where-Object { $_.principalid -eq $selectuser.ObjectId }
-                    write-host -foregroundcolor $processmessagecolor $consentselect.name,"permissions for user",$selectuser.displayname
+                    write-host -foregroundcolor $processmessagecolor "`n"$consentselect.name,"permissions for user",$selectuser.displayname
                     $assignments = $infoscope.scope -split " "
                     foreach ($assignment in $assignments) {
                         write-host "-",$assignment
@@ -106,7 +108,7 @@ foreach ($result in $results) {             # loop through all selected options
                 }
             }
         } else {
-            write-host -foregroundcolor $warningmessagecolor "`nNo",$consentselect.name,"permissions found for" ,$results.displayname
+            write-host -foregroundcolor $warningmessagecolor "`nNo",$consentselect.name,"permissions found for" ,$results.displayname,"`n"
         }
     }
 }
