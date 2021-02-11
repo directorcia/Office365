@@ -5,10 +5,12 @@ param(
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Delete permissions from an Azure AD enterprise application
-Source - 
+Source - https://github.com/directorcia/Office365/blob/master/graph-adappperm-del.ps1
 
 Prerequisites = 1
 1. Azure AD Module loaded
+
+More scripts available by joining http://www.ciaopspatron.com
 
 #>
 
