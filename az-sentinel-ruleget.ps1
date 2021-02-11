@@ -4,7 +4,7 @@ param(
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Report on Azure Sentinel rules
-Source - 
+Source - https://github.com/directorcia/Office365/blob/master/az-sentinel-ruleget.ps1
 
 Prerequisites = 1
 1. Azure AZ.SecurityInsights Module installed
@@ -53,18 +53,22 @@ else {
     Pause                                                                               ## Pause to view error on screen
     exit 0                                                                              ## Terminate script 
 }
+Try {
+    import-module -name Az.Securityinsights | Out-Null
+}
+catch {
+    Write-Host -ForegroundColor $errormessagecolor "[001] - Failed to import AZ.Securityinsights module - ", $_.Exception.Message
+    if ($debug) {
+        Stop-Transcript | Out-Null
+    }
+    exit 1
+}
 
 <#      Connect to Azure Tenant               #>
 write-host -foregroundcolor $processmessagecolor "Connect to tenant that contains Azure Sentinel"
-try {
-    write-host -ForegroundColor $processmessagecolor "Getting Azure subscriptions in tenant"
-    $output = Get-AzSubscription -warningaction "SilentlyContinue" | Out-GridView -PassThru -title "Select the Azure subscription to use" | Select-AzSubscription
-}
-catch {
-    $context = connect-AzAccount -warningaction "SilentlyContinue"
-    write-host -ForegroundColor $processmessagecolor "Getting Azure subscriptions in tenant"
-    $output = Get-AzSubscription -warningaction "SilentlyContinue" | Out-GridView -PassThru -title "Select the Azure subscription to use" | Select-AzSubscription
-}
+$context = connect-AzAccount -warningaction "SilentlyContinue"
+write-host -ForegroundColor $processmessagecolor "Getting Azure subscriptions in tenant"
+$output = Get-AzSubscription -warningaction "SilentlyContinue" | Out-GridView -PassThru -title "Select the Azure subscription to use" | Select-AzSubscription
 write-host -ForegroundColor $processmessagecolor "Getting Workspaces in tenant"
 $ws = Get-AzOperationalInsightsWorkspace |  select-object name, resourcegroupname,tags | Out-GridView -PassThru -title "Select the Workspace to use"
 write-host -ForegroundColor $processmessagecolor "Getting all available valid rule templates"
@@ -123,8 +127,6 @@ write-host "`nTotal templates in use =",$templatesinuseraw.Count
 write-host "Total templates in use without errors =",($templatesinuseraw | where-object {$_.kind -ne "Error"}).Count
 write-host "`nTotal templates not in use =",$templatesnotinuseraw.Count
 write-host "Total templates not in use without errors =",($templatesnotinuseraw | where-object {$_.kind -ne "Error"}).Count
-
-
 
 write-host -foregroundcolor $systemmessagecolor "`nScript Completed`n"
 if ($debug) {
