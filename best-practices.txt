@@ -36,6 +36,12 @@ End user device (EUD) security guidance - https://www.ncsc.gov.uk/collection/end
 NSA Cybersecurity Advisories & Technical Guidance - https://www.nsa.gov/What-We-Do/Cybersecurity/Advisories-Technical-Guidance/
 Operational Security Assurance - https://www.microsoft.com/en-us/securityengineering/osa/practices
 Security Design principles - https://docs.microsoft.com/en-us/azure/architecture/framework/security/security-principles
+Detect and block potentially unwanted applications - https://docs.microsoft.com/en-us/windows/security/threat-protection/microsoft-defender-antivirus/detect-block-potentially-unwanted-apps-microsoft-defender-antivirus
+
+Defender for Endpoint
+---------------------
+Recommendations for defining exclusions - https://docs.microsoft.com/en-us/windows/security/threat-protection/microsoft-defender-antivirus/configure-exclusions-microsoft-defender-antivirus#recommendations-for-defining-exclusions
+Common mistakes to avoid when defining exclusions - https://docs.microsoft.com/en-us/windows/security/threat-protection/microsoft-defender-antivirus/common-exclusion-mistakes-microsoft-defender-antivirus
 
 MCAS
 ----
