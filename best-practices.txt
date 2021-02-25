@@ -1,5 +1,5 @@
 Creator - www.ciaops.com
-Location of the file - https://github.com/directorcia/Office365/blob/master/best-practices.txt
+Source - https://github.com/directorcia/Office365/blob/master/best-practices.txt
 
 Email
 -----
@@ -23,6 +23,7 @@ NIST Cybersecurity Framework - https://www.nist.gov/cyberframework
 Small Business Cyber Security Guide - https://www.cyber.gov.au/acsc/small-and-medium-businesses/acsc-small-business-guide
 Strategies to Mitigate Cyber Security Incidents – Mitigation Details - https://www.cyber.gov.au/acsc/view-all-content/publications/strategies-mitigate-cyber-security-incidents-mitigation-details
 Microsoft password policy recommendations - https://docs.microsoft.com/en-us/microsoft-365/admin/misc/password-policy-recommendations?view=o365-worldwide
+Microsoft - Password Guidance - https://www.microsoft.com/en-us/research/publication/password-guidance/
 Responding to a compromised email account - https://docs.microsoft.com/en-us/microsoft-365/security/office-365-security/responding-to-a-compromised-email-account?view=o365-worldwide
 Hardening Microsoft Office 365 ProPlus, Office 2019 and Office 2016 - https://www.cyber.gov.au/acsc/view-all-content/publications/hardening-microsoft-office-365-proplus-office-2019-and-office-2016
 Hardening Hardening Microsoft Windows 10 version 1909 Workstations - https://www.cyber.gov.au/sites/default/files/2020-06/PROTECT%20-%20Hardening%20Microsoft%20Windows%2010%20version%201909%20Workstations%20%28June%202020%29.pdf
@@ -37,11 +38,19 @@ NSA Cybersecurity Advisories & Technical Guidance - https://www.nsa.gov/What-We-
 Operational Security Assurance - https://www.microsoft.com/en-us/securityengineering/osa/practices
 Security Design principles - https://docs.microsoft.com/en-us/azure/architecture/framework/security/security-principles
 Detect and block potentially unwanted applications - https://docs.microsoft.com/en-us/windows/security/threat-protection/microsoft-defender-antivirus/detect-block-potentially-unwanted-apps-microsoft-defender-antivirus
+Four steps to a strong identity foundation with Azure Active Directory - https://docs.microsoft.com/en-us/azure/active-directory/hybrid/four-steps
+IT checklist for securing work from anywhere using Microsoft 365 Business Premium - https://cloudpartners.transform.microsoft.com/download?assetname=assets/ITChecklistForSecuringWorkFromAnywhereUsingMicrosoft365BusinessPremium.docx&download=1
+Use attack surface reduction rules to prevent malware infection - https://docs.microsoft.com/en-us/windows/security/threat-protection/microsoft-defender-atp/attack-surface-reduction
+Protecting Microsoft 365 from on-premises attacks - https://techcommunity.microsoft.com/t5/azure-active-directory-identity/protecting-microsoft-365-from-on-premises-attacks/ba-p/1751754
+Five steps to securing your identity infrastructure - https://docs.microsoft.com/en-us/azure/security/fundamentals/steps-secure-identity
+Identity and device access configurations - https://docs.microsoft.com/en-us/microsoft-365/security/office-365-security/microsoft-365-policies-configurations?view=o365-worldwide
 
 Defender for Endpoint
 ---------------------
 Recommendations for defining exclusions - https://docs.microsoft.com/en-us/windows/security/threat-protection/microsoft-defender-antivirus/configure-exclusions-microsoft-defender-antivirus#recommendations-for-defining-exclusions
 Common mistakes to avoid when defining exclusions - https://docs.microsoft.com/en-us/windows/security/threat-protection/microsoft-defender-antivirus/common-exclusion-mistakes-microsoft-defender-antivirus
+Report ASR settings on Windows 10 - https://github.com/directorcia/Office365/blob/master/win10-asr-get.ps1
+Report Defender settings on Windows 10 - https://github.com/directorcia/Office365/blob/master/win10-def-get.ps1
 
 MCAS
 ----
@@ -55,6 +64,18 @@ SharePoint
 ----------
 Branding guidance for SharePoint Online portals - https://docs.microsoft.com/en-us/sharepoint/dev/solution-guidance/portal-branding
 
+Azure AD
+--------
+Azure Active Directory feature deployment guide - https://docs.microsoft.com/en-us/azure/active-directory/fundamentals/active-directory-deployment-checklist-p2
+
 Azure
 -----
 Resource naming and tagging decision guide - https://docs.microsoft.com/en-us/azure/cloud-adoption-framework/decision-guides/resource-tagging/
+
+Reports
+-------
+Ransomware Demands continue to rise as Data Exfiltration becomes common, and Maze subdues (Corewave) - https://www.coveware.com/blog/q3-2020-ransomware-marketplace-report
+
+Publications
+------------
+Australian Cyber Security Centre Publications - https://www.cyber.gov.au/acsc/view-all-content/publications

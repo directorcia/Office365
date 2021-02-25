@@ -48,6 +48,7 @@ https://testconnectivity.microsoft.com - Microsoft Remote Connectivity Analyzer
 https://connectivity.office.com/ - Microsoft 365 network connectivity test
 https://cqd.teams.microsoft.com/ - Microsoft Call Quality Dashboard
 https://mystaff.microsoft.com - Management portal for first line workers
+https://protection.office.com/reportv2?dltarget=report&dlstorage=url&dljson=%7B%22reportId%22:%22TPSMessageOverrideReportATP%22,%22startDate%22:%222021-02-14T00:00:00.000Z%22,%22endDate%22:%222021-02-20T23:59:59.000Z%22,%22target%22:%22report%22,%22storage%22:%22Url%22,%22source%22:%22%2Freportv2%22%7D - Threat protection status (Message Override)
 
 ## Security 
 

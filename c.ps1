@@ -92,6 +92,11 @@ $scripts += [PSCustomObject]@{
     Service = "Graph";  
     Module = "Microsoft.Graph"  
 }
+$scripts += [PSCustomObject]@{
+    Name = "o365-connect-mfa-ctldply.ps1";
+    Service = "Add-ins";  
+    Module = "O365CentralizedAddInDeployment"  
+}
 
 try {
     $results = $scripts | select-object service | Sort-Object Service | Out-GridView -PassThru -title "Select services to connect to (Multiple selections permitted) "

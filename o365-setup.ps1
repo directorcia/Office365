@@ -54,6 +54,8 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     write-host -foregroundcolor $processmessagecolor "Install Windows Autopilot Module"
     ## will also update dependent AzureAD and Microsoft.Graph.Intune modules
     Install-Module -Name WindowsAutoPilotIntune -force
+    write-host -foregroundcolor $processmessagecolor "Install Centralised Add-in Deployment"
+    Install-module -name O365CentralizedAddInDeployment
 }
 else {
     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
