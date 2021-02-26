@@ -35,7 +35,6 @@ catch {
     exit 1
 }
 
-
 ## Deploy addins from Office store
 ## You will receive an error if the addin is already installed in tenant
 ## Change the locale to suit your region
@@ -99,7 +98,6 @@ try {
 catch {
     Write-Host -ForegroundColor $errormessagecolor "`n[008] - Failed to assign asset (Typically it is already installed)"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message,"`n"
-
 }
 write-host -foregroundcolor $processmessagecolor "Assign Message Header Analyser to all users"
 try {
@@ -108,7 +106,6 @@ try {
 Catch {
     Write-Host -ForegroundColor $errormessagecolor "`n[009] - Failed to assign asset (Typically it is already installed)"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message,"`n"
-
 }
 write-host -foregroundcolor $processmessagecolor "Enable Findtime to all users"
 try {
@@ -117,7 +114,6 @@ try {
 catch {
     Write-Host -ForegroundColor $errormessagecolor "`n[010] - Failed to assign asset (Typically it is already installed)"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message,"`n"
-
 }
 
 write-host -foregroundcolor $systemmessagecolor "Script Completed"

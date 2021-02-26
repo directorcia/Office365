@@ -22,7 +22,13 @@ $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
 
 Function test-install($modulename) {
-    if (Get-InstalledModule -Name $modulename) {          ## If module exists then update
+    try {
+        $found = Get-InstalledModule -Name $modulename -erroraction Stop    
+    }
+    catch {
+        $found = $false
+    }
+    if ($found) {          ## If module exists then update
         #get version of the module (selects the first if there are more versions installed)
         $version = (Get-InstalledModule -name $modulename) | Sort-Object Version -Descending  | Select-Object Version -First 1
         #get version of the module in psgallery
