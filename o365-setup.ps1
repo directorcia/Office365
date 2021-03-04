@@ -30,8 +30,9 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     Install-PackageProvider -Name NuGet -Force
     write-host -foregroundcolor $processmessagecolor "Install Azure AD module"
     Install-Module -Name AzureAD -force
-    write-host -foregroundcolor $processmessagecolor "Install Azure AD Right Management module"
-    Install-Module -Name AADRM -force
+    write-host -foregroundcolor $processmessagecolor "Install Azure Information Protection module"
+    Install-module -name aipservice -Force
+##    Install-Module -Name AADRM -force                       ## Support for the AADRM module ends July 15, 2020
     write-host -foregroundcolor $processmessagecolor "Install Teams Module"
     Install-Module -Name MicrosoftTeams -Force
     write-host -foregroundcolor $processmessagecolor "Install SharePoint Online module"
@@ -42,7 +43,7 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     Install-Module PowershellGet -Force
     Install-Module -Name ExchangeOnlineManagement -force
     write-host -foregroundcolor $processmessagecolor "Install Azure module"
-    ## Old Azuer module
+    ## Old Azure module
     ## Install-Module -name AzureRM -Force
     ## New Az module
     Install-Module -name Az -force
@@ -50,6 +51,11 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     Install-Module SharePointPnPPowerShellOnline -Force
     write-host -foregroundcolor $processmessagecolor "Install Microsoft Graph Module"
     Install-Module -Name Microsoft.Graph -force
+    write-host -foregroundcolor $processmessagecolor "Install Windows Autopilot Module"
+    ## will also update dependent AzureAD and Microsoft.Graph.Intune modules
+    Install-Module -Name WindowsAutoPilotIntune -force
+    write-host -foregroundcolor $processmessagecolor "Install Centralised Add-in Deployment"
+    Install-module -name O365CentralizedAddInDeployment
 }
 else {
     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"

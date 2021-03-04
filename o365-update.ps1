@@ -1,3 +1,6 @@
+param(                         ## if no parameters used then don't prompt to install missing modules, just install them
+    [switch]$prompt = $false   ## if -prompt used then prompt to install missing modules
+)
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
@@ -16,6 +19,54 @@ More scripts available by joining http://www.ciaopspatron.com
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
+$warningmessagecolor = "yellow"
+
+Function test-install($modulename) {
+    try {
+        $found = Get-InstalledModule -Name $modulename -erroraction Stop    
+    }
+    catch {
+        $found = $false
+    }
+    if ($found) {          ## If module exists then update
+        #get version of the module (selects the first if there are more versions installed)
+        $version = (Get-InstalledModule -name $modulename) | Sort-Object Version -Descending  | Select-Object Version -First 1
+        #get version of the module in psgallery
+        $psgalleryversion = Find-Module -Name $modulename | Sort-Object Version -Descending | Select-Object Version -First 1
+        #convert to string for comparison
+        $stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
+        $a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
+        #convert to string for comparison
+        $onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
+        $b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
+        #version compare
+        if ([version]"$a" -ge [version]"$b") {
+            Write-Host -foregroundcolor $processmessagecolor "    Local module $a greater or equal to Gallery module $b"
+            write-host -foregroundcolor $processmessagecolor "    No update required`n"
+        }
+        else {
+            Write-Host -foregroundcolor $warningmessagecolor "    Local module $a lower version than Gallery module $b"
+            write-host -foregroundcolor $warningmessagecolor "    Will be updated"
+            update-module -name $modulename -force
+            Write-Host
+        }
+    }
+    else {                                                      ## If module doesn't exist then prompt to update
+        write-host -foregroundcolor $warningmessagecolor -nonewline "    [Warning]"$modulename" module not found. "
+        if ($prompt) {
+            do {
+                $result = Read-host -prompt "Install this module (Y/N)?"
+            } until (-not [string]::isnullorempty($result))
+            if ($result -eq 'Y' -or $result -eq 'y') {
+                write-host -foregroundcolor $processmessagecolor "Installing module",$modulename
+                install-Module -Name $modulename -Force
+            }
+        } else {
+            write-host -foregroundcolor $processmessagecolor "Installing module",$modulename
+            install-Module -Name $modulename -Force
+        }
+    }
+}
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -23,31 +74,35 @@ $errormessagecolor = "red"
 Clear-Host
 
 write-host -foregroundcolor $systemmessagecolor "Start Script`n"
+write-host -ForegroundColor $processmessagecolor "Prompt to install missing modules =",$prompt"`n"
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     write-host -foregroundcolor $processmessagecolor "Update Azure AD module"
-    Update-Module -Name AzureAD -force
-    write-host -foregroundcolor $processmessagecolor "Update Azure AD Right Management module"
-    Update-Module -Name AADRM -force
+    test-install -modulename AzureAD
+    write-host -foregroundcolor $processmessagecolor "Update Azure Information Protection module"
+    test-install -modulename AIPService
     write-host -foregroundcolor $processmessagecolor "Update Teams Module"
-    Update-Module -Name MicrosoftTeams -Force
+    test-install -modulename MicrosoftTeams
     write-host -foregroundcolor $processmessagecolor "Update SharePoint Online module"
-    Update-Module -Name Microsoft.Online.SharePoint.PowerShell -force
+    test-install -modulename Microsoft.Online.SharePoint.PowerShell
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Online module"
-    Update-Module -Name MSOnline -force
+    test-install -modulename MSOnline
+    write-host -foregroundcolor $processmessagecolor "Update PowerShellget module"
+    test-install -modulename PowershellGet
     write-host -foregroundcolor $processmessagecolor "Update Exchange Online V2 module"
-    Update-Module PowershellGet -Force
-    Update-Module -Name ExchangeOnlineManagement -force
+    test-install -modulename ExchangeOnlineManagement
     write-host -foregroundcolor $processmessagecolor "Update Azure module"
-    ## Old Azure module
-    ## Update-Module -name AzureRM -Force
-    ## New Az module
-    Update-Module -name Az -force
+    test-install -modulename Az 
     write-host -foregroundcolor $processmessagecolor "Update SharePoint PnP module"
-    update-Module SharePointPnPPowerShellOnline -Force
+    test-install -modulename SharePointPnPPowerShellOnline
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Graph module"
-    Update-Module -Name Microsoft.Graph -Force
+    test-install -modulename Microsoft.Graph 
+    write-host -foregroundcolor $processmessagecolor "Update Windows Autopilot Module"
+    ## will also update dependent AzureAD and Microsoft.Graph.Intune modules
+    test-install -modulename WindowsAutoPilotIntune
+    write-host -foregroundcolor $processmessagecolor "Centralised Add-in Deployment"
+    test-install -modulename O365CentralizedAddInDeployment
 }
 Else {
     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
