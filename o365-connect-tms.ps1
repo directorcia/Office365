@@ -1,5 +1,5 @@
 param(                         
-    [switch]$noprompt = $false,   ## if -noprompt used then ask user will not be asked for any input
+    [switch]$noprompt = $false,   ## if -noprompt used then user will not be asked for any input
     [switch]$debug = $false       ## if -debug create a log file
 )
 <# CIAOPS
@@ -29,22 +29,23 @@ Clear-Host
 if ($debug) {
     start-transcript "..\o365-connect-tms.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
 }
-write-host -foregroundcolor $systemmessagecolor "Script started`n"
+write-host -foregroundcolor $systemmessagecolor "Microsoft Teams connection script started`n"
 write-host -ForegroundColor $processmessagecolor "Debug = ",$debug
+write-host -ForegroundColor $processmessagecolor "Prompt = ",(-not $noprompt)
 
 if (get-module -listavailable -name MicrosoftTeams) {    ## Has the Teams PowerShell module been installed?
-    write-host -ForegroundColor $processmessagecolor "Teams PowerShell module found"
+    write-host -ForegroundColor $processmessagecolor "Teams PowerShell module installed"
 }
 else {
-    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[001] - Teams PowerShell module not installed.`n"
+    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[001] - Teams PowerShell module not installed`n"
     if (-not $noprompt) {
         do {
-            $response = read-host -Prompt "`nDo you wish to install the PowerShell module (Y/N)?"
+            $response = read-host -Prompt "`nDo you wish to install the Microsoft Teams PowerShell module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
         if ($result -eq 'Y' -or $result -eq 'y') {
-            write-host -foregroundcolor $processmessagecolor "Installing Teams module - Administration escalation required"
+            write-host -foregroundcolor $processmessagecolor "Installing Microsoft Teams PowerShell module - Administration escalation required"
             Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name MicrosoftTeams -Force -confirm:$false" -wait -WindowStyle Hidden
-            write-host -foregroundcolor $processmessagecolor "Teams module installed"
+            write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module installed"
         }
         else {
             write-host -foregroundcolor $processmessagecolor "Terminating script"
@@ -55,9 +56,9 @@ else {
         }
     }
     else {
-        write-host -foregroundcolor $processmessagecolor "Installing Teams module - Administration escalation required"
+        write-host -foregroundcolor $processmessagecolor "Installing Microsoft Teams PowerShell module - Administration escalation required"
         Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name MicrosoftTeams -Force -confirm:$false" -wait -WindowStyle Hidden
-        write-host -foregroundcolor $processmessagecolor "Teams module installed"    
+        write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module installed"    
     }
     
 }
@@ -65,15 +66,15 @@ try {
     $result = import-module MicrosoftTeams
 }
 catch {
-    Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Microsoft Teams module`n"
+    Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Microsoft Teams PowerShell module`n"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
     if ($debug) {
-        Stop-Transcript                 ## Terminate transcription
+        Stop-Transcript | Out-Null                ## Terminate transcription
     }
     exit 2
 }
 
-write-host -foregroundcolor $processmessagecolor "Microsoft Teams module loaded"
+write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module loaded"
 
 ## Connect to Microsoft Teams service
 try {
@@ -83,12 +84,12 @@ catch {
     Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Microsoft Teams`n"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
     if ($debug) {
-        Stop-Transcript                 ## Terminate transcription
+        Stop-Transcript | Out-Null                 ## Terminate transcription
     }
     exit 3
 }
-write-host -foregroundcolor $processmessagecolor "Now connected to Microsoft Teams Service`n"
-write-host -foregroundcolor $systemmessagecolor "Script Completed`n"
+write-host -foregroundcolor $processmessagecolor "Now connected to Microsoft Teams`n"
+write-host -foregroundcolor $systemmessagecolor "Microsoft Teams connection script finished`n"
 if ($debug) {
     Stop-Transcript | Out-Null
 }

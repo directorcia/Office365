@@ -22,7 +22,6 @@ More scripts available by joining http://www.ciaopspatron.com
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
-$version = "2.00"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -33,9 +32,9 @@ if ($debug) {
 
 Clear-host
 
-write-host -foregroundcolor $systemmessagecolor "Script started. Version = $version`n"
+write-host -foregroundcolor $systemmessagecolor "Microsoft Cloud connections menu script started"
 write-host -foregroundcolor cyan -backgroundcolor DarkBlue ">>>>>> Created by www.ciaops.com <<<<<<`n"
-write-host "--- Script to connect to cloud services ---`n"
+write-host "--- Script to connect to Microsoft Cloud services ---`n"
 
 $scripts = @()
 $scripts += [PSCustomObject]@{
@@ -109,7 +108,9 @@ if (-not $prompt) {
     }
     catch {
         write-host -ForegroundColor yellow -backgroundcolor $errormessagecolor "`n[001] - Error getting options`n"
-        Stop-Transcript | Out-Null      ## Terminate transcription
+        if ($debug) {
+            Stop-Transcript | Out-Null      ## Terminate transcription
+        }
         exit 1                          ## Terminate script
     }
 }
@@ -127,14 +128,18 @@ foreach ($result in $results) {
                 }
                 else {
                     write-host -ForegroundColor yellow -backgroundcolor $errormessagecolor "`n[002] - Online PowerShell module",$script.module,"not installed. Please install and re-run script`n"
-                    Stop-Transcript | Out-Null      ## Terminate transcription
+                    if ($debug) {
+                        Stop-Transcript | Out-Null      ## Terminate transcription
+                    }
                     exit 2                          ## Terminate script
                 }
             }
             <# Test for script in current location #>
             if (-not (test-path -path $run)) {
                 write-host -ForegroundColor yellow -backgroundcolor $errormessagecolor "`n[003] -",$script.name,"script not found in current directory - Please ensure exists first`n"
-                Stop-Transcript | Out-Null      ## Terminate transcription
+                if ($debug) {
+                    Stop-Transcript | Out-Null      ## Terminate transcription
+                }
                 exit 3                          ## Terminate script
             }
             else {
@@ -145,7 +150,7 @@ foreach ($result in $results) {
     }
 }
 
-write-host -foregroundcolor $systemmessagecolor "`nScript finished`n"
+write-host -foregroundcolor $systemmessagecolor "`nMicrosoft Cloud connections menu script finished`n"
 if ($debug) {
     Stop-Transcript | Out-Null
 }
