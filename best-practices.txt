@@ -44,6 +44,8 @@ Use attack surface reduction rules to prevent malware infection - https://docs.m
 Protecting Microsoft 365 from on-premises attacks - https://techcommunity.microsoft.com/t5/azure-active-directory-identity/protecting-microsoft-365-from-on-premises-attacks/ba-p/1751754
 Five steps to securing your identity infrastructure - https://docs.microsoft.com/en-us/azure/security/fundamentals/steps-secure-identity
 Identity and device access configurations - https://docs.microsoft.com/en-us/microsoft-365/security/office-365-security/microsoft-365-policies-configurations?view=o365-worldwide
+Azure best practices for network security - https://docs.microsoft.com/en-us/azure/security/fundamentals/network-best-practices
+Small Business Cyber Security Guide - https://www.cyber.gov.au/acsc/view-all-content/publications/small-business-cyber-security-guide
 
 Defender for Endpoint
 ---------------------

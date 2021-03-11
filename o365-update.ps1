@@ -47,7 +47,7 @@ Function test-install($modulename) {
         else {
             Write-Host -foregroundcolor $warningmessagecolor "    Local module $a lower version than Gallery module $b"
             write-host -foregroundcolor $warningmessagecolor "    Will be updated"
-            update-module -name $modulename -force
+            update-module -name $modulename -force -confirm:$false
             Write-Host
         }
     }
@@ -59,7 +59,7 @@ Function test-install($modulename) {
             } until (-not [string]::isnullorempty($result))
             if ($result -eq 'Y' -or $result -eq 'y') {
                 write-host -foregroundcolor $processmessagecolor "Installing module",$modulename
-                install-Module -Name $modulename -Force
+                install-Module -Name $modulename -Force -confirm:$false
             }
         } else {
             write-host -foregroundcolor $processmessagecolor "Installing module",$modulename

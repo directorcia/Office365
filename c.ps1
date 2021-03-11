@@ -39,7 +39,7 @@ write-host "--- Script to connect to cloud services ---`n"
 
 $scripts = @()
 $scripts += [PSCustomObject]@{
-    Name = "o365-connect-mfa-tms.ps1";
+    Name = "o365-connect-tms.ps1";
     Service = "Teams";
     Module = "MicrosoftTeams"    
 }
