@@ -19,6 +19,7 @@ More scripts available by joining http://www.ciaopspatron.com
 ## Variables
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
+$errormessagecolor = "red"
 $warningmessagecolor = "yellow"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
@@ -61,6 +62,47 @@ else {
         write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module installed"    
     }  
 }
+
+write-host -foregroundcolor $processmessagecolor "Check whether newer version of Microsoft Teams PowerShell module is available"
+#get version of the module (selects the first if there are more versions installed)
+$version = (Get-InstalledModule -name MicrosoftTeams) | Sort-Object Version -Descending  | Select-Object Version -First 1
+#get version of the module in psgallery
+$psgalleryversion = Find-Module -Name MicrosoftTeams | Sort-Object Version -Descending | Select-Object Version -First 1
+#convert to string for comparison
+$stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
+$a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
+#convert to string for comparison
+$onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
+$b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
+#version compare
+if ([version]"$a" -ge [version]"$b") {
+    Write-Host -foregroundcolor $processmessagecolor "Local module $a greater or equal to Gallery module $b"
+    write-host -foregroundcolor $processmessagecolor "No update required"
+}
+else {
+    Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
+    write-host -foregroundcolor $warningmessagecolor "Update recommended"
+    if (-not $noprompt) {
+       do {
+           $response = read-host -Prompt "`nDo you wish to update the Microsoft Teams PowerShell module (Y/N)?"
+       } until (-not [string]::isnullorempty($response))
+       if ($result -eq 'Y' -or $result -eq 'y') {
+           write-host -foregroundcolor $processmessagecolor "Updating the Microsoft Teams PowerShell module - Administration escalation required"
+           Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name MicrosoftTeams -Force -confirm:$false" -wait -WindowStyle Hidden
+           write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module - updated"
+       }
+       else {
+           write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module - not updated"
+       }
+    }
+    else {
+       write-host -foregroundcolor $processmessagecolor "Updating the Microsoft Teams PowerShell module - Administration escalation required" 
+       Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name MicrosoftTeams -Force -confirm:$false" -wait -WindowStyle Hidden
+       write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module - updated"
+    }
+}
+
+write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module loading"
 try {
     $result = import-module MicrosoftTeams
 }
@@ -76,6 +118,7 @@ catch {
 write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module loaded"
 
 ## Connect to Microsoft Teams service
+write-host -foregroundcolor $processmessagecolor "Connecting to Microsoft Teams"
 try {
     $result=Connect-MicrosoftTeams
 }
@@ -87,7 +130,7 @@ catch {
     }
     exit 3
 }
-write-host -foregroundcolor $processmessagecolor "Now connected to Microsoft Teams`n"
+write-host -foregroundcolor $processmessagecolor "Connected to Microsoft Teams`n"
 write-host -foregroundcolor $systemmessagecolor "Microsoft Teams connection script finished`n"
 if ($debug) {
     Stop-Transcript | Out-Null

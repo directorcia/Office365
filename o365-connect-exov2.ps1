@@ -21,6 +21,7 @@ More scripts available by joining http://www.ciaopspatron.com
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
+$warningmessagecolor = "yellow"
 
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
@@ -33,7 +34,7 @@ if ($debug) {
 }
 
 write-host -foregroundcolor $systemmessagecolor "Exchange Online Connection V2 script started`n"
-write-host -ForegroundColor $processmessagecolor "Prompt = ",(-not $noprompt)
+write-host -ForegroundColor $processmessagecolor "Prompt =",(-not $noprompt)
 
 if (get-module -listavailable -name ExchangeOnlineManagement) {    ## Has the Exchange Online V2 PowerShell module been installed?
     write-host -ForegroundColor $processmessagecolor "Exchange Online V2 PowerShell module installed"
@@ -67,7 +68,45 @@ else {
         write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module installed"    
     }
 }
-
+write-host -foregroundcolor $processmessagecolor "Check whether newer version of Exchange Online V2 PowerShell module is available"
+#get version of the module (selects the first if there are more versions installed)
+$version = (Get-InstalledModule -name ExchangeOnlineManagement) | Sort-Object Version -Descending  | Select-Object Version -First 1
+#get version of the module in psgallery
+$psgalleryversion = Find-Module -Name ExchangeOnlineManagement | Sort-Object Version -Descending | Select-Object Version -First 1
+#convert to string for comparison
+$stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
+$a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
+#convert to string for comparison
+$onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
+$b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
+#version compare
+if ([version]"$a" -ge [version]"$b") {
+    Write-Host -foregroundcolor $processmessagecolor "Local module $a greater or equal to Gallery module $b"
+    write-host -foregroundcolor $processmessagecolor "No update required"
+}
+else {
+    Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
+    write-host -foregroundcolor $warningmessagecolor "Update recommended"
+    if (-not $noprompt) {
+       do {
+           $response = read-host -Prompt "`nDo you wish to update the Exchange Online V2 PowerShell module (Y/N)?"
+       } until (-not [string]::isnullorempty($response))
+       if ($result -eq 'Y' -or $result -eq 'y') {
+           write-host -foregroundcolor $processmessagecolor "Updating Exchange Online V2 PowerShell module - Administration escalation required"
+           Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name ExchangeOnlineManagement -Force -confirm:$false" -wait -WindowStyle Hidden
+           write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module - updated"
+       }
+       else {
+           write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module - not updated"
+       }
+    }
+    else {
+       write-host -foregroundcolor $processmessagecolor "Updating Exchange Online V2 PowerShell module - Administration escalation required" 
+       Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name ExchangeOnlineManagement -Force -confirm:$false" -wait -WindowStyle Hidden
+       write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module - updated"
+    }
+}
+write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module loading"
 Try {
     Import-Module ExchangeOnlineManagement | Out-Null
 }
@@ -80,6 +119,9 @@ catch {
     exit 2
 }
 write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module loaded"
+
+## Connect to Exchange Online service
+write-host -foregroundcolor $processmessagecolor "Connecting to Exchange Online"
 try {
     $result = Connect-ExchangeOnline -ShowProgress:$false -ShowBanner:$false | Out-Null
 }
