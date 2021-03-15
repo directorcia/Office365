@@ -27,10 +27,10 @@ $warningmessagecolor = "yellow"
 Clear-Host
 
 if ($debug) {
+    write-host "Script activity logged at ..\o365-connect-tms.txt"
     start-transcript "..\o365-connect-tms.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
 }
 write-host -foregroundcolor $systemmessagecolor "Microsoft Teams connection script started`n"
-write-host -ForegroundColor $processmessagecolor "Debug = ",$debug
 write-host -ForegroundColor $processmessagecolor "Prompt = ",(-not $noprompt)
 
 if (get-module -listavailable -name MicrosoftTeams) {    ## Has the Teams PowerShell module been installed?
@@ -59,8 +59,7 @@ else {
         write-host -foregroundcolor $processmessagecolor "Installing Microsoft Teams PowerShell module - Administration escalation required"
         Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name MicrosoftTeams -Force -confirm:$false" -wait -WindowStyle Hidden
         write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module installed"    
-    }
-    
+    }  
 }
 try {
     $result = import-module MicrosoftTeams

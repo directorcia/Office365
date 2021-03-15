@@ -27,6 +27,7 @@ $errormessagecolor = "red"
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
 if ($debug) {
+    write-host "Script activity logged at ..\c.txt"
     start-transcript "..\c.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
 }
 
