@@ -1,5 +1,6 @@
 param(                         
     [switch]$noprompt = $false,   ## if -noprompt used then user will not be asked for any input
+    [switch]$noupdate = $false,   ## if -noupdate used then module will not be checked for more recent version
     [switch]$debug = $false       ## if -debug create a log file
 )
 <# CIAOPS
@@ -64,43 +65,44 @@ else {
         write-host -foregroundcolor $processmessagecolor "Microsoft Online module installed"    
     }
 }
-
-write-host -foregroundcolor $processmessagecolor "Check whether newer version of Microsoft Online PowerShell module is available"
-#get version of the module (selects the first if there are more versions installed)
-$version = (Get-InstalledModule -name msonline) | Sort-Object Version -Descending  | Select-Object Version -First 1
-#get version of the module in psgallery
-$psgalleryversion = Find-Module -Name msonline | Sort-Object Version -Descending | Select-Object Version -First 1
-#convert to string for comparison
-$stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
-$a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
-#convert to string for comparison
-$onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
-$b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
-#version compare
-if ([version]"$a" -ge [version]"$b") {
-    Write-Host -foregroundcolor $processmessagecolor "Local module $a greater or equal to Gallery module $b"
-    write-host -foregroundcolor $processmessagecolor "No update required"
-}
-else {
-    Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
-    write-host -foregroundcolor $warningmessagecolor "Update recommended"
-    if (-not $noprompt) {
-       do {
-           $response = read-host -Prompt "`nDo you wish to update the Microsoft Online PowerShell module (Y/N)?"
-       } until (-not [string]::isnullorempty($response))
-       if ($result -eq 'Y' -or $result -eq 'y') {
-           write-host -foregroundcolor $processmessagecolor "Updating Microsoft Online PowerShell module - Administration escalation required"
-           Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name msonline -Force -confirm:$false" -wait -WindowStyle Hidden
-           write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module - updated"
-       }
-       else {
-           write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module - not updated"
-       }
+if (-not $noupdate) {
+    write-host -foregroundcolor $processmessagecolor "Check whether newer version of Microsoft Online PowerShell module is available"
+    #get version of the module (selects the first if there are more versions installed)
+    $version = (Get-InstalledModule -name msonline) | Sort-Object Version -Descending  | Select-Object Version -First 1
+    #get version of the module in psgallery
+    $psgalleryversion = Find-Module -Name msonline | Sort-Object Version -Descending | Select-Object Version -First 1
+    #convert to string for comparison
+    $stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
+    $a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
+    #convert to string for comparison
+    $onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
+    $b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
+    #version compare
+    if ([version]"$a" -ge [version]"$b") {
+        Write-Host -foregroundcolor $processmessagecolor "Local module $a greater or equal to Gallery module $b"
+        write-host -foregroundcolor $processmessagecolor "No update required"
     }
     else {
-       write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module - Administration escalation required" 
-       Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name msonline -Force -confirm:$false" -wait -WindowStyle Hidden
-       write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module - updated"
+        Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
+        write-host -foregroundcolor $warningmessagecolor "Update recommended"
+        if (-not $noprompt) {
+            do {
+                $response = read-host -Prompt "`nDo you wish to update the Microsoft Online PowerShell module (Y/N)?"
+            } until (-not [string]::isnullorempty($response))
+            if ($result -eq 'Y' -or $result -eq 'y') {
+                write-host -foregroundcolor $processmessagecolor "Updating Microsoft Online PowerShell module - Administration escalation required"
+                Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name msonline -Force -confirm:$false" -wait -WindowStyle Hidden
+                write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module - updated"
+            }
+            else {
+                write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module - not updated"
+            }
+        }
+        else {
+        write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module - Administration escalation required" 
+        Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name msonline -Force -confirm:$false" -wait -WindowStyle Hidden
+        write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module - updated"
+        }
     }
 }
 
@@ -175,42 +177,44 @@ else {
     }
 }
 
-write-host -foregroundcolor $processmessagecolor "Check whether newer version of SharePoint Online PowerShell module is available"
-#get version of the module (selects the first if there are more versions installed)
-$version = (Get-InstalledModule -name microsoft.online.sharepoint.powershell) | Sort-Object Version -Descending  | Select-Object Version -First 1
-#get version of the module in psgallery
-$psgalleryversion = Find-Module -Name microsoft.online.sharepoint.powershell | Sort-Object Version -Descending | Select-Object Version -First 1
-#convert to string for comparison
-$stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
-$a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
-#convert to string for comparison
-$onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
-$b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
-#version compare
-if ([version]"$a" -ge [version]"$b") {
-    Write-Host -foregroundcolor $processmessagecolor "Local module $a greater or equal to Gallery module $b"
-    write-host -foregroundcolor $processmessagecolor "No update required"
-}
-else {
-    Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
-    write-host -foregroundcolor $warningmessagecolor "Update recommended"
-    if (-not $noprompt) {
-       do {
-           $response = read-host -Prompt "`nDo you wish to update the SharePoint Online PowerShell module (Y/N)?"
-       } until (-not [string]::isnullorempty($response))
-       if ($result -eq 'Y' -or $result -eq 'y') {
-           write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online PowerShell module - Administration escalation required"
-           Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name microsoft.online.sharepoint.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
-           write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module - updated"
-       }
-       else {
-           write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module - not updated"
-       }
+if (-not $noupdate) {
+    write-host -foregroundcolor $processmessagecolor "Check whether newer version of SharePoint Online PowerShell module is available"
+    #get version of the module (selects the first if there are more versions installed)
+    $version = (Get-InstalledModule -name microsoft.online.sharepoint.powershell) | Sort-Object Version -Descending  | Select-Object Version -First 1
+    #get version of the module in psgallery
+    $psgalleryversion = Find-Module -Name microsoft.online.sharepoint.powershell | Sort-Object Version -Descending | Select-Object Version -First 1
+    #convert to string for comparison
+    $stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
+    $a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
+    #convert to string for comparison
+    $onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
+    $b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
+    #version compare
+    if ([version]"$a" -ge [version]"$b") {
+        Write-Host -foregroundcolor $processmessagecolor "Local module $a greater or equal to Gallery module $b"
+        write-host -foregroundcolor $processmessagecolor "No update required"
     }
     else {
-       write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online PowerShell module - Administration escalation required" 
-       Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name microsoft.online.sharepoint.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
-       write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module - updated"
+        Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
+        write-host -foregroundcolor $warningmessagecolor "Update recommended"
+        if (-not $noprompt) {
+            do {
+                $response = read-host -Prompt "`nDo you wish to update the SharePoint Online PowerShell module (Y/N)?"
+            } until (-not [string]::isnullorempty($response))
+            if ($result -eq 'Y' -or $result -eq 'y') {
+                write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online PowerShell module - Administration escalation required"
+                Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name microsoft.online.sharepoint.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
+                write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module - updated"
+            }
+            else {
+                write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module - not updated"
+            }
+        }
+        else {
+        write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online PowerShell module - Administration escalation required" 
+        Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name microsoft.online.sharepoint.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
+        write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module - updated"
+        }
     }
 }
 
