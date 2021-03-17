@@ -79,7 +79,7 @@ $scripts += [PSCustomObject]@{
     Module = "AzureAD"    
 }
 $scripts += [PSCustomObject]@{
-    Name = "o365-connect-mfa.ps1";
+    Name = "o365-connect.ps1";
     Service = "MS Online";  
     Module = "MSOnline"  
 }
