@@ -44,7 +44,7 @@ $scripts += [PSCustomObject]@{
     Module = "MicrosoftTeams"    
 }
 $scripts += [PSCustomObject]@{
-    Name = "o365-connect-mfa-spo.ps1";
+    Name = "o365-connect-spo.ps1";
     Service = "SharePoint"; 
     Module = "Microsoft.Online.SharePoint.PowerShell"   
 }
@@ -59,7 +59,7 @@ $scripts += [PSCustomObject]@{
     Module = "skypeonlineconnector"
 }
 $scripts += [PSCustomObject]@{
-    Name = "o365-connect-exov2.ps1";
+    Name = "o365-connect-exo.ps1";
     Service = "Exchange Online";
     Module ="ExchangeOnlineManagement"    
 }
@@ -74,7 +74,7 @@ $scripts += [PSCustomObject]@{
     Module = "AADRM"    
 }
 $scripts += [PSCustomObject]@{
-    Name = "o365-connect-mfa-aad.ps1";
+    Name = "o365-connect-aad.ps1";
     Service = "Azure AD";
     Module = "AzureAD"    
 }
