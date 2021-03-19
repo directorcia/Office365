@@ -69,9 +69,9 @@ $scripts += [PSCustomObject]@{
     Module = "";    
 }
 $scripts += [PSCustomObject]@{
-    Name = "o365-connect-mfa-aadrm.ps1";
-    Service = "Azure AD Rights Management";
-    Module = "AADRM"    
+    Name = "o365-connect-aip.ps1";
+    Service = "Azure Information Protection";
+    Module = "Aipservice"    
 }
 $scripts += [PSCustomObject]@{
     Name = "o365-connect-aad.ps1";

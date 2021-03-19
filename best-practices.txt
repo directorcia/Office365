@@ -46,6 +46,8 @@ Five steps to securing your identity infrastructure - https://docs.microsoft.com
 Identity and device access configurations - https://docs.microsoft.com/en-us/microsoft-365/security/office-365-security/microsoft-365-policies-configurations?view=o365-worldwide
 Azure best practices for network security - https://docs.microsoft.com/en-us/azure/security/fundamentals/network-best-practices
 Small Business Cyber Security Guide - https://www.cyber.gov.au/acsc/view-all-content/publications/small-business-cyber-security-guide
+Australian Business Cyber Security Assessment Tool - https://digitaltools.business.gov.au/jfe/form/SV_cRMe9MTmaq6QmrA?ref=bga
+Cyber security step by step guides - https://www.cyber.gov.au/acsc/small-and-medium-businesses/step-by-step-guides
 
 Defender for Endpoint
 ---------------------
