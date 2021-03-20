@@ -27,7 +27,6 @@ $warningmessagecolor = "yellow"
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
 Clear-Host
-Clear-Host
 if ($debug) {
     write-host "Script activity logged at ..\o365-connect-aip.txt"
     start-transcript "..\o365-connect-aip.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
