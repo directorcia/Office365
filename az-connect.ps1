@@ -104,9 +104,10 @@ if (-not $noupdate) {
     }
 }
 
-write-host -foregroundcolor $processmessagecolor "Azure PowerShell module loading"
+write-host -foregroundcolor $processmessagecolor "Azure PowerShell module loading - Please wait as this may take a while"
+
 Try {
-    Import-Module az | Out-Null
+    Import-Module -name az | Out-Null
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Azure PowerShell module`n"

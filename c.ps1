@@ -49,7 +49,7 @@ $scripts += [PSCustomObject]@{
     Module = "Microsoft.Online.SharePoint.PowerShell"   
 }
 $scripts += [PSCustomObject]@{
-    Name = "o365-connect-mfa-sac.ps1";
+    Name = "o365-connect-sac.ps1";
     Service = "Security and Compliance";
     Module = "MSOnline"    
 }
