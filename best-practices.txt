@@ -58,6 +58,10 @@ Common mistakes to avoid when defining exclusions - https://docs.microsoft.com/e
 Report ASR settings on Windows 10 - https://github.com/directorcia/Office365/blob/master/win10-asr-get.ps1
 Report Defender settings on Windows 10 - https://github.com/directorcia/Office365/blob/master/win10-def-get.ps1
 
+Microsoft 365
+-------------
+Network connectivity test - https://connectivity.office.com/
+
 MCAS
 ----
 Cloud App Security best practices - https://docs.microsoft.com/en-us/cloud-app-security/best-practices
@@ -65,10 +69,12 @@ Cloud App Security best practices - https://docs.microsoft.com/en-us/cloud-app-s
 OneDrive
 --------
 Recommended OneDrive sync app configuration - https://docs.microsoft.com/en-us/onedrive/ideal-state-configuration
+Best practices for migrating to SharePoint and OneDrive - https://techcommunity.microsoft.com/t5/microsoft-onedrive-blog/best-practices-for-migrating-to-sharepoint-and-onedrive/ba-p/2221548
 
 SharePoint
 ----------
 Branding guidance for SharePoint Online portals - https://docs.microsoft.com/en-us/sharepoint/dev/solution-guidance/portal-branding
+Best practices for migrating to SharePoint and OneDrive - https://techcommunity.microsoft.com/t5/microsoft-onedrive-blog/best-practices-for-migrating-to-sharepoint-and-onedrive/ba-p/2221548
 
 Azure AD
 --------
@@ -77,6 +83,8 @@ Azure Active Directory feature deployment guide - https://docs.microsoft.com/en-
 Azure
 -----
 Resource naming and tagging decision guide - https://docs.microsoft.com/en-us/azure/cloud-adoption-framework/decision-guides/resource-tagging/
+Best practices for Azure AD roles - https://docs.microsoft.com/en-us/azure/active-directory/roles/best-practices
+Security alerts, a reference guide - https://docs.microsoft.com/en-us/azure/security-center/alerts-reference
 
 Reports
 -------

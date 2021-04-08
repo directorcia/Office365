@@ -1,5 +1,6 @@
 param(                        
     [switch]$debug = $false,     ## if -debug parameter don't prompt for input
+    [switch]$noupdate = $false,   ## if -noupdate used then module will not be checked for more recent version
     [switch]$noprompt = $false   ## if -noprompt parameter used don't prompt user for input
 )
 <# CIAOPS
@@ -146,7 +147,12 @@ foreach ($result in $results) {
             else {
                 write-host -ForegroundColor $processmessagecolor $script.name,"script found in current directory`n"
             }
-            &$run           ## Run script
+            if ($noupdate) {
+                & $run -noupdate          ## Run script
+            }
+            else {
+                & $run
+            }
         }
     }
 }
