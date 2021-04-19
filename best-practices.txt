@@ -57,6 +57,11 @@ Recommendations for defining exclusions - https://docs.microsoft.com/en-us/windo
 Common mistakes to avoid when defining exclusions - https://docs.microsoft.com/en-us/windows/security/threat-protection/microsoft-defender-antivirus/common-exclusion-mistakes-microsoft-defender-antivirus
 Report ASR settings on Windows 10 - https://github.com/directorcia/Office365/blob/master/win10-asr-get.ps1
 Report Defender settings on Windows 10 - https://github.com/directorcia/Office365/blob/master/win10-def-get.ps1
+iOS/iPadOS Enterprise security configuration framework - https://docs.microsoft.com/en-us/mem/intune/enrollment/ios-ipados-configuration-framework
+Data protection framework using app protection policies - https://docs.microsoft.com/en-us/mem/intune/apps/app-protection-framework
+Android Enterprise security configuration framework - https://docs.microsoft.com/en-us/mem/intune/enrollment/android-configuration-framework
+Android Enterprise fully managed security configurations - https://docs.microsoft.com/en-us/mem/intune/enrollment/android-fully-managed-security-settings
+Android Enterprise personally-owned work profile security configurations - https://docs.microsoft.com/en-us/mem/intune/enrollment/android-work-profile-security-settings
 
 Microsoft 365
 -------------

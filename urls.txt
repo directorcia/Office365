@@ -161,3 +161,5 @@ https://podcasts.apple.com/us/podcast/microsoft-mechanics-podcast/id1181810899 -
 http://modernworkplace.mpsn.libsynpro.com/ - Modern workplace
 https://uncoveringhiddenrisks.libsyn.com/ - Uncovering hidden risk
 https://securityunlockedpodcast.com/ - Security unlocked
+https://podcast.allabout365.com/ - All about 365 with Jay and Steve
+https://www.office365distilled.com/ - Office 365 distilled
