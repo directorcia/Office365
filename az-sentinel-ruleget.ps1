@@ -64,11 +64,12 @@ catch {
     exit 1
 }
 
-<#      Connect to Azure Tenant               #>
+<#      Connect to Azure Tenant               
 write-host -foregroundcolor $processmessagecolor "Connect to tenant that contains Azure Sentinel"
 $context = connect-AzAccount -warningaction "SilentlyContinue"
 write-host -ForegroundColor $processmessagecolor "Getting Azure subscriptions in tenant"
 $output = Get-AzSubscription -warningaction "SilentlyContinue" | Out-GridView -PassThru -title "Select the Azure subscription to use" | Select-AzSubscription
+#>
 write-host -ForegroundColor $processmessagecolor "Getting Workspaces in tenant"
 $ws = Get-AzOperationalInsightsWorkspace |  select-object name, resourcegroupname,tags | Out-GridView -PassThru -title "Select the Workspace to use"
 write-host -ForegroundColor $processmessagecolor "Getting all available valid rule templates"

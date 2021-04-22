@@ -123,7 +123,7 @@ write-host -foregroundcolor $processmessagecolor "Azure PowerShell module loaded
 write-host -foregroundcolor $processmessagecolor "Connecting to Azure"
 try {
     clear-azcontext -force | Out-Null
-    $result = Connect-AzAccount | Out-Null
+    $result = Connect-AzAccount -MaxContextPopulation 1 | Out-Null
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Azure`n"
