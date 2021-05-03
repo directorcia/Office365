@@ -52,7 +52,7 @@ Function test-install($modulename) {
         }
     }
     else {                                                      ## If module doesn't exist then prompt to update
-        write-host -foregroundcolor $warningmessagecolor -nonewline "    [Warning]"$modulename" module not found. "
+        write-host -foregroundcolor $warningmessagecolor -nonewline "    [Warning]"$modulename" module not found.`n"
         if ($prompt) {
             do {
                 $result = Read-host -prompt "Install this module (Y/N)?"
@@ -88,7 +88,7 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     test-install -modulename Microsoft.Online.SharePoint.PowerShell
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Online module"
     test-install -modulename MSOnline
-    write-host -foregroundcolor $processmessagecolor "Update PowerShellget module"
+    write-host -foregroundcolor $processmessagecolor "Update PowerShellGet module"
     test-install -modulename PowershellGet
     write-host -foregroundcolor $processmessagecolor "Update Exchange Online V2 module"
     test-install -modulename ExchangeOnlineManagement

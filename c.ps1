@@ -111,6 +111,11 @@ $scripts += [PSCustomObject]@{
     Service = "Add-ins";  
     Module = "O365CentralizedAddInDeployment"  
 }
+$scripts += [PSCustomObject]@{
+    Name = "az-connect-si.ps1";
+    Service = "Azure Security Insights";  
+    Module = "az.securityinsights"  
+}
 if (-not $prompt) {
     try {
         $results = $scripts | select-object service | Sort-Object Service | Out-GridView -PassThru -title "Select services to connect to (Multiple selections permitted) "

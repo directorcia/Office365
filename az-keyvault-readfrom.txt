@@ -1,0 +1,48 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20210428175033
+Username: AzureAD\RobertDCrane
+RunAs User: AzureAD\RobertDCrane
+Configuration Name: 
+Machine: SURFACE-PRO-7 (Microsoft Windows NT 6.2.9200.0)
+Host Application: C:\downloads\source\office365\az-keyvault-readfrom.exe
+Process ID: 24036
+PSVersion: 5.1.19041.906
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.906
+BuildVersion: 10.0.19041.906
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Script started. Version = 0.94 Beta
+>>>>>> Copyright www.ciaops.com <<<<<<
+--- Get Azure AD application credentials from Azure KeyVault ---
+
+Check for Azure AZ PowerShell module
+Azure AZ PowerShell Module found
+Connect to tenant that contains Key Vault
+Getting Azure subscriptions in tenant
+WARNING: Unable to acquire token for tenant '9226014c-d90e-4930-ae7d-ea28604f6a79' with error 'SharedTokenCacheCredential authentication unavailable. Token acquisition failed for user admin@ciaops365.com. Ensure that you have authenticated with a developer tool that supports Azure single sign on.'
+Getting Resource Groups in tenant
+Getting Key Vaults in Resource Group
+WARNING: Upcoming breaking changes in the cmdlet 'Get-AzKeyVaultSecret' :
+- The output type 'Microsoft.Azure.Commands.KeyVault.Models.PSKeyVaultSecret' is changing
+- The following properties in the output type are being deprecated : 'SecretValueText'
+- The change is expected to take effect from the version : '3.0.0'
+- The output type 'Microsoft.Azure.Commands.KeyVault.Models.PSDeletedKeyVaultSecret' is changing
+- The following properties in the output type are being deprecated : 'SecretValueText'
+- The change is expected to take effect from the version : '3.0.0'
+Note : Go to https://aka.ms/azps-changewarnings for steps to suppress this breaking change warning, and other information on breaking changes in Azure PowerShell.
+WARNING: Upcoming breaking changes in the cmdlet 'Get-AzKeyVaultSecret' :
+- The output type 'Microsoft.Azure.Commands.KeyVault.Models.PSKeyVaultSecret' is changing
+- The following properties in the output type are being deprecated : 'SecretValueText'
+- The change is expected to take effect from the version : '3.0.0'
+- The output type 'Microsoft.Azure.Commands.KeyVault.Models.PSDeletedKeyVaultSecret' is changing
+- The following properties in the output type are being deprecated : 'SecretValueText'
+- The change is expected to take effect from the version : '3.0.0'
+Note : Go to https://aka.ms/azps-changewarnings for steps to suppress this breaking change warning, and other information on breaking changes in Azure PowerShell.
+
+Domain[ ciaops365.com ] Application ID
+Just use CTRL+V to paste clipboard into Password field please
