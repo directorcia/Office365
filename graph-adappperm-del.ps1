@@ -43,7 +43,7 @@ else {
     Pause                                                                               ## Pause to view error on screen
     exit 0                                                                              ## Terminate script 
 }
-$results = get-azureadserviceprincipal| sort-object displayname | Out-GridView -PassThru -title "Select Enterprise Application (Multiple selections permitted)"
+$results = get-azureadserviceprincipal -All $true | sort-object displayname | Out-GridView -PassThru -title "Select Enterprise Application (Multiple selections permitted)"
 foreach ($result in $results) {             # loop through all selected options
     write-host -foregroundcolor $processmessagecolor "Commencing",$result.displayname
     # Get Service Principal using objectId
@@ -73,17 +73,22 @@ foreach ($result in $results) {             # loop through all selected options
                 }
                 $selectusers = $usernames | select-object Displayname, userprincipalname, objectid | sort-object Displayname | Out-GridView -PassThru -title "Select Consent type (Multiple selections permitted)"
                 foreach ($selectuser in $selectusers) {       # Loop through all selected options
-                    $infoscope = $info | Where-Object { $_.principalid -eq $selectuser.ObjectId }
+                    $infoscopes = $info | Where-Object { $_.principalid -eq $selectuser.ObjectId }
                     write-host -foregroundcolor $processmessagecolor "`n"$consentselect.name,"permissions for user",$selectuser.displayname
-                    $assignments = $infoscope.scope -split " "
-                    foreach ($assignment in $assignments) {
-                        write-host "-",$assignment
+                    foreach ($infoscope in $infoscopes) {
+                        write-host $infoscope.resourceid
+                        $assignments = $infoscope.scope -split " "
+                        foreach ($assignment in $assignments) {
+                            write-host "-",$assignment
+                        }
                     }
                     do {
                         $answer = Read-host -prompt "`nDo you wish to remove all these permissions (Y/N)?"
                     } until (-not [string]::isnullorempty($answer))
                     if ($answer -eq 'Y' -or $answer -eq 'y') {
-                        Remove-AzureADOAuth2PermissionGrant -ObjectId $info.ObjectId
+                        foreach ($infoscope in $infoscopes) {
+                            Remove-AzureADOAuth2PermissionGrant -ObjectId $infoscope.ObjectId
+                        }
                         write-host -ForegroundColor $processmessagecolor "Removed"
                     }
                     else {
@@ -92,17 +97,22 @@ foreach ($result in $results) {             # loop through all selected options
                 }
             } 
             elseif ($consentselect.type -eq "allprincipals") {      # Admin consent
-                $infoscope = $info | Where-Object { $_.principalid -eq $null}
+                $infoscopes = $info | Where-Object { $_.principalid -eq $null}
                 write-host -foregroundcolor $processmessagecolor $consentselect.name,"permissions"
-                $assignments = $infoscope.scope -split " "
-                foreach ($assignment in $assignments) {
-                    write-host "-",$assignment
+                foreach ($infoscope in $infoscopes) {
+                    write-host $infoscope.resourceid
+                    $assignments = $infoscope.scope -split " "
+                    foreach ($assignment in $assignments) {
+                        write-host "-",$assignment
+                    }
                 }
                 do {
                     $answer = Read-host -prompt "`nDo you wish to remove all these permissions (Y/N)?"
                 } until (-not [string]::isnullorempty($answer))
                 if ($answer -eq 'Y' -or $answer -eq 'y') {
-                    Remove-AzureADOAuth2PermissionGrant -ObjectId $info.ObjectId
+                    foreach ($infoscope in $infoscopes) {
+                        Remove-AzureADOAuth2PermissionGrant -ObjectId $infoscope.ObjectId
+                    }
                     write-host -ForegroundColor $processmessagecolor "Removed"
                 }
                 else {
