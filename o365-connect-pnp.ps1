@@ -35,6 +35,8 @@ if ($debug) {
 }
 write-host -foregroundcolor $systemmessagecolor "SharePoint Online PNP Connection script started`n"
 write-host -ForegroundColor $processmessagecolor "Prompt =",(-not $noprompt)
+write-host -ForegroundColor $processmessagecolor "Debug =",(-not $debug)
+write-host -ForegroundColor $processmessagecolor "Update =",(-not $noupdate)
 
 # Microsoft Online Module
 if (get-module -listavailable -name MSOnline) {    ## Has the Microsoft Online PowerShell module been installed?
@@ -335,7 +337,7 @@ catch {
 write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP PowerShell module loaded"
 
 write-host -foregroundcolor $processmessagecolor "Get all SharePoint Online sites"
-$sites = get-sposite
+$sites = get-sposite -IncludePersonalSite $true -Limit all
 $result = $sites | select-object URL | Sort-Object URL | Out-GridView -OutputMode Single -title "Select SharePoint site to connect to with PNP"
 write-host -foregroundcolor $processmessagecolor "Selected SharePoint Online site =",$result.url
 
