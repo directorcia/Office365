@@ -95,7 +95,7 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     write-host -foregroundcolor $processmessagecolor "Update Azure module"
     test-install -modulename Az 
     write-host -foregroundcolor $processmessagecolor "Update SharePoint PnP module"
-    test-install -modulename SharePointPnPPowerShellOnline
+    test-install -modulename PnP.PowerShell
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Graph module"
     test-install -modulename Microsoft.Graph 
     write-host -foregroundcolor $processmessagecolor "Update Windows Autopilot Module"
