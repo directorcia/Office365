@@ -15,6 +15,7 @@ Security
 Microsoft Security best practices - https://docs.microsoft.com/en-us/security/compass/compass
 Microsoft Security Baselines - https://techcommunity.microsoft.com/t5/microsoft-security-baselines/bg-p/Microsoft-Security-Baselines
 Azure Security best practices - https://docs.microsoft.com/en-us/azure/cloud-adoption-framework/security/security-top-10
+Azure Identity Management and access control security best practices - https://docs.microsoft.com/en-us/azure/security/fundamentals/identity-management-best-practices
 Essential eight - https://www.cyber.gov.au/acsc/view-all-content/essential-eight
 CISA - Microsoft 365 Recommendations - https://www.us-cert.gov/ncas/alerts/aa20-120a
 Center for Internet Security (CIS) benchmarks - https://docs.microsoft.com/en-us/microsoft-365/compliance/offering-cis-benchmark?view=o365-worldwide
