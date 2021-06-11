@@ -8,7 +8,7 @@ param(
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Display audit details for all Exchange users
-Documentation - 
+Documentation - https://blog.ciaops.com/2021/06/09/exchange-user-best-practices-script/
 Source - https://github.com/directorcia/office365/blob/master/o365-mx-usr-all.ps1
 
 Prerequisites = 1
