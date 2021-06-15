@@ -1,12 +1,14 @@
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Description - Connect to the Microsoft Graph
+Description - Connect to the Defender for Endpoint API and return software vulnerabilities by machine
 
-Source - 
+Source - https://github.com/directorcia/Office365/blob/master/endpoint-api-svbm.ps1
+Documentation - https://blog.ciaops.com/2021/06/15/using-the-defender-for-endpoint-api-and-powershell/
 
 Prerequisites = 1
 1. Azure AD app setup per - https://blog.ciaops.com/2019/04/17/using-interactive-powershell-to-access-the-microsoft-graph/
+2. Enter the Client Id, Tenant Id and Client Secret into the variable lines ebfore running
 
 More scripts available by joining http://www.ciaopspatron.com
 
@@ -53,7 +55,7 @@ write-host -foregroundcolor $processmessagecolor "Run Graph API Query"
 # Run Graph API query 
 $query = Invoke-WebRequest -Method $method -Uri $uri -ContentType "application/json" -Headers @{Authorization = "Bearer $token" } -ErrorAction Stop -UseBasicParsing
 
-## $query.Content
+## Screen output
 
 write-host -foregroundcolor $processmessagecolor "Parse results"
 $ConvertedOutput = $query.content | ConvertFrom-Json
