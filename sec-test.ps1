@@ -19,9 +19,9 @@ $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
 
 Clear-Host
-if ($debug) {
-    write-host -foregroundcolor $processmessagecolor "Create log file ..\win10-sec-test.txt`n"
-    Start-transcript "..\win10-sec-test.txt" | Out-Null                                   ## Log file created in current directory that is overwritten on each run
+if ($debug) {       # If -debug command line option specified record log file in parent
+    write-host -foregroundcolor $processmessagecolor "Create log file ..\sec-test.txt`n"
+    Start-transcript "..\sec-test.txt" | Out-Null                                   ## Log file created in current directory that is overwritten on each run
 }
 
 write-host -foregroundcolor $systemmessagecolor "Windows 10 security test script started`n"
