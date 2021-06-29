@@ -24,7 +24,7 @@ if ($debug) {       # If -debug command line option specified record log file in
     Start-transcript "..\sec-test.txt" | Out-Null                                   ## Log file created in current directory that is overwritten on each run
 }
 
-write-host -foregroundcolor $systemmessagecolor "Windows 10 security test script started`n"
+write-host -foregroundcolor $systemmessagecolor "Security test script started`n"
 write-host -ForegroundColor white -backgroundcolor blue "--- Download EICAR file ---"
 $dldetect=$true
 write-host -foregroundcolor $processmessagecolor "Download eicar.com.txt file to current directory"
@@ -93,6 +93,28 @@ if ($crdetect) {
         write-host -foregroundcolor $errormessagecolor "eicar1.com.txt detected but file size is not 0"
     }
 }
+write-host -ForegroundColor white -backgroundcolor blue "`n--- In memory test ---"
+$memdetect = $false
+$errorfile = ".\sec-test-$(get-date -f yyyyMMddHHmmss).txt"     # unique output file
+$s1 = ‘AMSI Test Sample: 7e72c3ce'             # first half of EICAR string
+$s2 = '-861b-4339-8740-0ac1484c1386’           # second half of EICAR string
+$s3=($s1+$s2)                                  # combined EICAR string in one variable
+$encodedcommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($s3)) # need to encode command so not detected and block in this script
+write-host -foregroundcolor $processmessagecolor "Launch Powershell child process to output EICAR string to console"
+Start-Process powershell -ArgumentList "-EncodedCommand $encodedcommand" -wait -WindowStyle Hidden -redirectstandarderror $errorfile
+write-host -foregroundcolor $processmessagecolor "Attempt to read output file created by child process"
+try {
+    get-content $errorfile -ErrorAction Stop        # look at child process error output
+}
+catch {     # if unable to open file this is because EICAR strng found in there
+    write-host -foregroundcolor $processmessagecolor "In memory test SUCCEEDED"
+    write-host -foregroundcolor $processmessagecolor "Removing file $errorfile"
+    remove-item $errorfile      # remove child process error output file
+    $memdetect = $true          # set detection state = found
+}
+if (-not $memdetect) {
+    write-host -foregroundcolor $errormessagecolor "In memory test FAILED. Recommended action = review file $errorfile"
+}
 write-host -ForegroundColor white -backgroundcolor blue "`n--- Attempt LSASS process dump ---"
 $result = test-path ".\procdump.exe"
 $procdump = $true
@@ -137,6 +159,28 @@ if ($procdump) {
         write-host -foregroundcolor $errormessagecolor "Able to process dump or other error"
     }
 }
+write-host -ForegroundColor white -backgroundcolor blue "`n--- Mimikatz test ---"
+$errorfile = ".\sec-test-$(get-date -f yyyyMMddHHmmss).txt"     # unique output file
+$s1 = 'invoke-'             # first half of command
+$s2 = 'mimikatz’           # second half of command
+$s3=($s1+$s2)                                  # combined EICAR string in one variable
+$encodedcommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($s3)) # need to encode command so not detected and block in this script
+write-host -foregroundcolor $processmessagecolor "Launch Powershell child process to output Mimikatz command string to console"
+Start-Process powershell -ArgumentList "-EncodedCommand $encodedcommand" -wait -WindowStyle Hidden -redirectstandarderror $errorfile
+write-host -foregroundcolor $processmessagecolor "Attempt to read output file created by child process"
+try {
+    $result = get-content $errorfile -ErrorAction Stop        # look at child process error output
+}
+catch {     # if unable to open file this is because EICAR strng found in there
+    write-host -foregroundcolor $errormessagecolor "[ERROR] Output file not found"
+}
+if ($result -match "This script contains malicious content and has been blocked by your antivirus software") {
+    write-host -ForegroundColor $processmessagecolor "Malicious content and has been blocked by your antivirus software"
+    remove-item $errorfile      # remove child process error output file
+}
+else {
+    write-host -foregroundcolor $errormessagecolor "Malicious content NOT DETECTED = review file $errorfile"
+}
 write-host -ForegroundColor white -backgroundcolor blue "`n--- Generate failed login ---"
 do {
     $username = Read-host -prompt "Enter use email address to generate failed login"
@@ -158,6 +202,7 @@ catch {
         default {write-host -foregroundcolor $warningmessagecolor "Unknow error for user $username"}
     }
 }
+write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
 if ($debug) {
     Stop-Transcript | Out-Null
 }
