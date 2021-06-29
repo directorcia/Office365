@@ -4,10 +4,11 @@ param(
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Description - 
-Source - 
+Description - Perform security tests in your environment
+Source - https://github.com/directorcia/Office365/blob/master/sec-test.ps1
+Documentation - https://blog.ciaops.com/2021/06/29/is-security-working-powershell-script/
 
-Prerequisites = Windows 10
+Prerequisites = Windows 10, valid Microsoft 365 login, endpoint security
 
 #>
 
