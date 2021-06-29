@@ -101,6 +101,8 @@ https://partner.microsoft.com/en-au/community/australia-partner-hub - Microsoft 
 https://developer.microsoft.com/en-us/graph/graph-explorer - Microsoft Graph explorer
 https://www.whatismytenantid.com/ - What is my Microsoft Azure and Office 365 tenant ID?
 https://o365.rocks/ - Tenant Availability Check
+https://adoption.microsoft.com/extensibility-look-book - Microsoft 365 Extensibility look book gallery
+https://lookbook.microsoft.com/ - SharePoint look book
 
 ## Twitter
 
@@ -164,3 +166,7 @@ https://uncoveringhiddenrisks.libsyn.com/ - Uncovering hidden risk
 https://securityunlockedpodcast.com/ - Security unlocked
 https://podcast.allabout365.com/ - All about 365 with Jay and Steve
 https://www.office365distilled.com/ - Office 365 distilled
+
+## Blogs
+
+Security, Compliance, and Identity - https://techcommunity.microsoft.com/t5/security-compliance-and-identity/bg-p/MicrosoftSecurityandCompliance
