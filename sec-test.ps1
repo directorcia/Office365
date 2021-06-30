@@ -129,7 +129,7 @@ function processdump() {
             write-host -foregroundcolor $processmessagecolor "Download procdump.zip to current directory"
             invoke-webrequest -uri https://download.sysinternals.com/files/Procdump.zip -outfile .\procdump.zip
             write-host -foregroundcolor $processmessagecolor "Expand procdump.zip file to current directory"
-            Expand-Archive -LiteralPath .\procdump.zip -DestinationPath .\
+            Expand-Archive -LiteralPath .\procdump.zip -DestinationPath .\ -Force
             $result = test-path ".\procdump.exe"
             if ($result) {
                 write-host -foregroundcolor $processmessagecolor "procdump.exe found in current directory"
