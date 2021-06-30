@@ -146,7 +146,7 @@ function processdump() {
     if ($procdump) {
         $accessdump = $true
         try {
-            .\procdump.exe -ma lsass.exe lsass.dmp -accepteula    
+            $result = .\procdump.exe -ma lsass.exe lsass.dmp -accepteula    
         }
         catch {
             if ($error[0] -match "Access is denied") {
@@ -156,6 +156,10 @@ function processdump() {
             else {
                 write-host -foregroundcolor $processmessagecolor $error[0]
             }
+        }
+        if ($result -match "Access is denied") {
+            write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump"
+            $accessdump = $false
         }
         if ($accessdump) {
             write-host -foregroundcolor $errormessagecolor "Able to process dump or other error"
@@ -218,7 +222,8 @@ function officechildprocess() {
     Invoke-WebRequest -Uri https://demo.wd.microsoft.com/Content/TestFile_OfficeChildProcess_D4F940AB-401B-4EFC-AADC-AD5F3C50688A.docm -OutFile .\TestFile_OfficeChildProcess_D4F940AB-401B-4EFC-AADC-AD5F3C50688A.docm
     write-host -foregroundcolor $processmessagecolor "Open document using Word"
     Start-Process winword.exe -ArgumentList ".\TestFile_OfficeChildProcess_D4F940AB-401B-4EFC-AADC-AD5F3C50688A.docm"
-    write-host -foregroundcolor $processmessagecolor "Ensure that a Run Time Error is displayed. You may close Word once complete."
+    write-host -foregroundcolor $processmessagecolor "Ensure that a Run Time Error is displayed. If a command prompt appears the test has FAILED."
+    write-host -foregroundcolor $processmessagecolor "Please close Word once complete."
     pause
     write-host -foregroundcolor $processmessagecolor "Delete .\TestFile_OfficeChildProcess_D4F940AB-401B-4EFC-AADC-AD5F3C50688A.docm"
     remove-item .\TestFile_OfficeChildProcess_D4F940AB-401B-4EFC-AADC-AD5F3C50688A.docm  
@@ -230,7 +235,7 @@ function officecreateexecutable() {
     Invoke-WebRequest -Uri https://demo.wd.microsoft.com/Content/TestFile_Block_Office_applications_from_creating_executable_content_3B576869-A4EC-4529-8536-B80A7769E899.docm -OutFile .\TestFile_Block_Office_applications_from_creating_executable_content_3B576869-A4EC-4529-8536-B80A7769E899.docm
     write-host -foregroundcolor $processmessagecolor "Open document using Word"
     Start-Process winword.exe -ArgumentList ".\TestFile_Block_Office_applications_from_creating_executable_content_3B576869-A4EC-4529-8536-B80A7769E899.docm"
-    write-host -foregroundcolor $processmessagecolor "Ensure that no executable runs. You may close Word once complete."
+    write-host -foregroundcolor $processmessagecolor "Ensure that no executable runs. Please close Word once complete."
     pause
     write-host -foregroundcolor $processmessagecolor "Delete TestFile_Block_Office_applications_from_creating_executable_content_3B576869-A4EC-4529-8536-B80A7769E899.docm"
     remove-item .\TestFile_Block_Office_applications_from_creating_executable_content_3B576869-A4EC-4529-8536-B80A7769E899.docm  
@@ -267,7 +272,7 @@ function officemacroimport() {
     Invoke-WebRequest -Uri https://demo.wd.microsoft.com/Content/Block_Win32_imports_from_Macro_code_in_Office_92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B.docm -OutFile .\Block_Win32_imports_from_Macro_code_in_Office_92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B.docm
     write-host -foregroundcolor $processmessagecolor "Open document using Word"
     Start-Process winword.exe -ArgumentList ".\Block_Win32_imports_from_Macro_code_in_Office_92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B.docm"
-    write-host -foregroundcolor $processmessagecolor "Ensure that no macros runs. You may close Word once complete."
+    write-host -foregroundcolor $processmessagecolor "Ensure that no macros runs. Please close Word once complete."
     pause
     write-host -foregroundcolor $processmessagecolor "Delete Block_Win32_imports_from_Macro_code_in_Office_92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B.docm"
     remove-item .\Block_Win32_imports_from_Macro_code_in_Office_92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B.docm  
