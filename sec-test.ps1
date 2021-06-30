@@ -8,7 +8,7 @@ Description - Perform security tests in your environment
 Source - https://github.com/directorcia/Office365/blob/master/sec-test.ps1
 Documentation - https://blog.ciaops.com/2021/06/29/is-security-working-powershell-script/
 
-Prerequisites = Windows 10, valid Microsoft 365 login, endpoint security
+Prerequisites = Windows 10, OFfice, valid Microsoft 365 login, endpoint security
 
 #>
 
@@ -84,6 +84,8 @@ function createfile() {
     if ($crdetect) {
         if ($fileproperty.Length -eq 0) {
             write-host -foregroundcolor $processmessagecolor "eicar1.com.txt detected with file size = 0"
+            write-host -foregroundcolor $processmessagecolor "Removing file .\EICAR1.COM.TXT"
+            Remove-Item .\eicar1.com.txt
         }
         else {
             write-host -foregroundcolor $errormessagecolor "eicar1.com.txt detected but file size is not 0"
@@ -146,11 +148,12 @@ function processdump() {
     if ($procdump) {
         $accessdump = $true
         try {
-            $result = .\procdump.exe -ma lsass.exe lsass.dmp -accepteula    
+            write-host -nonewline -foregroundcolor $processmessagecolor "Attempt process dump in current user context = "
+            $result = .\procdump.exe -mm lsass.exe lsass.dmp -accepteula    
         }
         catch {
             if ($error[0] -match "Access is denied") {
-                write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump"
+                write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump in current user context"
                 $accessdump = $false
             }
             else {
@@ -158,11 +161,29 @@ function processdump() {
             }
         }
         if ($result -match "Access is denied") {
-            write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump"
+            write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump in current user context"
             $accessdump = $false
         }
+        try {
+            write-host -nonewline -foregroundcolor $processmessagecolor "Attempt process dump in admin context = "
+            $error.Clear()      # Clear any existing errors
+            start-process -filepath ".\procdump.exe" -argumentlist "-mm -o lsass.exe lsass.dmp" -verb runas -wait -WindowStyle Hidden
+        }
+        catch {
+            if ($error[0] -match "Access is denied") {
+                write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump in admin context"
+                $accessdump = $false
+            }
+        }
+        $result = test-path ".\lsass.dmp"
+        if ($result) {
+            write-host -foregroundcolor $errormessagecolor "Dump file found"
+            $accessdump = $true
+            write-host -foregroundcolor $processmessagecolor "Removing dump file .\LSASS.DMP"
+            Remove-Item ".\lsass.dmp"
+        }
         if ($accessdump) {
-            write-host -foregroundcolor $errormessagecolor "Able to process dump or other error"
+            write-host -foregroundcolor $errormessagecolor "Able to process dump or other error - test has FAILED"
         }
     }
 }
