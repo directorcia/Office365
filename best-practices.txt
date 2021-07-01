@@ -51,6 +51,7 @@ Azure best practices for network security - https://docs.microsoft.com/en-us/azu
 Small Business Cyber Security Guide - https://www.cyber.gov.au/acsc/view-all-content/publications/small-business-cyber-security-guide
 Australian Business Cyber Security Assessment Tool - https://digitaltools.business.gov.au/jfe/form/SV_cRMe9MTmaq6QmrA?ref=bga
 Cyber security step by step guides - https://www.cyber.gov.au/acsc/small-and-medium-businesses/step-by-step-guides
+National Cyber Security Centre UK Device Security Guidance Configuration - https://github.com/ukncsc/Device-Security-Guidance-Configuration-Packs
 
 Defender for Endpoint
 ---------------------

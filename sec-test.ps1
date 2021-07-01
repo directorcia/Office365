@@ -7,6 +7,7 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 Description - Perform security tests in your environment
 Source - https://github.com/directorcia/Office365/blob/master/sec-test.ps1
 Documentation - https://blog.ciaops.com/2021/06/29/is-security-working-powershell-script/
+Resources - https://demo.wd.microsoft.com/
 
 Prerequisites = Windows 10, OFfice, valid Microsoft 365 login, endpoint security
 
@@ -324,6 +325,103 @@ WScript.Echo "Id of new process is " & processid'
     remove-item .\dltest.vbs  
 }
 
+function networkprotection() {
+    $npdetect = $false
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- Network protection ---"
+    write-host -foregroundcolor $processmessagecolor "Connect to test URL https://smartscreentestratings2.net/"
+    try {
+        $result = Invoke-WebRequest -Uri https://smartscreentestratings2.net/ 
+    }
+    catch {
+        if ($error[0] -match "The remote name could not be resolved") {
+            write-host -foregroundcolor $processmessagecolor "The remote name could not be resolved: 'smartscreentestratings2.net'"
+        }
+        else {
+            write-host -foregroundcolor $errormessagecolor "Unknown error"
+        }
+        $npdetect=$true
+    }
+    if (-not $npdetect) {
+        write-host -foregroundcolor $errormessagecolor "Navigation permitted - test FAILED"
+    }
+}
+
+function suspiciouspage() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- Suspicious web page ---"
+    write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/other/areyousure.html"
+    start-process -filepath https://demo.smartscreen.msft.net/other/areyousure.html 
+    write-host "`n1. Your default browser should open"
+    write-host "2. Your browser should indicate security issues with the page`n"
+    pause
+}
+
+function phishpage() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- Phishing web page ---"
+    write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/phishingdemo.html"
+    start-process -filepath https://demo.smartscreen.msft.net/phishingdemo.html 
+    write-host "`n1. Your default browser should open"
+    write-host "2. Your browser should indicate security issues with the page and be reported as unsafe`n"
+    pause
+}
+
+function downloadblock() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- Block download on reputation ---"
+    write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/download/malwaredemo/freevideo.exe"
+    start-process -filepath https://demo.smartscreen.msft.net/download/malwaredemo/freevideo.exe 
+    write-host "`n1. Your default browser should open"
+    write-host "2. Your browser should indicate security issues with the page and be reported as unsafe`n"
+    write-host -foregroundcolor $warningmessagecolor "You be UNABLE to download and save a file from browser to local workstation`n"
+    pause
+}
+
+function exploitblock() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- Browser exploit protection ---"
+    write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/other/exploit.html"
+    start-process -filepath https://demo.smartscreen.msft.net/other/exploit.html 
+    write-host "`n1. Your default browser should open"
+    write-host "2. Your browser should indicate security issues with the page and be reported as unsafe`n"
+    pause
+}
+
+function maliciousframe() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- Mailcious browser frame protection ---"
+    write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/other/exploit_frame.html"
+    start-process -filepath https://demo.smartscreen.msft.net/other/exploit_frame.html 
+    write-host "`n1. Your default browser should open"
+    write-host "2. Your browser should indicate security issues with a frame in the page and be reported as unsafe`n"
+    pause
+}
+
+function unknownprogram() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- Unknown program protection ---"
+    write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/download/unknown/freevideo.exe"
+    start-process -filepath https://demo.smartscreen.msft.net/download/unknown/freevideo.exe 
+    write-host "`n1. Your default browser should open"
+    write-host "2. Your browser should warn that file blocked because it could harm your device`n"
+    write-host -foregroundcolor $warningmessagecolor "You be UNABLE to download and save a file from browser to local workstation`n"
+    pause
+}
+
+function knownmalicious() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- Known malicious program protection ---"
+    write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/download/known/knownmalicious.exe"
+    start-process -filepath https://demo.smartscreen.msft.net/download/known/knownmalicious.exe 
+    write-host "`n1. Your default browser should open"
+    write-host "2. Your browser should warn that file blocked because it it is malicious`n"
+    write-host -foregroundcolor $warningmessagecolor "You be UNABLE to download and save a file from browser to local workstation`n"
+    pause
+}
+
+function pua() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- Potentially unwanted application protection ---"
+    write-host -foregroundcolor $processmessagecolor "Connect to test URL http://amtso.eicar.org/PotentiallyUnwanted.exe"
+    start-process -filepath http://amtso.eicar.org/PotentiallyUnwanted.exe 
+    write-host "`n1. Your default browser should open"
+    write-host "2. Should not be able to reach this site or download the file`n"
+    write-host -foregroundcolor $warningmessagecolor "You be UNABLE to download and save a file from browser to local workstation`n"
+    pause
+}
+
 <#          Main                #>
 Clear-Host
 if ($debug) {       # If -debug command line option specified record log file in parent
@@ -332,17 +430,26 @@ if ($debug) {       # If -debug command line option specified record log file in
 }
 write-host -foregroundcolor $systemmessagecolor "Security test script started`n"
 
-downloadfile
-createfile
-inmemorytest
-processdump
-mimikatztest
-failedlogin
-officechildprocess
-officecreateexecutable
-scriptlaunch
-officemacroimport
-psexecwmicreation
+downloadfile            # 1
+createfile              # 2
+inmemorytest            # 3
+processdump             # 4
+mimikatztest            # 5
+failedlogin             # 6
+officechildprocess      # 7
+officecreateexecutable  # 8
+scriptlaunch            # 9
+officemacroimport       # 10
+psexecwmicreation       # 11
+networkprotection       # 12
+suspiciouspage          # 13
+phishpage               # 14
+downloadblock           # 15
+exploitblock            # 16
+maliciousframe          # 17
+unknownprogram          # 18
+knownmalicious          # 19
+pua                     # 20
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
 if ($debug) {
