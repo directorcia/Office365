@@ -165,6 +165,15 @@ function processdump() {
             write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump in current user context"
             $accessdump = $false
         }
+        else {
+            $result = test-path ".\lsass.dmp"
+            if ($result) {
+                write-host -foregroundcolor $errormessagecolor "Dump file found"
+                $accessdump = $true
+                write-host -foregroundcolor $processmessagecolor "Removing dump file .\LSASS.DMP"
+                Remove-Item ".\lsass.dmp"
+            }
+        }
         try {
             write-host -nonewline -foregroundcolor $processmessagecolor "Attempt process dump in admin context = "
             $error.Clear()      # Clear any existing errors
@@ -370,7 +379,7 @@ function downloadblock() {
     start-process -filepath https://demo.smartscreen.msft.net/download/malwaredemo/freevideo.exe 
     write-host "`n1. Your default browser should open"
     write-host "2. Your browser should indicate security issues with the page and be reported as unsafe`n"
-    write-host -foregroundcolor $warningmessagecolor "You be UNABLE to download and save a file from browser to local workstation`n"
+    write-host -foregroundcolor $warningmessagecolor "You should be UNABLE to download and save a file from browser to local workstation`n"
     pause
 }
 
@@ -398,7 +407,7 @@ function unknownprogram() {
     start-process -filepath https://demo.smartscreen.msft.net/download/unknown/freevideo.exe 
     write-host "`n1. Your default browser should open"
     write-host "2. Your browser should warn that file blocked because it could harm your device`n"
-    write-host -foregroundcolor $warningmessagecolor "You be UNABLE to download and save a file from browser to local workstation`n"
+    write-host -foregroundcolor $warningmessagecolor "You should be UNABLE to download and save a file from browser to local workstation`n"
     pause
 }
 
@@ -408,7 +417,7 @@ function knownmalicious() {
     start-process -filepath https://demo.smartscreen.msft.net/download/known/knownmalicious.exe 
     write-host "`n1. Your default browser should open"
     write-host "2. Your browser should warn that file blocked because it it is malicious`n"
-    write-host -foregroundcolor $warningmessagecolor "You be UNABLE to download and save a file from browser to local workstation`n"
+    write-host -foregroundcolor $warningmessagecolor "You should be UNABLE to download and save a file from browser to local workstation`n"
     pause
 }
 
