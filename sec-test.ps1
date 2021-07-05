@@ -1,5 +1,6 @@
 param(                        
-    [switch]$debug = $false    ## if -debug parameter don't prompt for input
+    [switch]$debug = $false,    ## if -debug parameter don't prompt for input
+    [switch]$noprompt = $false   ## if -noprompt parameter used don't prompt user for input
 )
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
@@ -7,6 +8,7 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 Description - Perform security tests in your environment
 Source - https://github.com/directorcia/Office365/blob/master/sec-test.ps1
 Documentation - https://blog.ciaops.com/2021/06/29/is-security-working-powershell-script/
+Video wlak through - https://www.youtube.com/watch?v=Cq0tj6kfSBo
 Resources - https://demo.wd.microsoft.com/
 
 Prerequisites = Windows 10, OFfice, valid Microsoft 365 login, endpoint security
@@ -19,8 +21,100 @@ $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
 
+function displaymenu($mitems) {
+    $mitems += [PSCustomObject]@{
+        Number = 1;
+        Test = "Download EICAR file"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 2;
+        Test = "Create EICAR file in current directory"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 3;
+        Test = "Create malware in memory"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 4;
+        Test = "Attempt LSSASS process dump"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 5;
+        Test = "Mimikatz test"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 6;
+        Test = "Generate failed Microsoft 365 login"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 7;
+        Test = "Office applications creating child processes"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 8;
+        Test = "Office applications creating executables"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 9;
+        Test = "Impede Javascript and VBScript launch executables"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 10;
+        Test = "Block Win32 imports from Macro code in Office"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 11;
+        Test = "Block Process Creations originating from PSExec & WMI commands"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 12;
+        Test = "Block VBS script to download then execute"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 13;
+        Test = "Network protection (web browser)"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 14;
+        Test = "Suspicious web page (web browser)"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 15;
+        Test = "Phishing web page (web browser)"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 16;
+        Test = "Block download on reputation (web browser)"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 17;
+        Test = "Browser exploit protection (web browser)"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 18;
+        Test = "Mailcious browser frame protection (web browser)"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 19;
+        Test = "Unknown program protection (web browser)"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 20;
+        Test = "Known malicious program protection (web browser)"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 21;
+        Test = "Potentially unwanted application protection (web browser)"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 22;
+        Test = "Check Windows Defender Services"
+    }
+    return $mitems
+}
+
 function downloadfile() {
-    write-host -ForegroundColor white -backgroundcolor blue "--- Download EICAR file ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 1. Download EICAR file ---"
     $dldetect=$true
     write-host -foregroundcolor $processmessagecolor "Download eicar.com.txt file to current directory"
     Invoke-WebRequest -Uri https://secure.eicar.org/eicar.com.txt -OutFile .\eicar.com.txt
@@ -29,31 +123,30 @@ function downloadfile() {
         read-content .\eicar.com.txt
     }
     catch {
-        write-host -foregroundcolor $processmessagecolor "eicar.com.txt file download not found"
+        write-host -foregroundcolor $processmessagecolor "eicar.com.txt file download not found - test SUCCEEDED"
         $dldetect=$false
     }
     if ($dldetect) {
-        write-host -foregroundcolor $warningmessagecolor "eicar.com.txt file download found"
+        write-host -foregroundcolor $warningmessagecolor "eicar.com.txt file download found - test FAILED"
         $dlexist = $true
         try {
             $dlsize = (Get-ChildItem ".\eicar.com.txt").Length
         }
         catch {
             $dlexist = $false
-            write-host -foregroundcolor $processmessagecolor "eicar.com.txt download not found"
+            write-host -foregroundcolor $processmessagecolor "eicar.com.txt download not found - test SUCCEEDED"
         }
         if ($dlexist) {
             if ($dlsize -ne 0) {
-                write-host -foregroundcolor $errormessagecolor "eicar.com.txt download file length > 0"
+                write-host -foregroundcolor $errormessagecolor "eicar.com.txt download file length > 0 - test FAILED"
             }
         }
     }
 }
-
-function createfile() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Create EICAR file in current directory ---"
-    set-content .\eicar1.com.txt:EICAR ‘X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*’ 
-    write-host -foregroundcolor $processmessagecolor "eicar1.com.txt created"
+function createfile(){
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 2. Create EICAR file in current directory ---"
+    set-content .\eicar1.com.txt:EICAR "X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+    write-host -foregroundcolor $processmessagecolor "Attempt eicar1.com.txt file creation from memory"   
     $crdetect = $false
     write-host -foregroundcolor $processmessagecolor "Check Windows Defender logs for eicar1 report"
     $results = get-mpthreatdetection | sort-object initialdetectiontime -Descending
@@ -69,37 +162,37 @@ function createfile() {
         }
     }
     if ($crdetect) {
-        write-host -foregroundcolor $processmessagecolor "`nEICAR file creation detected"
+        write-host -foregroundcolor $processmessagecolor "`nEICAR file creation detected - test SUCCEEDED"
     }
     else {
-        write-host -foregroundcolor $errormessagecolor "`nEICAR file creation not detected"
+        write-host -foregroundcolor $errormessagecolor "`nEICAR file creation not detected - test FAILED"
     }
     $crdtect = $true
     try {
         $fileproperty = get-itemproperty .\eicar1.com.txt
     }
     catch {
-        write-host -foregroundcolor $processmessagecolor "eicar1.com.txt file not detected"
+        write-host -foregroundcolor $processmessagecolor "eicar1.com.txt file not detected - test SUCCEEDED"
         $crdtect = $false
     }
     if ($crdetect) {
         if ($fileproperty.Length -eq 0) {
-            write-host -foregroundcolor $processmessagecolor "eicar1.com.txt detected with file size = 0"
+            write-host -foregroundcolor $processmessagecolor "eicar1.com.txt detected with file size = 0 - test SUUCCEEDED"
             write-host -foregroundcolor $processmessagecolor "Removing file .\EICAR1.COM.TXT"
             Remove-Item .\eicar1.com.txt
         }
         else {
-            write-host -foregroundcolor $errormessagecolor "eicar1.com.txt detected but file size is not 0"
+            write-host -foregroundcolor $errormessagecolor "eicar1.com.txt detected but file size is not 0 - test FAILED"
         }
     }
 }
 
 function inmemorytest(){
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- In memory test ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 3. In memory test ---"
     $memdetect = $false
     $errorfile = ".\sec-test-$(get-date -f yyyyMMddHHmmss).txt"     # unique output file
-    $s1 = ‘AMSI Test Sample: 7e72c3ce'             # first half of EICAR string
-    $s2 = '-861b-4339-8740-0ac1484c1386’           # second half of EICAR string
+    $s1 = "AMSI Test Sample: 7e72c3ce"             # first half of EICAR string
+    $s2 = "-861b-4339-8740-0ac1484c1386"           # second half of EICAR string
     $s3=($s1+$s2)                                  # combined EICAR string in one variable
     $encodedcommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($s3)) # need to encode command so not detected and block in this script
     write-host -foregroundcolor $processmessagecolor "Launch Powershell child process to output EICAR string to console"
@@ -109,18 +202,19 @@ function inmemorytest(){
         get-content $errorfile -ErrorAction Stop        # look at child process error output
     }
     catch {     # if unable to open file this is because EICAR strng found in there
-        write-host -foregroundcolor $processmessagecolor "In memory test SUCCEEDED"
+        write-host -foregroundcolor $processmessagecolor "In memory malware creation blocked - test SUCCEEDED"
         write-host -foregroundcolor $processmessagecolor "Removing file $errorfile"
         remove-item $errorfile      # remove child process error output file
         $memdetect = $true          # set detection state = found
     }
     if (-not $memdetect) {
-        write-host -foregroundcolor $errormessagecolor "In memory test FAILED. Recommended action = review file $errorfile"
+        write-host -foregroundcolor $errormessagecolor "In memory test malware creation not block - test FAILED"
+        write-host -ForegroundColor $errormessagecolor "Recommended action = review file $errorfile"
     }
 }
 
 function processdump() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Attempt LSASS process dump ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 4. Attempt LSASS process dump ---"
     $result = test-path ".\procdump.exe"
     $procdump = $true
     if (-not $result) {
@@ -154,7 +248,7 @@ function processdump() {
         }
         catch {
             if ($error[0] -match "Access is denied") {
-                write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump in current user context"
+                write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump in current user context - test SUCCEEDED"
                 $accessdump = $false
             }
             else {
@@ -162,13 +256,13 @@ function processdump() {
             }
         }
         if ($result -match "Access is denied") {
-            write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump in current user context"
+            write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump in current user context - test SUCCEEDED"
             $accessdump = $false
         }
         else {
             $result = test-path ".\lsass.dmp"
             if ($result) {
-                write-host -foregroundcolor $errormessagecolor "Dump file found"
+                write-host -foregroundcolor $errormessagecolor "Dump file found - test FAILED"
                 $accessdump = $true
                 write-host -foregroundcolor $processmessagecolor "Removing dump file .\LSASS.DMP"
                 Remove-Item ".\lsass.dmp"
@@ -181,28 +275,28 @@ function processdump() {
         }
         catch {
             if ($error[0] -match "Access is denied") {
-                write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump in admin context"
+                write-host -foregroundcolor $processmessagecolor "Access denied - Unable to process dump in admin context - test SUCCEEDED"
                 $accessdump = $false
             }
         }
         $result = test-path ".\lsass.dmp"
         if ($result) {
-            write-host -foregroundcolor $errormessagecolor "Dump file found"
+            write-host -foregroundcolor $errormessagecolor "Dump file found - test FAILED"
             $accessdump = $true
             write-host -foregroundcolor $processmessagecolor "Removing dump file .\LSASS.DMP"
             Remove-Item ".\lsass.dmp"
         }
         if ($accessdump) {
-            write-host -foregroundcolor $errormessagecolor "Able to process dump or other error - test has FAILED"
+            write-host -foregroundcolor $errormessagecolor "Able to process dump or other error - test FAILED"
         }
     }
 }
 
 function mimikatztest() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Mimikatz test ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 5. Mimikatz test ---"
     $errorfile = ".\sec-test-$(get-date -f yyyyMMddHHmmss).txt"     # unique output file
-    $s1 = 'invoke-'             # first half of command
-    $s2 = 'mimikatz’           # second half of command
+    $s1 = "invoke-"             # first half of command
+    $s2 = "mimikatz"           # second half of command
     $s3=($s1+$s2)                                  # combined EICAR string in one variable
     $encodedcommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($s3)) # need to encode command so not detected and block in this script
     write-host -foregroundcolor $processmessagecolor "Launch Powershell child process to output Mimikatz command string to console"
@@ -215,31 +309,31 @@ function mimikatztest() {
         write-host -foregroundcolor $errormessagecolor "[ERROR] Output file not found"
     }
     if ($result -match "This script contains malicious content and has been blocked by your antivirus software") {
-        write-host -ForegroundColor $processmessagecolor "Malicious content and has been blocked by your antivirus software"
+        write-host -ForegroundColor $processmessagecolor "Malicious content and has been blocked by your antivirus software - test SUCCEEDED"
         remove-item $errorfile      # remove child process error output file
     }
     else {
-        write-host -foregroundcolor $errormessagecolor "Malicious content NOT DETECTED = review file $errorfile"
+        write-host -foregroundcolor $errormessagecolor "Malicious content NOT DETECTED = review file $errorfile - test FAILED"
     }   
 }
 
 function failedlogin() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Generate failed login ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 6. Generate Microsoft 365 failed login ---"
     do {
         $username = Read-host -prompt "Enter valid Microsoft 365 email address to generate failed login"
     } until (-not [string]::isnullorempty($username))
     $password="1"
     $URL = "https://login.microsoft.com"
-    $BodyParams = @{'resource' = 'https://graph.windows.net'; 'client_id' = '1b730954-1685-4b74-9bfd-dac224a7b894' ; 'client_info' = '1' ; 'grant_type' = 'password' ; 'username' = $username ; 'password' = $password ; 'scope' = 'openid'}
-    $PostHeaders = @{'Accept' = 'application/json'; 'Content-Type' =  'application/x-www-form-urlencoded'}
+    $BodyParams = @{"resource" = "https://graph.windows.net"; "client_id" = "1b730954-1685-4b74-9bfd-dac224a7b894" ; "client_info" = "1" ; "grant_type" = "password" ; "username" = $username ; "password" = $password ; "scope" = "openid"}
+    $PostHeaders = @{"Accept" = "application/json"; "Content-Type" =  "application/x-www-form-urlencoded"}
     try {
         $webrequest = Invoke-WebRequest $URL/common/oauth2/token -Method Post -Headers $PostHeaders -Body $BodyParams -ErrorVariable RespErr
     } 
     catch {
         switch -wildcard ($RespErr)
         {
-            "*AADSTS50126*" {write-host -foregroundcolor $processmessagecolor "Error validating credentials due to invalid username or password as expected"; break}
-            "*AADSTS50034*" {write-host -foregroundcolor $warningmessagecolor "User $username doesn't exist"; break}
+            "*AADSTS50126*" {write-host -foregroundcolor $processmessagecolor "Error validating credentials due to invalid username or password as expected - check your logs"; break}
+            "*AADSTS50034*" {write-host -foregroundcolor $warningmessagecolor "User $username doesnt exist"; break}
             "*AADSTS50053*" {write-host -foregroundcolor $warningmessagecolor "User $username appears to be locked"; break}
             "*AADSTS50057*" {write-host -foregroundcolor $warningmessagecolor "User $username appears to be disabled"; break}
             default {write-host -foregroundcolor $warningmessagecolor "Unknown error for user $username"}
@@ -248,49 +342,54 @@ function failedlogin() {
 }
 
 function officechildprocess() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Office applications creating child processes ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 7. Office applications creating child processes ---"
     write-host -foregroundcolor $processmessagecolor "Download test Word document to current directory"
     Invoke-WebRequest -Uri https://demo.wd.microsoft.com/Content/TestFile_OfficeChildProcess_D4F940AB-401B-4EFC-AADC-AD5F3C50688A.docm -OutFile .\TestFile_OfficeChildProcess_D4F940AB-401B-4EFC-AADC-AD5F3C50688A.docm
     write-host -foregroundcolor $processmessagecolor "Open document using Word"
     Start-Process winword.exe -ArgumentList ".\TestFile_OfficeChildProcess_D4F940AB-401B-4EFC-AADC-AD5F3C50688A.docm"
-    write-host -foregroundcolor $processmessagecolor "Ensure that a Run Time Error is displayed. If a command prompt appears the test has FAILED."
-    write-host -foregroundcolor $processmessagecolor "Please close Word once complete."
+    write-host "`n1. Ensure that a Run Time Error is displayed."
+    write-host "2. Please close Word once complete.`n"
+    write-host -foregroundcolor $warningmessagecolor "If Command Prompt opens, then the test has FAILED`n"
     pause
     write-host -foregroundcolor $processmessagecolor "Delete .\TestFile_OfficeChildProcess_D4F940AB-401B-4EFC-AADC-AD5F3C50688A.docm"
     remove-item .\TestFile_OfficeChildProcess_D4F940AB-401B-4EFC-AADC-AD5F3C50688A.docm  
 }
 
 function officecreateexecutable() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Office applications creating executables ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 8. Office applications creating executables ---"
     write-host -foregroundcolor $processmessagecolor "Download test Word document to current directory"
     Invoke-WebRequest -Uri https://demo.wd.microsoft.com/Content/TestFile_Block_Office_applications_from_creating_executable_content_3B576869-A4EC-4529-8536-B80A7769E899.docm -OutFile .\TestFile_Block_Office_applications_from_creating_executable_content_3B576869-A4EC-4529-8536-B80A7769E899.docm
     write-host -foregroundcolor $processmessagecolor "Open document using Word"
     Start-Process winword.exe -ArgumentList ".\TestFile_Block_Office_applications_from_creating_executable_content_3B576869-A4EC-4529-8536-B80A7769E899.docm"
-    write-host -foregroundcolor $processmessagecolor "Ensure that no executable runs. Please close Word once complete."
+    write-host "`n1. Ensure that no executable runs."
+    write-host "2. A macro error/warning should be displayed"
+    write-host "3. Please close Word once complete.`n"
     pause
     write-host -foregroundcolor $processmessagecolor "Delete TestFile_Block_Office_applications_from_creating_executable_content_3B576869-A4EC-4529-8536-B80A7769E899.docm"
     remove-item .\TestFile_Block_Office_applications_from_creating_executable_content_3B576869-A4EC-4529-8536-B80A7769E899.docm  
 }
 
 function scriptlaunch() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Impede Javascript and VBScript launch executables ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 9. Impede Javascript and VBScript launch executables ---"
     write-host -foregroundcolor $processmessagecolor "Create DLTEST.JS file in current directory"
-    set-content -Path .\dltest.js `
-'// SCPT:xmlHttpRequest
+    $body = @"
+// SCPT:xmlHttpRequest
 var xmlHttp = WScript.CreateObject("MSXML2.XMLHTTP");
 xmlHttp.open("GET", "https://www.bing.com", false);
 xmlHttp.send();
 
 // SCPT:JSRunsFile
 var shell = WScript.CreateObject("WScript.Shell");
-shell.Run("notepad.exe");'
+shell.Run("notepad.exe");
+"@
+    set-content -Path .\dltest.js $body
     write-host -foregroundcolor $processmessagecolor "Execute DLTEST.JS file in current directory"
     start-process .\dltest.js
-    write-host -foregroundcolor $processmessagecolor "A Windows Script Host error dialog box should have appeared."
-    write-host -foregroundcolor $processmessagecolor "It should read:`n"
-    write-host "Error: This script is blocked by IT policy"
-    write-host "Code: 800A802E`n"
-    write-host -foregroundcolor $warningmessagecolor "If NOTEPAD executed, then the system is vulnerable to this attack`n"
+    write-host "1. A Windows Script Host error dialog box should have appeared."
+    write-host "2. It should read:`n"
+    write-host "    Error: This script is blocked by IT policy"
+    write-host "    Code: 800A802E`n"
+    write-host -foregroundcolor $warningmessagecolor "If NOTEPAD is executed, then the test has FAILED`n"
     pause
     write-host -foregroundcolor $processmessagecolor "Delete DLTEST.JS"
     remove-item .\dltest.js  
@@ -298,12 +397,13 @@ shell.Run("notepad.exe");'
 }
 
 function officemacroimport() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Block Win32 imports from Macro code in Office ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 10. Block Win32 imports from Macro code in Office ---"
     write-host -foregroundcolor $processmessagecolor "Download test Word document to current directory"
     Invoke-WebRequest -Uri https://demo.wd.microsoft.com/Content/Block_Win32_imports_from_Macro_code_in_Office_92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B.docm -OutFile .\Block_Win32_imports_from_Macro_code_in_Office_92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B.docm
     write-host -foregroundcolor $processmessagecolor "Open document using Word"
     Start-Process winword.exe -ArgumentList ".\Block_Win32_imports_from_Macro_code_in_Office_92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B.docm"
-    write-host -foregroundcolor $processmessagecolor "Ensure that no macros runs. Please close Word once complete."
+    write-host "`n1. Ensure that no macros runs and a warning appears." 
+    write-host "2. Close Word once complete.`n"
     pause
     write-host -foregroundcolor $processmessagecolor "Delete Block_Win32_imports_from_Macro_code_in_Office_92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B.docm"
     remove-item .\Block_Win32_imports_from_Macro_code_in_Office_92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B.docm  
@@ -311,15 +411,18 @@ function officemacroimport() {
 
 function psexecwmicreation() {
     
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Block Process Creations originating from PSExec & WMI commands ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 11. Block Process Creations originating from PSExec & WMI commands ---"
     write-host -foregroundcolor $processmessagecolor "Create DLTEST.VBS file in current directory"
-    set-content -Path .\dltest.vbs `
-'on error resume next
+
+    $body = @"
+on error resume next
 set process = GetObject("winmgmts:Win32_Process")
 WScript.Echo "Executing notepad"
 result = process.Create ("notepad.exe",null,null,processid)
 WScript.Echo "Method returned result = " & result
-WScript.Echo "Id of new process is " & processid'
+WScript.Echo "Id of new process is " & processid
+"@
+    set-content -Path .\dltest.vbs $body
     write-host -foregroundcolor $processmessagecolor "Execute DLTEST.VBS file in current directory"
     start-process .\dltest.vbs
     write-host "`n1. NOTEPAD should NOT run."
@@ -334,19 +437,63 @@ WScript.Echo "Id of new process is " & processid'
     remove-item .\dltest.vbs  
 }
 
+function scriptdlexecute() {
+    
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 12. Block VBS script to download then execute ---"
+    write-host -foregroundcolor $processmessagecolor "Create DLTEST2.VBS file in current directory"
+
+    $body = @"
+Dim objShell
+Dim xHttp: Set xHttp = createobject("Microsoft.XMLHTTP")
+Dim bStrm: Set bStrm = createobject("Adodb.Stream")
+xHttp.Open "GET", "https://the.earth.li/~sgtatham/putty/latest/w32/putty.exe", False
+xHttp.Send
+with bStrm
+    .type = 1
+    .open
+    .write xHttp.responseBody
+    .savetofile "c:\temp\putty.exe", 2
+end with
+Set objShell = WScript.CreateObject( "WScript.Shell" )
+objShell.Exec("c:\temp\putty.exe")
+"@
+
+    set-content -Path .\dltest2.vbs $body
+    write-host -foregroundcolor $processmessagecolor "Execute DLTEST2.VBS file in current directory"
+    start-process .\dltest2.vbs
+    write-host "`n1. PUTTY.EXE should NOT run."
+    write-host "2. A dialog should appear that says`n"
+    write-host "    Error: Write to file failed"
+    write-host "    Code: 800A0BBC`n"
+    write-host "3. Press OK button to end test`n"
+    pause
+    write-host -foregroundcolor $processmessagecolor "Delete DLTEST2.VBS"
+    remove-item .\DLTEST2.vbs
+    write-host -foregroundcolor $processmessagecolor "Check for PUTTY.EXE in current directory"
+    $result = test-path ".\putty.exe"
+    if ($result) {
+        write-host -foregroundcolor $errormessagecolor "PUTTY.EXE found - test FAILED`n"
+        write-host -foregroundcolor $processmessagecolor "Delete PUTTY.EXE"
+        remove-item .\putty.exe
+    }
+    else {
+        write-host -foregroundcolor $processmessagecolor "PUTTY.EXE not found - test SUCCEEDED`n"
+    }     
+}
+
 function networkprotection() {
     $npdetect = $false
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Network protection ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 13. Network protection (web browser) ---"
     write-host -foregroundcolor $processmessagecolor "Connect to test URL https://smartscreentestratings2.net/"
     try {
         $result = Invoke-WebRequest -Uri https://smartscreentestratings2.net/ 
     }
     catch {
         if ($error[0] -match "The remote name could not be resolved") {
-            write-host -foregroundcolor $processmessagecolor "The remote name could not be resolved: 'smartscreentestratings2.net'"
+            write-host -foregroundcolor $processmessagecolor "The remote name could not be resolved: smartscreentestratings2.net - test SUCCEEDED" 
         }
         else {
-            write-host -foregroundcolor $errormessagecolor "Unknown error"
+            write-host -foregroundcolor $errormessagecolor "Site resolved - test Failed"
         }
         $npdetect=$true
     }
@@ -356,7 +503,7 @@ function networkprotection() {
 }
 
 function suspiciouspage() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Suspicious web page ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 14. Suspicious web page (web browser) ---"
     write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/other/areyousure.html"
     start-process -filepath https://demo.smartscreen.msft.net/other/areyousure.html 
     write-host "`n1. Your default browser should open"
@@ -365,7 +512,7 @@ function suspiciouspage() {
 }
 
 function phishpage() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Phishing web page ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 15. Phishing web page (web browser) ---"
     write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/phishingdemo.html"
     start-process -filepath https://demo.smartscreen.msft.net/phishingdemo.html 
     write-host "`n1. Your default browser should open"
@@ -374,7 +521,7 @@ function phishpage() {
 }
 
 function downloadblock() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Block download on reputation ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 16. Block download on reputation (web browser) ---"
     write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/download/malwaredemo/freevideo.exe"
     start-process -filepath https://demo.smartscreen.msft.net/download/malwaredemo/freevideo.exe 
     write-host "`n1. Your default browser should open"
@@ -384,7 +531,7 @@ function downloadblock() {
 }
 
 function exploitblock() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Browser exploit protection ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 17. Browser exploit protection (web browser) ---"
     write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/other/exploit.html"
     start-process -filepath https://demo.smartscreen.msft.net/other/exploit.html 
     write-host "`n1. Your default browser should open"
@@ -393,7 +540,7 @@ function exploitblock() {
 }
 
 function maliciousframe() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Mailcious browser frame protection ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 18. Mailcious browser frame protection (web browser) ---"
     write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/other/exploit_frame.html"
     start-process -filepath https://demo.smartscreen.msft.net/other/exploit_frame.html 
     write-host "`n1. Your default browser should open"
@@ -402,7 +549,7 @@ function maliciousframe() {
 }
 
 function unknownprogram() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Unknown program protection ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 19. Unknown program protection (web browser) ---"
     write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/download/unknown/freevideo.exe"
     start-process -filepath https://demo.smartscreen.msft.net/download/unknown/freevideo.exe 
     write-host "`n1. Your default browser should open"
@@ -412,7 +559,7 @@ function unknownprogram() {
 }
 
 function knownmalicious() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Known malicious program protection ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 20. Known malicious program protection (web browser) ---"
     write-host -foregroundcolor $processmessagecolor "Connect to test URL https://demo.smartscreen.msft.net/download/known/knownmalicious.exe"
     start-process -filepath https://demo.smartscreen.msft.net/download/known/knownmalicious.exe 
     write-host "`n1. Your default browser should open"
@@ -422,13 +569,59 @@ function knownmalicious() {
 }
 
 function pua() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- Potentially unwanted application protection ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 21. Potentially unwanted application protection (web browser) ---"
     write-host -foregroundcolor $processmessagecolor "Connect to test URL http://amtso.eicar.org/PotentiallyUnwanted.exe"
     start-process -filepath http://amtso.eicar.org/PotentiallyUnwanted.exe 
     write-host "`n1. Your default browser should open"
     write-host "2. Should not be able to reach this site or download the file`n"
     write-host -foregroundcolor $warningmessagecolor "You be UNABLE to download and save a file from browser to local workstation`n"
     pause
+}
+
+function servicescheck() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 22. Check Windows Defender Services ---"
+    $result = get-service SecurityHealthService
+    if ($result.status -ne "Running") {
+        write-host -ForegroundColor $errormessagecolor "Windows Security Server service is not running"
+    }
+    else {
+        write-host -ForegroundColor $processmessagecolor "Windows Security Server service is running"
+        write-host -ForegroundColor $processmessagecolor "Attempt to stop service"
+        $servicestop = $true
+        try {
+            $result = stop-service SecurityHealthService -ErrorAction Stop
+        }
+        catch {
+            write-host -ForegroundColor $processmessagecolor "Unable to stop service - test SUCCEEDED"
+            $servicestop = $false
+        }
+        if ($servicestop) {
+            write-host -ForegroundColor $errormessagecolor "Able to stop service"
+            write-host -ForegroundColor $errormessagecolor "Starting service"
+            start-service SecurityHealthService -ErrorAction Stop
+        }
+    }
+    $result = get-service WinDefend
+    if ($result.status -ne "Running") {
+        write-host -ForegroundColor $errormessagecolor "Windows Defender Antivirus service is not running"
+    }
+    else {
+        write-host -ForegroundColor $processmessagecolor "Windows Defender Antivirus service is running"
+        write-host -ForegroundColor $processmessagecolor "Attempt to stop service"
+        $servicestop = $true
+        try {
+            $result = stop-service windefend -ErrorAction Stop
+        }
+        catch {
+            write-host -ForegroundColor $processmessagecolor "Unable to stop service - test SUCCEEDED"
+            $servicestop = $false
+        }
+        if ($servicestop) {
+            write-host -ForegroundColor $errormessagecolor "Able to stop service - test FAILED"
+            write-host -ForegroundColor $errormessagecolor "Starting service"
+            start-service windefend -ErrorAction Stop
+        }
+    }
 }
 
 <#          Main                #>
@@ -438,27 +631,58 @@ if ($debug) {       # If -debug command line option specified record log file in
     Start-transcript "..\sec-test.txt" | Out-Null                                   ## Log file created in current directory that is overwritten on each run
 }
 write-host -foregroundcolor $systemmessagecolor "Security test script started`n"
+if (-not $debug) {
+    Write-host -foregroundcolor $warningmessagecolor "    * use the -debug parameter on the command line to create an execution log file for this script"
+}
+if (-not $noprompt) {
+    write-host -foregroundcolor $warningmessagecolor  "    * use the -noprompt parameter on the command line to run all options with no prompts"
+}
 
-downloadfile            # 1
-createfile              # 2
-inmemorytest            # 3
-processdump             # 4
-mimikatztest            # 5
-failedlogin             # 6
-officechildprocess      # 7
-officecreateexecutable  # 8
-scriptlaunch            # 9
-officemacroimport       # 10
-psexecwmicreation       # 11
-networkprotection       # 12
-suspiciouspage          # 13
-phishpage               # 14
-downloadblock           # 15
-exploitblock            # 16
-maliciousframe          # 17
-unknownprogram          # 18
-knownmalicious          # 19
-pua                     # 20
+if (-not $noprompt) {
+    $menuitems = @()
+    write-host -foregroundcolor $processmessagecolor "`nGenerate menu options"
+    $menu = displaymenu($menuitems)                             # generate menu to display
+    write-host -foregroundcolor $processmessagecolor "Menu options generated"
+    try {
+        $results = $menu | Sort-Object number | Out-GridView -PassThru -title "Select tests to run (Multiple selections permitted - use CTRL + Select) "
+    }
+    catch {
+        write-host -ForegroundColor yellow -backgroundcolor $errormessagecolor "`n[001] - Error getting options`n"
+        if ($debug) {
+            Stop-Transcript | Out-Null      ## Terminate transcription
+        }
+        exit 1                              ## Terminate script
+    }
+}
+else {
+    write-host -foregroundcolor $processmessagecolor "`nRun all options"
+    $results = $menu
+}
+
+switch ($results.number) {
+    1  {downloadfile}
+    2  {createfile}
+    3  {inmemorytest}
+    4  {processdump}
+    5  {mimikatztest}
+    6  {failedlogin}
+    7  {officechildprocess}
+    8  {officecreateexecutable}
+    9  {scriptlaunch}
+    10  {officemacroimport}
+    11  {psexecwmicreation}
+    12  {scriptdlexecute}
+    13  {networkprotection}
+    14  {suspiciouspage}
+    15  {phishpage}
+    16  {downloadblock}
+    17  {exploitblock}
+    18  {maliciousframe}
+    19  {unknownprogram}
+    20  {knownmalicious}
+    21  {pua}
+    22  {servicescheck}  
+}
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
 if ($debug) {

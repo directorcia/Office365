@@ -1,7 +1,7 @@
 param(                        
     [switch]$debug = $false,     ## if -debug parameter don't prompt for input
     [switch]$noupdate = $false,   ## if -noupdate used then module will not be checked for more recent version
-    [switch]$noprompt = $false   ## if -noprompt parameter used don't prompt user for input
+    [switch]$noprompt = $false   ## if -noprompt parameter used prompt user for input
 )
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
@@ -42,7 +42,10 @@ if (-not $debug) {
     Write-host -foregroundcolor $warningmessagecolor "    * use the -debug parameter on the command line to create an execution log file for this script"
 }
 if (-not $noupdate) {
-    write-host -foregroundcolor $warningmessagecolor  "    * use the -noupdate parameter on the command line to prevenet checking for latest module version"
+    write-host -foregroundcolor $warningmessagecolor  "    * use the -noupdate parameter on the command line to prevent checking for latest module version"
+}
+if (-not $noprompt) {
+    write-host -foregroundcolor $warningmessagecolor  "    * use the -noprompt parameter on the command line present no prompts"
 }
 
 $scripts = @()
@@ -121,7 +124,7 @@ $scripts += [PSCustomObject]@{
     Service = "SharePoint Online PNP";  
     Module = "pnp.powershell"  
 }
-if (-not $prompt) {
+if (-not $noprompt) {
     try {
         $results = $scripts | select-object service | Sort-Object Service | Out-GridView -PassThru -title "Select services to connect to (Multiple selections permitted) "
     }

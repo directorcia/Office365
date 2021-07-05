@@ -52,7 +52,7 @@ https://protection.office.com/reportv2?dltarget=report&dlstorage=url&dljson=%7B%
 https://security.microsoft.com/threatanalytics3 - Threat Analytics
 https://lighthouse.microsoft.com/ - Microsoft 365 lighthouse
 https://admin.microsoft.com/Adminportal/Home?source=applauncher#/Settings/Services/:/Settings/L1/DataLocationList - Data location
-
+https://admin.microsoft.com/Adminportal/Home?#/modernonboarding/microsoftedgedeploymentadvisor - Microsoft Edge advisor
 ## Security 
 
 https://portal.msrc.microsoft.com/en-us/engage/cars - Submit Abuse report. This form is to report suspected cyberattacks or abuse originating from Microsoft Online Services, such as Microsoft Azure, Bing, Outlook, One Drive, and Office 365. This includes malicious network activity originating from a Microsoft IP address. It also includes distribution of malicious content or other illicit or illegal material through a Microsoft Online Service.
