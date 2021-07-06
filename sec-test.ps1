@@ -602,43 +602,43 @@ function servicescheck() {
     write-host -ForegroundColor white -backgroundcolor blue "`n--- 23. Check Windows Defender Services ---"
     $result = get-service SecurityHealthService
     if ($result.status -ne "Running") {
-        write-host -ForegroundColor $errormessagecolor "Windows Security Server service is not running"
+        write-host -ForegroundColor $errormessagecolor "Windows Security Server Service is not running"
     }
     else {
-        write-host -ForegroundColor $processmessagecolor "Windows Security Server service is running"
-        write-host -ForegroundColor $processmessagecolor "Attempt to stop service"
+        write-host -ForegroundColor $processmessagecolor "Windows Security Server Service is running"
+        write-host -ForegroundColor $processmessagecolor -nonewline "- Attempt to stop Windows Security Server Service has "
         $servicestop = $true
         try {
             $result = stop-service SecurityHealthService -ErrorAction Stop
         }
         catch {
-            write-host -ForegroundColor $processmessagecolor "Unable to stop service - test SUCCEEDED"
+            write-host -ForegroundColor $processmessagecolor "failed"
             $servicestop = $false
         }
         if ($servicestop) {
-            write-host -ForegroundColor $errormessagecolor "Able to stop service"
-            write-host -ForegroundColor $errormessagecolor "Starting service"
+            write-host -ForegroundColor $errormessagecolor "SUCCEEDED"
+            write-host -ForegroundColor $errormessagecolor "- Starting Windows Sercurity Server Service"
             start-service SecurityHealthService -ErrorAction Stop
         }
     }
     $result = get-service WinDefend
     if ($result.status -ne "Running") {
-        write-host -ForegroundColor $errormessagecolor "Windows Defender Antivirus service is not running"
+        write-host -ForegroundColor $errormessagecolor "Microsoft Defender Antivirus Service is not running"
     }
     else {
-        write-host -ForegroundColor $processmessagecolor "Windows Defender Antivirus service is running"
-        write-host -ForegroundColor $processmessagecolor "Attempt to stop service"
+        write-host -ForegroundColor $processmessagecolor "Microsoft Defender Antivirus Service is running"
+        write-host -ForegroundColor $processmessagecolor -nonewline "- Attempt to stop Microsoft Defender Antivirus Service has "
         $servicestop = $true
         try {
             $result = stop-service windefend -ErrorAction Stop
         }
         catch {
-            write-host -ForegroundColor $processmessagecolor "Unable to stop service - test SUCCEEDED"
+            write-host -ForegroundColor $processmessagecolor "failed"
             $servicestop = $false
         }
         if ($servicestop) {
-            write-host -ForegroundColor $errormessagecolor "Able to stop service - test FAILED"
-            write-host -ForegroundColor $errormessagecolor "Starting service"
+            write-host -ForegroundColor $errormessagecolor "SUCCEEDED"
+            write-host -ForegroundColor $errormessagecolor "- Starting Microsoft Defender Antivirus Service"
             start-service windefend -ErrorAction Stop
         }
     }
@@ -721,6 +721,60 @@ function defenderstatus() {
         write-host -foregroundcolor $errormessagecolor "Script Scanning is disabled"
     }
     
+    if (-not $result.Disablebehaviormonitoring) {
+        write-host -foregroundcolor $processmessagecolor "Behavior Monitoring is enabled"
+        write-host -foregroundcolor $processmessagecolor -nonewline "- Attempt to disable Behavior Monitoring has "
+        Set-MpPreference -Disablebehaviormonitoring $true 
+        $rtm = (get-mppreference).Disablebehaviormonitoring
+        if (-not $rtm) {
+            write-host -foregroundcolor $processmessagecolor "failed"
+        }
+        else {
+            write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
+            write-host -foregroundcolor $processmessagecolor "- Re-enabling Behavior Monitoring"
+            Set-MpPreference -Disablebehaviormonitoring $false
+        }
+    }
+    else {
+        write-host -foregroundcolor $errormessagecolor "Behavior Monitoring is disabled"
+    }
+
+    if (-not $result.disableblockatfirstseen) {
+        write-host -foregroundcolor $processmessagecolor "Block at First Seen is enabled"
+        write-host -foregroundcolor $processmessagecolor -nonewline "- Attempt to disable Block at First Seen has "
+        Set-MpPreference -disableblockatfirstseen $true 
+        $rtm = (get-mppreference).disableblockatfirstseen
+        if (-not $rtm) {
+            write-host -foregroundcolor $processmessagecolor "failed"
+        }
+        else {
+            write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
+            write-host -foregroundcolor $processmessagecolor "- Re-enabling Block at First Seen"
+            Set-MpPreference -disableblockatfirstseen $false
+        }
+    }
+    else {
+        write-host -foregroundcolor $errormessagecolor "Block at First Seen is disabled"
+    }
+
+    if (-not $result.disableemailscanning) {
+        write-host -foregroundcolor $processmessagecolor "Email Scaning is enabled"
+        write-host -foregroundcolor $processmessagecolor -nonewline "- Attempt to disable Email Scanning has "
+        Set-MpPreference -disableemailscanning $true 
+        $rtm = (get-mppreference).disableemailscanning 
+        if (-not $rtm) {
+            write-host -foregroundcolor $processmessagecolor "failed"
+        }
+        else {
+            write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
+            write-host -foregroundcolor $processmessagecolor "- Re-enabling Email Scanning"
+            Set-MpPreference -disableemailscanning $false
+        }
+    }
+    else {
+        write-host -foregroundcolor $errormessagecolor "Email Scanning is disabled"
+    }
+
     switch ($result.EnableControlledFolderAccess) {
         0 { write-host -foregroundcolor $errormessagecolor "Controlled Folder Access is disabled"; break}
         1 { write-host -foregroundcolor $processmessagecolor  "Controlled Folder Access will block "; break}
