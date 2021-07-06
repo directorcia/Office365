@@ -108,7 +108,15 @@ function displaymenu($mitems) {
     }
     $mitems += [PSCustomObject]@{
         Number = 22;
+        Test = "Block at first seen (web browser)"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 23;
         Test = "Check Windows Defender Services"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 24;
+        Test = "Check Windows Defender Configuration"
     }
     return $mitems
 }
@@ -574,12 +582,24 @@ function pua() {
     start-process -filepath http://amtso.eicar.org/PotentiallyUnwanted.exe 
     write-host "`n1. Your default browser should open"
     write-host "2. Should not be able to reach this site or download the file`n"
-    write-host -foregroundcolor $warningmessagecolor "You be UNABLE to download and save a file from browser to local workstation`n"
+    write-host -foregroundcolor $warningmessagecolor "You should be UNABLE to download and save a file from browser to local workstation`n"
+    pause
+}
+
+function blockatfirst() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 22. Block at first seen (web browser) ---"
+    write-host -foregroundcolor $processmessagecolor "Connect to test URL"
+    start-process -filepath https://demo.wd.microsoft.com/page/BAFS
+    write-host "`n1. Your default browser should open"
+    write-host "2. Select the Create and download new file button"
+    write-host "3. You will need to login to a Microsoft 365 tenant"
+    write-host "4. You will need to provide app permissions to Microsoft Defender app for user`n"
+    write-host -foregroundcolor $warningmessagecolor "You should be UNABLE to download and save a file from browser to local workstation`n"
     pause
 }
 
 function servicescheck() {
-    write-host -ForegroundColor white -backgroundcolor blue "`n--- 22. Check Windows Defender Services ---"
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 23. Check Windows Defender Services ---"
     $result = get-service SecurityHealthService
     if ($result.status -ne "Running") {
         write-host -ForegroundColor $errormessagecolor "Windows Security Server service is not running"
@@ -622,6 +642,115 @@ function servicescheck() {
             start-service windefend -ErrorAction Stop
         }
     }
+}
+
+function defenderstatus() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 24. Check Windows Defender Configuration ---"
+    write-host -ForegroundColor $processmessagecolor "Get Windows Defender configuration settings"
+    $result = get-mppreference
+
+    if (-not $result.DisableRealtimeMonitoring) {
+        write-host -ForegroundColor $processmessagecolor "Real Time Monitoring is enabled"
+        write-host -nonewline -ForegroundColor $processmessagecolor "- Attempt to disable Real Time Monitoring has "
+        Set-MpPreference -DisableRealtimeMonitoring $true 
+        $rtm = (get-mppreference).disablerealtimemonitoring
+        if (-not $rtm) {
+            write-host -ForegroundColor $processmessagecolor "failed"
+        }
+        else {
+            write-host -ForegroundColor $errormessagecolor "SUCCEEDED"
+            write-host -foregroundcolor $processmessagecolor "- Re-enabling Real Time Monitoring"
+            Set-MpPreference -DisableRealtimeMonitoring $false
+        }
+    }
+    else {
+        write-host -ForegroundColor $errormessagecolor "Real Time monitoring is disabled"
+    }
+    
+    if (-not $result.DisableIntrusionPreventionSystem) {
+        write-host -foregroundcolor $processmessagecolor "Intrusion Prevention System is enabled"
+        write-host -foregroundcolor $processmessagecolor -nonewline "- Attempt to disable Intrusion Prevention System has "
+        Set-MpPreference -DisableIntrusionPreventionSystem $true 
+        $rtm = (get-mppreference).DisableIntrusionPreventionSystem
+        if (-not $rtm) {
+            write-host -foregroundcolor $processmessagecolor "failed"
+        }
+        else {
+            write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
+            write-host -foregroundcolor $processmessagecolor "- Re-enabling Intrusion Prevention System"
+            Set-MpPreference -DisableIntrusionPreventionSystem $false
+        }
+    }
+    else {
+        write-host -foregroundcolor $errormessagecolor "Intrusion Prevention System is disabled"
+    }
+    
+    if (-not $result.DisableIOAVProtection) {
+        write-host -foregroundcolor $processmessagecolor "All downloads and attachments protection is enabled"
+        write-host -foregroundcolor $processmessagecolor -nonewline "- Attempt to disable all download and attachments protection has "
+        Set-MpPreference -DisableIOAVProtection $true 
+        $rtm = (get-mppreference).DisableIOAVProtection
+        if (-not $rtm) {
+            write-host -foregroundcolor $processmessagecolor "failed"
+        }
+        else {
+            write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
+            write-host -foregroundcolor $processmessagecolor "- Re-enabling all downloads and attachments protection"
+            Set-MpPreference -DisableIOAVProtection $false
+        }
+    }
+    else {
+        write-host -foregroundcolor red "All downloads and attachments protection is disabled"
+    }
+    
+    if (-not $result.DisableScriptScanning) {
+        write-host -foregroundcolor $processmessagecolor "Script Scanning is enabled"
+        write-host -foregroundcolor $processmessagecolor -nonewline "- Attempt to disable Script Scanning has "
+        Set-MpPreference -DisableScriptScanning $true 
+        $rtm = (get-mppreference).DisableScriptScanning
+        if (-not $rtm) {
+            write-host -foregroundcolor $processmessagecolor "failed"
+        }
+        else {
+            write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
+            write-host -foregroundcolor $processmessagecolor "- Re-enabling Script Scanning"
+            Set-MpPreference -DisableScriptScanning $false
+        }
+    }
+    else {
+        write-host -foregroundcolor $errormessagecolor "Script Scanning is disabled"
+    }
+    
+    switch ($result.EnableControlledFolderAccess) {
+        0 { write-host -foregroundcolor $errormessagecolor "Controlled Folder Access is disabled"; break}
+        1 { write-host -foregroundcolor $processmessagecolor  "Controlled Folder Access will block "; break}
+        2 { write-host -foregroundcolor $warningmessagecolor  "Controlled Folder Access will audit "; break}
+        3 { write-host -foregroundcolor $warningmessagecolor  "Controlled Folder Access will block disk modifications only "; break}
+        4 { write-host -foregroundcolor $warningmessagecolor  "Controlled Folder Access will audit disk modifications "; break}
+        default { write-host -foregroundcolor $warningmessagecolor  "Controlled Folder Access status unknown"}
+    }
+    
+    switch ($result.EnableNetworkProtection) {
+        0 { write-host -foregroundcolor $errormessagecolor "Network protection is disabled"; break}
+        1 { write-host -foregroundcolor $processmessagecolor  "Network Protection is enabled (block mode) "; break}
+        2 { write-host -foregroundcolor $warningmessagecolor  "Network Protection is enabled (audit mode) "; break}
+        default { write-host -foregroundcolor $warningmessagecolor  "Controlled Folder Access status unknown"}
+    }
+    
+    switch ($result.MAPSReporting) {
+        0 { write-host -foregroundcolor $errormessagecolor "Microsoft Active Protection Service (MAPS) Reporting is disabled"; break}
+        1 { write-host -foregroundcolor $warningmessagecolor  "Microsoft Active Protection Service (MAPS) Reporting is set to basic"; break}
+        2 { write-host -foregroundcolor $processmessagecolor  "Microsoft Active Protection Service (MAPS) Reporting is set to advanced"; break}
+        default { write-host -foregroundcolor $warningmessagecolor  "Controlled Folder Access status unknown"}
+    }
+    
+    switch ($result.SubmitSamplesConsent) {
+        0 { write-host -foregroundcolor $errormessagecolor "Submit Sample Consent is set to always prompt"; break}
+        1 { write-host -foregroundcolor $warningmessagecolor  "Submit Sample Consent is set to send safe samples automatically"; break}
+        2 { write-host -foregroundcolor $errormessagecolor  "Submit Sample Consent is set to never send "; break}
+        3 { write-host -foregroundcolor $processmessagecolor  "Submit Sample Consent is set to send all samples automatically "; break}
+        default { write-host -foregroundcolor $warningmessagecolor  "Controlled Folder Access status unknown"}
+    } 
 }
 
 <#          Main                #>
@@ -681,7 +810,9 @@ switch ($results.number) {
     19  {unknownprogram}
     20  {knownmalicious}
     21  {pua}
-    22  {servicescheck}  
+    22  {blockatfirst}
+    23  {servicescheck}  
+    24  {defenderstatus}
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
