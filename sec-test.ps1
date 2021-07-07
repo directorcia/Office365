@@ -125,6 +125,11 @@ function downloadfile() {
     write-host -ForegroundColor white -backgroundcolor blue "`n--- 1. Download EICAR file ---"
     $dldetect=$true
     write-host -foregroundcolor $processmessagecolor "Download eicar.com.txt file to current directory"
+    if (Test-Path -Path .\eicar.com.txt -PathType Leaf) {
+        write-host -foregroundcolor $processmessagecolor "Detected existing eicar.com.txt file in current directory."
+        Remove-Item .\eicar1.com.txt
+        write-host -foregroundcolor $processmessagecolor "Delected previous eicar.com.txt version in current directory."
+    }
     Invoke-WebRequest -Uri https://secure.eicar.org/eicar.com.txt -OutFile .\eicar.com.txt
     write-host -foregroundcolor $processmessagecolor "Verify eicar.com.txt file in current directory"
     try {
@@ -207,7 +212,7 @@ function inmemorytest(){
     Start-Process powershell -ArgumentList "-EncodedCommand $encodedcommand" -wait -WindowStyle Hidden -redirectstandarderror $errorfile
     write-host -foregroundcolor $processmessagecolor "Attempt to read output file created by child process"
     try {
-        get-content $errorfile -ErrorAction Stop        # look at child process error output
+        $result = get-content $errorfile -ErrorAction Stop        # look at child process error output
     }
     catch {     # if unable to open file this is because EICAR strng found in there
         write-host -foregroundcolor $processmessagecolor "In memory malware creation blocked - test SUCCEEDED"
@@ -652,15 +657,21 @@ function defenderstatus() {
     if (-not $result.DisableRealtimeMonitoring) {
         write-host -ForegroundColor $processmessagecolor "Real Time Monitoring is enabled"
         write-host -nonewline -ForegroundColor $processmessagecolor "- Attempt to disable Real Time Monitoring has "
-        Set-MpPreference -DisableRealtimeMonitoring $true 
-        $rtm = (get-mppreference).disablerealtimemonitoring
-        if (-not $rtm) {
-            write-host -ForegroundColor $processmessagecolor "failed"
+        try {
+            Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction stop
+            $rtm = (get-mppreference).disablerealtimemonitoring
+            if (-not $rtm) {
+                write-host -ForegroundColor $processmessagecolor "failed"
+            }
+            else {
+                write-host -ForegroundColor $errormessagecolor "SUCCEEDED"
+                write-host -foregroundcolor $processmessagecolor "- Re-enabling Real Time Monitoring"
+                Set-MpPreference -DisableRealtimeMonitoring $false
+            }
+    
         }
-        else {
-            write-host -ForegroundColor $errormessagecolor "SUCCEEDED"
-            write-host -foregroundcolor $processmessagecolor "- Re-enabling Real Time Monitoring"
-            Set-MpPreference -DisableRealtimeMonitoring $false
+        catch {
+            write-host -ForegroundColor $processmessagecolor "failed"
         }
     }
     else {
@@ -670,8 +681,9 @@ function defenderstatus() {
     if (-not $result.DisableIntrusionPreventionSystem) {
         write-host -foregroundcolor $processmessagecolor "Intrusion Prevention System is enabled"
         write-host -foregroundcolor $processmessagecolor -nonewline "- Attempt to disable Intrusion Prevention System has "
-        Set-MpPreference -DisableIntrusionPreventionSystem $true 
-        $rtm = (get-mppreference).DisableIntrusionPreventionSystem
+        try {
+            Set-MpPreference -DisableIntrusionPreventionSystem $true -ErrorAction stop
+            $rtm = (get-mppreference).DisableIntrusionPreventionSystem
         if (-not $rtm) {
             write-host -foregroundcolor $processmessagecolor "failed"
         }
@@ -680,6 +692,10 @@ function defenderstatus() {
             write-host -foregroundcolor $processmessagecolor "- Re-enabling Intrusion Prevention System"
             Set-MpPreference -DisableIntrusionPreventionSystem $false
         }
+        }
+        catch {
+            write-host -foregroundcolor $processmessagecolor "failed"
+        }        
     }
     else {
         write-host -foregroundcolor $errormessagecolor "Intrusion Prevention System is disabled"
@@ -688,16 +704,21 @@ function defenderstatus() {
     if (-not $result.DisableIOAVProtection) {
         write-host -foregroundcolor $processmessagecolor "All downloads and attachments protection is enabled"
         write-host -foregroundcolor $processmessagecolor -nonewline "- Attempt to disable all download and attachments protection has "
-        Set-MpPreference -DisableIOAVProtection $true 
-        $rtm = (get-mppreference).DisableIOAVProtection
-        if (-not $rtm) {
+        try {
+            Set-MpPreference -DisableIOAVProtection $true -ErrorAction stop
+            $rtm = (get-mppreference).DisableIOAVProtection
+            if (-not $rtm) {
+                write-host -foregroundcolor $processmessagecolor "failed"
+            }
+            else {
+                write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
+                write-host -foregroundcolor $processmessagecolor "- Re-enabling all downloads and attachments protection"
+                Set-MpPreference -DisableIOAVProtection $false
+            }
+        }
+        catch {
             write-host -foregroundcolor $processmessagecolor "failed"
-        }
-        else {
-            write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
-            write-host -foregroundcolor $processmessagecolor "- Re-enabling all downloads and attachments protection"
-            Set-MpPreference -DisableIOAVProtection $false
-        }
+        }        
     }
     else {
         write-host -foregroundcolor red "All downloads and attachments protection is disabled"
@@ -706,15 +727,20 @@ function defenderstatus() {
     if (-not $result.DisableScriptScanning) {
         write-host -foregroundcolor $processmessagecolor "Script Scanning is enabled"
         write-host -foregroundcolor $processmessagecolor -nonewline "- Attempt to disable Script Scanning has "
-        Set-MpPreference -DisableScriptScanning $true 
-        $rtm = (get-mppreference).DisableScriptScanning
-        if (-not $rtm) {
-            write-host -foregroundcolor $processmessagecolor "failed"
+        try {
+            Set-MpPreference -DisableScriptScanning $true -ErrorAction stop
+            $rtm = (get-mppreference).DisableScriptScanning
+            if (-not $rtm) {
+                write-host -foregroundcolor $processmessagecolor "failed"
+            }
+            else {
+                write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
+                write-host -foregroundcolor $processmessagecolor "- Re-enabling Script Scanning"
+                Set-MpPreference -DisableScriptScanning $false
+            }           
         }
-        else {
-            write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
-            write-host -foregroundcolor $processmessagecolor "- Re-enabling Script Scanning"
-            Set-MpPreference -DisableScriptScanning $false
+        catch {
+            write-host -foregroundcolor $processmessagecolor "failed"
         }
     }
     else {
@@ -724,15 +750,20 @@ function defenderstatus() {
     if (-not $result.Disablebehaviormonitoring) {
         write-host -foregroundcolor $processmessagecolor "Behavior Monitoring is enabled"
         write-host -foregroundcolor $processmessagecolor -nonewline "- Attempt to disable Behavior Monitoring has "
-        Set-MpPreference -Disablebehaviormonitoring $true 
-        $rtm = (get-mppreference).Disablebehaviormonitoring
-        if (-not $rtm) {
-            write-host -foregroundcolor $processmessagecolor "failed"
+        try {
+            Set-MpPreference -Disablebehaviormonitoring $true -ErrorAction stop
+            $rtm = (get-mppreference).Disablebehaviormonitoring
+            if (-not $rtm) {
+                write-host -foregroundcolor $processmessagecolor "failed"
+            }
+            else {
+                write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
+                write-host -foregroundcolor $processmessagecolor "- Re-enabling Behavior Monitoring"
+                Set-MpPreference -Disablebehaviormonitoring $false
+            }    
         }
-        else {
-            write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
-            write-host -foregroundcolor $processmessagecolor "- Re-enabling Behavior Monitoring"
-            Set-MpPreference -Disablebehaviormonitoring $false
+        catch {
+            write-host -foregroundcolor $processmessagecolor "failed"
         }
     }
     else {
@@ -742,15 +773,20 @@ function defenderstatus() {
     if (-not $result.disableblockatfirstseen) {
         write-host -foregroundcolor $processmessagecolor "Block at First Seen is enabled"
         write-host -foregroundcolor $processmessagecolor -nonewline "- Attempt to disable Block at First Seen has "
-        Set-MpPreference -disableblockatfirstseen $true 
-        $rtm = (get-mppreference).disableblockatfirstseen
-        if (-not $rtm) {
-            write-host -foregroundcolor $processmessagecolor "failed"
+        try {
+            Set-MpPreference -disableblockatfirstseen $true -ErrorAction stop
+            $rtm = (get-mppreference).disableblockatfirstseen
+            if (-not $rtm) {
+                write-host -foregroundcolor $processmessagecolor "failed"
+            }
+            else {
+                write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
+                write-host -foregroundcolor $processmessagecolor "- Re-enabling Block at First Seen"
+                Set-MpPreference -disableblockatfirstseen $false
+            }    
         }
-        else {
-            write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
-            write-host -foregroundcolor $processmessagecolor "- Re-enabling Block at First Seen"
-            Set-MpPreference -disableblockatfirstseen $false
+        catch {
+            write-host -foregroundcolor $processmessagecolor "failed"
         }
     }
     else {
@@ -760,15 +796,20 @@ function defenderstatus() {
     if (-not $result.disableemailscanning) {
         write-host -foregroundcolor $processmessagecolor "Email Scaning is enabled"
         write-host -foregroundcolor $processmessagecolor -nonewline "- Attempt to disable Email Scanning has "
-        Set-MpPreference -disableemailscanning $true 
-        $rtm = (get-mppreference).disableemailscanning 
-        if (-not $rtm) {
-            write-host -foregroundcolor $processmessagecolor "failed"
+        try {
+            Set-MpPreference -disableemailscanning $true -ErrorAction stop
+            $rtm = (get-mppreference).disableemailscanning 
+            if (-not $rtm) {
+                write-host -foregroundcolor $processmessagecolor "failed"
+            }
+            else {
+                write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
+                write-host -foregroundcolor $processmessagecolor "- Re-enabling Email Scanning"
+                Set-MpPreference -disableemailscanning $false
+            }
         }
-        else {
-            write-host -foregroundcolor $errormessagecolor "SUCCEEDED"
-            write-host -foregroundcolor $processmessagecolor "- Re-enabling Email Scanning"
-            Set-MpPreference -disableemailscanning $false
+        catch {
+            write-host -foregroundcolor $processmessagecolor "failed"
         }
     }
     else {
@@ -821,11 +862,12 @@ if (-not $noprompt) {
     write-host -foregroundcolor $warningmessagecolor  "    * use the -noprompt parameter on the command line to run all options with no prompts"
 }
 
+$menuitems = @()
+write-host -foregroundcolor $processmessagecolor "`nGenerate test options"
+$menu = displaymenu($menuitems)                             # generate menu to display
+write-host -foregroundcolor $processmessagecolor "Test options generated"
+
 if (-not $noprompt) {
-    $menuitems = @()
-    write-host -foregroundcolor $processmessagecolor "`nGenerate menu options"
-    $menu = displaymenu($menuitems)                             # generate menu to display
-    write-host -foregroundcolor $processmessagecolor "Menu options generated"
     try {
         $results = $menu | Sort-Object number | Out-GridView -PassThru -title "Select tests to run (Multiple selections permitted - use CTRL + Select) "
     }
