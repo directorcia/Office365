@@ -49,7 +49,10 @@ https://connectivity.office.com/ - Microsoft 365 network connectivity test
 https://cqd.teams.microsoft.com/ - Microsoft Call Quality Dashboard
 https://mystaff.microsoft.com - Management portal for first line workers
 https://protection.office.com/reportv2?dltarget=report&dlstorage=url&dljson=%7B%22reportId%22:%22TPSMessageOverrideReportATP%22,%22startDate%22:%222021-02-14T00:00:00.000Z%22,%22endDate%22:%222021-02-20T23:59:59.000Z%22,%22target%22:%22report%22,%22storage%22:%22Url%22,%22source%22:%22%2Freportv2%22%7D - Threat protection status (Message Override)
-
+https://security.microsoft.com/threatanalytics3 - Threat Analytics
+https://lighthouse.microsoft.com/ - Microsoft 365 lighthouse
+https://admin.microsoft.com/Adminportal/Home?source=applauncher#/Settings/Services/:/Settings/L1/DataLocationList - Data location
+https://admin.microsoft.com/Adminportal/Home?#/modernonboarding/microsoftedgedeploymentadvisor - Microsoft Edge advisor
 ## Security 
 
 https://portal.msrc.microsoft.com/en-us/engage/cars - Submit Abuse report. This form is to report suspected cyberattacks or abuse originating from Microsoft Online Services, such as Microsoft Azure, Bing, Outlook, One Drive, and Office 365. This includes malicious network activity originating from a Microsoft IP address. It also includes distribution of malicious content or other illicit or illegal material through a Microsoft Online Service.
@@ -99,6 +102,8 @@ https://partner.microsoft.com/en-au/community/australia-partner-hub - Microsoft 
 https://developer.microsoft.com/en-us/graph/graph-explorer - Microsoft Graph explorer
 https://www.whatismytenantid.com/ - What is my Microsoft Azure and Office 365 tenant ID?
 https://o365.rocks/ - Tenant Availability Check
+https://adoption.microsoft.com/extensibility-look-book - Microsoft 365 Extensibility look book gallery
+https://lookbook.microsoft.com/ - SharePoint look book
 
 ## Twitter
 
@@ -160,3 +165,9 @@ https://podcasts.apple.com/us/podcast/microsoft-mechanics-podcast/id1181810899 -
 http://modernworkplace.mpsn.libsynpro.com/ - Modern workplace
 https://uncoveringhiddenrisks.libsyn.com/ - Uncovering hidden risk
 https://securityunlockedpodcast.com/ - Security unlocked
+https://podcast.allabout365.com/ - All about 365 with Jay and Steve
+https://www.office365distilled.com/ - Office 365 distilled
+
+## Blogs
+
+Security, Compliance, and Identity - https://techcommunity.microsoft.com/t5/security-compliance-and-identity/bg-p/MicrosoftSecurityandCompliance

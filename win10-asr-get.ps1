@@ -22,6 +22,7 @@ More scripts available by joining http://www.ciaopspatron.com
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor="red"
+$warningmessagecolor = "yellow"
 
 Clear-Host
 write-host -foregroundcolor $systemmessagecolor "Script started`n"

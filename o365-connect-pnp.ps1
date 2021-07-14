@@ -6,13 +6,13 @@ param(
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Description - Log into the Office 365 admin portal and the SharePoint Online portal
+Description - Log into the SharePoint Online with PnP
 
-Source - https://github.com/directorcia/Office365/blob/master/o365-connect-spo.ps1
+Source - https://github.com/directorcia/Office365/blob/master/o365-connect-pnp.ps1
 
 Prerequisites = 2
-1. Ensure msonline module installed or updated
-2. Ensure SharePoint online PowerShell module installed or updated
+1. Ensure pnp.powershell module is installed and updated
+2. Ensure MSonline module is installed and updated
 
 More scripts available by joining http://www.ciaopspatron.com
 
@@ -30,11 +30,13 @@ $warningmessagecolor = "yellow"
 Clear-Host
 
 if ($debug) {
-    write-host "Script activity logged at ..\o365-connect-spo.txt"
-    start-transcript "..\o365-connect-spo.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
+    write-host "Script activity logged at ..\o365-connect-pnp.txt"
+    start-transcript "..\o365-connect-pnp.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
 }
-write-host -foregroundcolor $systemmessagecolor "SharePoint Online Connection script started`n"
+write-host -foregroundcolor $systemmessagecolor "SharePoint Online PNP Connection script started`n"
 write-host -ForegroundColor $processmessagecolor "Prompt =",(-not $noprompt)
+write-host -ForegroundColor $processmessagecolor "Debug =",(-not $debug)
+write-host -ForegroundColor $processmessagecolor "Update =",(-not $noupdate)
 
 # Microsoft Online Module
 if (get-module -listavailable -name MSOnline) {    ## Has the Microsoft Online PowerShell module been installed?
@@ -136,7 +138,7 @@ catch {
 write-host -foregroundcolor $processmessagecolor "Connected to Microsoft 365 Admin service"
 
 ## Auto detect SharePoint Online admin domain
-write-host -foregroundcolor $processmessagecolor "Determining SharePoint Administration URL"
+write-host -foregroundcolor $processmessagecolor "Determining SharePoint URL"
 $domains = get-msoldomain                           ## get a list of all domains in tenant
 foreach ($domain in $domains) {                     ## loop through all these domains
     if ($domain.name.contains('onmicrosoft')) {     ## find the onmicrosoft.com domain
@@ -246,9 +248,115 @@ catch {
     }
     exit 6
 }
-write-host -foregroundcolor $processmessagecolor "Connected to SharePoint Online`n"
+write-host -foregroundcolor $processmessagecolor "Connected to SharePoint Online"
 
-write-host -foregroundcolor $systemmessagecolor "SharePoint Online Connection script finished`n"
+# SharePoint PNP Online module
+if (get-module -listavailable -name pnp.powershell) {    ## Has the SharePoint Online PNP PowerShell module been installed?
+    write-host -ForegroundColor $processmessagecolor "SharePoint Online PNP PowerShell module installed"
+}
+else {
+    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[004] - SharePoint Online PNP PowerShell module not installed`n"
+    if (-not $noprompt) {
+        do {
+            $response = read-host -Prompt "`nDo you wish to install the SharePoint Online PNP PowerShell module (Y/N)?"
+        } until (-not [string]::isnullorempty($response))
+        if ($result -eq 'Y' -or $result -eq 'y') {
+            write-host -foregroundcolor $processmessagecolor "Installing SharePoint Online PNP PowerShell module - Administration escalation required"
+            Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name pnp.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
+            write-host -foregroundcolor $processmessagecolor "SharePoint Online Online PNP PowerShell module installed"
+        }
+        else {
+            write-host -foregroundcolor $processmessagecolor "Terminating script"
+            if ($debug) {
+                Stop-Transcript | Out-Null                 ## Terminate transcription
+            }
+            exit 1                          ## Terminate script
+        }
+    }
+    else {
+        write-host -foregroundcolor $processmessagecolor "Installing SharePoint Online PNP module - Administration escalation required"
+        Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name pnp.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
+        write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP module installed"    
+    }
+}
+
+if (-not $noupdate) {
+    write-host -foregroundcolor $processmessagecolor "Check whether newer version of SharePoint Online PNP PowerShell module is available"
+    #get version of the module (selects the first if there are more versions installed)
+    $version = (Get-InstalledModule -name pnp.powershell) | Sort-Object Version -Descending  | Select-Object Version -First 1
+    #get version of the module in psgallery
+    $psgalleryversion = Find-Module -Name pnp.powershell | Sort-Object Version -Descending | Select-Object Version -First 1
+    #convert to string for comparison
+    $stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
+    $a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
+    #convert to string for comparison
+    $onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
+    $b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
+    #version compare
+    if ([version]"$a" -ge [version]"$b") {
+        Write-Host -foregroundcolor $processmessagecolor "Local module $a greater or equal to Gallery module $b"
+        write-host -foregroundcolor $processmessagecolor "No update required"
+    }
+    else {
+        Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
+        write-host -foregroundcolor $warningmessagecolor "Update recommended"
+        if (-not $noprompt) {
+            do {
+                $response = read-host -Prompt "`nDo you wish to update the SharePoint Online PNP PowerShell module (Y/N)?"
+            } until (-not [string]::isnullorempty($response))
+            if ($result -eq 'Y' -or $result -eq 'y') {
+                write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online PNP PowerShell module - Administration escalation required"
+                Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name pnp.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
+                write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP PowerShell module - updated"
+            }
+            else {
+                write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP PowerShell module - not updated"
+            }
+        }
+        else {
+        write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online PNP PowerShell module - Administration escalation required" 
+        Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name pnp.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
+        write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP PowerShell module - updated"
+        }
+    }
+}
+
+# Import SharePoint Online PNP module
+write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP PowerShell module loading"
+Try {
+    Import-Module pnp.powershell | Out-Null
+}
+catch {
+    Write-Host -ForegroundColor $errormessagecolor "[005] - Unable to load SharePoint Online PNP PowerShell module`n"
+    Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
+    if ($debug) {
+        Stop-Transcript | Out-Null                ## Terminate transcription
+    }
+    exit 5
+}
+write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP PowerShell module loaded"
+
+write-host -foregroundcolor $processmessagecolor "Get all SharePoint Online sites"
+$sites = get-sposite -IncludePersonalSite $true -Limit all
+$result = $sites | select-object URL | Sort-Object URL | Out-GridView -OutputMode Single -title "Select SharePoint site to connect to with PNP"
+write-host -foregroundcolor $processmessagecolor "Selected SharePoint Online site =",$result.url
+
+# Connect to SharePoint Online PNP Service
+write-host -foregroundcolor $processmessagecolor "Connecting to SharePoint PNP Online"
+Try {
+    connect-pnponline -url $result.url -launchbrowser -devicelogin | Out-Null
+}
+catch {
+    Write-Host -ForegroundColor $errormessagecolor "[006] - Unable to connect to SharePoint Online PNP`n"
+    Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
+    if ($debug) {
+        Stop-Transcript | Out-Null                ## Terminate transcription
+    }
+    exit 6
+}
+write-host -foregroundcolor $processmessagecolor "Connected to SharePoint Online PNP`n"
+
+write-host -foregroundcolor $systemmessagecolor "SharePoint Online PNP Connection script finished`n"
 if ($debug) {
     Stop-Transcript | Out-Null
 }

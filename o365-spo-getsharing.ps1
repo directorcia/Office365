@@ -3,7 +3,7 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Source - https://github.com/directorcia/Office365/blob/master/o365-spo-getsharing.ps1
 
-Description - Report onthe sharing state of SharePoint Online sites
+Description - Report on the sharing state of SharePoint Online sites
 
 Prerequisites = 1
 1. Ensure SharePoint online PowerShell module installed or updated

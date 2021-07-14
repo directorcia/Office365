@@ -13,6 +13,9 @@ How to Combat Fake Emails using SPF, DKIM, DMARC  - https://www.cyber.gov.au/acs
 Security
 --------
 Microsoft Security best practices - https://docs.microsoft.com/en-us/security/compass/compass
+Microsoft Security Baselines - https://techcommunity.microsoft.com/t5/microsoft-security-baselines/bg-p/Microsoft-Security-Baselines
+Azure Security best practices - https://docs.microsoft.com/en-us/azure/cloud-adoption-framework/security/security-top-10
+Azure Identity Management and access control security best practices - https://docs.microsoft.com/en-us/azure/security/fundamentals/identity-management-best-practices
 Essential eight - https://www.cyber.gov.au/acsc/view-all-content/essential-eight
 CISA - Microsoft 365 Recommendations - https://www.us-cert.gov/ncas/alerts/aa20-120a
 Center for Internet Security (CIS) benchmarks - https://docs.microsoft.com/en-us/microsoft-365/compliance/offering-cis-benchmark?view=o365-worldwide
@@ -44,6 +47,11 @@ Use attack surface reduction rules to prevent malware infection - https://docs.m
 Protecting Microsoft 365 from on-premises attacks - https://techcommunity.microsoft.com/t5/azure-active-directory-identity/protecting-microsoft-365-from-on-premises-attacks/ba-p/1751754
 Five steps to securing your identity infrastructure - https://docs.microsoft.com/en-us/azure/security/fundamentals/steps-secure-identity
 Identity and device access configurations - https://docs.microsoft.com/en-us/microsoft-365/security/office-365-security/microsoft-365-policies-configurations?view=o365-worldwide
+Azure best practices for network security - https://docs.microsoft.com/en-us/azure/security/fundamentals/network-best-practices
+Small Business Cyber Security Guide - https://www.cyber.gov.au/acsc/view-all-content/publications/small-business-cyber-security-guide
+Australian Business Cyber Security Assessment Tool - https://digitaltools.business.gov.au/jfe/form/SV_cRMe9MTmaq6QmrA?ref=bga
+Cyber security step by step guides - https://www.cyber.gov.au/acsc/small-and-medium-businesses/step-by-step-guides
+National Cyber Security Centre UK Device Security Guidance Configuration - https://github.com/ukncsc/Device-Security-Guidance-Configuration-Packs
 
 Defender for Endpoint
 ---------------------
@@ -51,6 +59,15 @@ Recommendations for defining exclusions - https://docs.microsoft.com/en-us/windo
 Common mistakes to avoid when defining exclusions - https://docs.microsoft.com/en-us/windows/security/threat-protection/microsoft-defender-antivirus/common-exclusion-mistakes-microsoft-defender-antivirus
 Report ASR settings on Windows 10 - https://github.com/directorcia/Office365/blob/master/win10-asr-get.ps1
 Report Defender settings on Windows 10 - https://github.com/directorcia/Office365/blob/master/win10-def-get.ps1
+iOS/iPadOS Enterprise security configuration framework - https://docs.microsoft.com/en-us/mem/intune/enrollment/ios-ipados-configuration-framework
+Data protection framework using app protection policies - https://docs.microsoft.com/en-us/mem/intune/apps/app-protection-framework
+Android Enterprise security configuration framework - https://docs.microsoft.com/en-us/mem/intune/enrollment/android-configuration-framework
+Android Enterprise fully managed security configurations - https://docs.microsoft.com/en-us/mem/intune/enrollment/android-fully-managed-security-settings
+Android Enterprise personally-owned work profile security configurations - https://docs.microsoft.com/en-us/mem/intune/enrollment/android-work-profile-security-settings
+
+Microsoft 365
+-------------
+Network connectivity test - https://connectivity.office.com/
 
 MCAS
 ----
@@ -59,10 +76,12 @@ Cloud App Security best practices - https://docs.microsoft.com/en-us/cloud-app-s
 OneDrive
 --------
 Recommended OneDrive sync app configuration - https://docs.microsoft.com/en-us/onedrive/ideal-state-configuration
+Best practices for migrating to SharePoint and OneDrive - https://techcommunity.microsoft.com/t5/microsoft-onedrive-blog/best-practices-for-migrating-to-sharepoint-and-onedrive/ba-p/2221548
 
 SharePoint
 ----------
 Branding guidance for SharePoint Online portals - https://docs.microsoft.com/en-us/sharepoint/dev/solution-guidance/portal-branding
+Best practices for migrating to SharePoint and OneDrive - https://techcommunity.microsoft.com/t5/microsoft-onedrive-blog/best-practices-for-migrating-to-sharepoint-and-onedrive/ba-p/2221548
 
 Azure AD
 --------
@@ -71,6 +90,8 @@ Azure Active Directory feature deployment guide - https://docs.microsoft.com/en-
 Azure
 -----
 Resource naming and tagging decision guide - https://docs.microsoft.com/en-us/azure/cloud-adoption-framework/decision-guides/resource-tagging/
+Best practices for Azure AD roles - https://docs.microsoft.com/en-us/azure/active-directory/roles/best-practices
+Security alerts, a reference guide - https://docs.microsoft.com/en-us/azure/security-center/alerts-reference
 
 Reports
 -------

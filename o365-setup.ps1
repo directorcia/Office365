@@ -48,7 +48,7 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     ## New Az module
     Install-Module -name Az -force
     write-host -foregroundcolor $processmessagecolor "Install SharePoint PnP module"
-    Install-Module SharePointPnPPowerShellOnline -Force
+    Install-Module PnP.PowerShell -Force
     write-host -foregroundcolor $processmessagecolor "Install Microsoft Graph Module"
     Install-Module -Name Microsoft.Graph -force
     write-host -foregroundcolor $processmessagecolor "Install Windows Autopilot Module"

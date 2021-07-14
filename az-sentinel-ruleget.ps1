@@ -6,8 +6,9 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 Description - Report on Azure Sentinel rules
 Source - https://github.com/directorcia/Office365/blob/master/az-sentinel-ruleget.ps1
 
-Prerequisites = 1
+Prerequisites = 2
 1. Azure AZ.SecurityInsights Module installed
+2. Connect to Azure tenant - https://github.com/directorcia/office365/blob/master/az-connect-si.ps1
 
 More scripts available at www.ciaopspatron.com
 
@@ -64,11 +65,6 @@ catch {
     exit 1
 }
 
-<#      Connect to Azure Tenant               #>
-write-host -foregroundcolor $processmessagecolor "Connect to tenant that contains Azure Sentinel"
-$context = connect-AzAccount -warningaction "SilentlyContinue"
-write-host -ForegroundColor $processmessagecolor "Getting Azure subscriptions in tenant"
-$output = Get-AzSubscription -warningaction "SilentlyContinue" | Out-GridView -PassThru -title "Select the Azure subscription to use" | Select-AzSubscription
 write-host -ForegroundColor $processmessagecolor "Getting Workspaces in tenant"
 $ws = Get-AzOperationalInsightsWorkspace |  select-object name, resourcegroupname,tags | Out-GridView -PassThru -title "Select the Workspace to use"
 write-host -ForegroundColor $processmessagecolor "Getting all available valid rule templates"

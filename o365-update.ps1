@@ -47,19 +47,19 @@ Function test-install($modulename) {
         else {
             Write-Host -foregroundcolor $warningmessagecolor "    Local module $a lower version than Gallery module $b"
             write-host -foregroundcolor $warningmessagecolor "    Will be updated"
-            update-module -name $modulename -force
+            update-module -name $modulename -force -confirm:$false
             Write-Host
         }
     }
     else {                                                      ## If module doesn't exist then prompt to update
-        write-host -foregroundcolor $warningmessagecolor -nonewline "    [Warning]"$modulename" module not found. "
+        write-host -foregroundcolor $warningmessagecolor -nonewline "    [Warning]"$modulename" module not found.`n"
         if ($prompt) {
             do {
                 $result = Read-host -prompt "Install this module (Y/N)?"
             } until (-not [string]::isnullorempty($result))
             if ($result -eq 'Y' -or $result -eq 'y') {
                 write-host -foregroundcolor $processmessagecolor "Installing module",$modulename
-                install-Module -Name $modulename -Force
+                install-Module -Name $modulename -Force -confirm:$false
             }
         } else {
             write-host -foregroundcolor $processmessagecolor "Installing module",$modulename
@@ -88,14 +88,14 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     test-install -modulename Microsoft.Online.SharePoint.PowerShell
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Online module"
     test-install -modulename MSOnline
-    write-host -foregroundcolor $processmessagecolor "Update PowerShellget module"
+    write-host -foregroundcolor $processmessagecolor "Update PowerShellGet module"
     test-install -modulename PowershellGet
     write-host -foregroundcolor $processmessagecolor "Update Exchange Online V2 module"
     test-install -modulename ExchangeOnlineManagement
     write-host -foregroundcolor $processmessagecolor "Update Azure module"
     test-install -modulename Az 
     write-host -foregroundcolor $processmessagecolor "Update SharePoint PnP module"
-    test-install -modulename SharePointPnPPowerShellOnline
+    test-install -modulename PnP.PowerShell
     write-host -foregroundcolor $processmessagecolor "Update Microsoft Graph module"
     test-install -modulename Microsoft.Graph 
     write-host -foregroundcolor $processmessagecolor "Update Windows Autopilot Module"
