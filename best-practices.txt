@@ -52,6 +52,8 @@ Small Business Cyber Security Guide - https://www.cyber.gov.au/acsc/view-all-con
 Australian Business Cyber Security Assessment Tool - https://digitaltools.business.gov.au/jfe/form/SV_cRMe9MTmaq6QmrA?ref=bga
 Cyber security step by step guides - https://www.cyber.gov.au/acsc/small-and-medium-businesses/step-by-step-guides
 National Cyber Security Centre UK Device Security Guidance Configuration - https://github.com/ukncsc/Device-Security-Guidance-Configuration-Packs
+Securing access to Microsoft 365 - https://www.cert.govt.nz/it-specialists/guides/securing-access-to-microsoft-365/
+Best Practices for Preventing Business Disruption from Ransomware Attacks - https://us-cert.cisa.gov/ncas/alerts/aa21-131a
 
 Defender for Endpoint
 ---------------------

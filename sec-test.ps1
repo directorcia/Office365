@@ -36,7 +36,7 @@ function displaymenu($mitems) {
     }
     $mitems += [PSCustomObject]@{
         Number = 4;
-        Test = "Attempt LSSASS process dump"
+        Test = "Attempt LSASS process dump"
     }
     $mitems += [PSCustomObject]@{
         Number = 5;
@@ -117,6 +117,10 @@ function displaymenu($mitems) {
     $mitems += [PSCustomObject]@{
         Number = 24;
         Test = "Check Windows Defender Configuration"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 25;
+        Test = "Check MSHTA script launch"
     }
     return $mitems
 }
@@ -848,6 +852,26 @@ function defenderstatus() {
     } 
 }
 
+function mshta() {
+    
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 25. Block MSHTA process launching ---"
+
+$body = @"
+"about:<hta:application><script language="VBScript">Close(Execute("CreateObject(""Wscript.Shell"").Run%20""notepad.exe"""))</script>'"
+"@
+
+    try {
+        $error.Clear()      # Clear any existing errors
+        start-process -filepath "mshta.exe" -argumentlist $body -ErrorAction Continue
+    }
+    catch {
+        write-host -foregroundcolor $processmessagecolor "Error message:"
+        write-host "    ",($error[0].exception)
+    }
+    write-host -foregroundcolor $warningmessagecolor "`nIf NOTEPAD is executed, then the test has FAILED`n"
+    pause
+}
+
 <#          Main                #>
 Clear-Host
 if ($debug) {       # If -debug command line option specified record log file in parent
@@ -909,6 +933,7 @@ switch ($results.number) {
     22  {blockatfirst}
     23  {servicescheck}  
     24  {defenderstatus}
+    25  {mshta}
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
