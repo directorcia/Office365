@@ -868,7 +868,7 @@ $body = @"
         write-host -foregroundcolor $processmessagecolor "Error message:"
         write-host "    ",($error[0].exception)
     }
-    write-host -foregroundcolor $warningmessagecolor "`nIf NOTEPAD is executed, then the test has FAILED`n"
+    write-host -foregroundcolor $warningmessagecolor "`nIf NOTEPAD has executed, then the test has FAILED`n"
     pause
 }
 
