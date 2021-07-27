@@ -122,6 +122,10 @@ function displaymenu($mitems) {
         Number = 25;
         Test = "Check MSHTA script launch"
     }
+    $mitems += [PSCustomObject]@{
+        Number = 26;
+        Test = "Squiblydoo attack"
+    }
     return $mitems
 }
 
@@ -865,12 +869,40 @@ $body = @"
         start-process -filepath "mshta.exe" -argumentlist $body -ErrorAction Continue
     }
     catch {
-        write-host -foregroundcolor $processmessagecolor "Error message:"
+        write-host -foregroundcolor $processmessagecolor "Execution error detected:"
         write-host "    ",($error[0].exception)
     }
     write-host -foregroundcolor $warningmessagecolor "`nIf NOTEPAD has executed, then the test has FAILED`n"
     pause
 }
+
+function squiblydoo() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 26. Squiblydoo attack ---"
+    write-host -foregroundcolor $processmessagecolor "Create SC.SCT file in current directory"
+$body1 = @"
+<?XML version="1.0"?>
+<scriptlet>
+<registration progid="TESTING" classid="{A1112221-0000-0000-3000-000DA00DABFC}" >
+<script language="JScript">
+"@
+$body2 = @"
+<![CDATA[
+var foo = new ActiveXObject("WScript.Shell").Run("notepad.exe");]]>
+</script>
+</registration>
+</scriptlet>
+"@
+    
+    $body = -join($body1,$body2)
+    set-content -Path .\sc.sct $body
+    write-host -foregroundcolor $processmessagecolor "Execute regsvr32.exe in current directory"
+    start-process -filepath "regsvr32.exe" -argumentlist "/s /n /u /i:sc.sct scrobj.dll"
+    write-host -foregroundcolor $warningmessagecolor "If NOTEPAD is executed, then the test has FAILED`n"
+    pause
+    write-host -foregroundcolor $processmessagecolor "Delete SC.SCT"
+    remove-item .\sc.sct  
+}
+
 
 <#          Main                #>
 Clear-Host
@@ -934,6 +966,7 @@ switch ($results.number) {
     23  {servicescheck}  
     24  {defenderstatus}
     25  {mshta}
+    26  {squiblydoo}
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
