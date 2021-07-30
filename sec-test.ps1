@@ -126,6 +126,18 @@ function displaymenu($mitems) {
         Number = 26;
         Test = "Squiblydoo attack"
     }
+    $mitems += [PSCustomObject]@{
+        Number = 27;
+        Test = "Block Certutil download"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 28;
+        Test = "Block WMIC process launch"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 29;
+        Test = "Block RUNDLL32 process launch"
+    }
     return $mitems
 }
 
@@ -903,6 +915,56 @@ var foo = new ActiveXObject("WScript.Shell").Run("notepad.exe");]]>
     remove-item .\sc.sct  
 }
 
+function certutil() {
+    
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 27. Block Certutil download ---"
+    write-host -foregroundcolor $processmessagecolor "Use CERTUTIL.EXE to download puty.exe in current directory"
+    $opt = "-urlcache -split -f https://the.earth.li/~sgtatham/putty/latest/w32/putty.exe putty.exe"
+    try {
+        start-process "certutil.exe" -ArgumentList $opt -ErrorAction continue| Out-Null
+    }
+    catch {}
+    write-host -foregroundcolor $processmessagecolor "Check for PUTTY.EXE in current directory"
+    $result = test-path ".\putty.exe"
+    if ($result) {
+        write-host -foregroundcolor $errormessagecolor "PUTTY.EXE found - test FAILED`n"
+        write-host -foregroundcolor $processmessagecolor "Delete PUTTY.EXE"
+        remove-item .\putty.exe
+    }
+    else {
+        write-host -foregroundcolor $processmessagecolor "PUTTY.EXE not found - test SUCCEEDED`n"
+    }     
+}
+
+function wmic() {
+    
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 28. Block WMIC process launch ---"
+
+    $opt = "process call create notepad"
+    try {
+        start-process -filepath "wmic.exe" -argumentlist $opt -ErrorAction Continue
+    }
+    catch {
+    }
+    write-host -foregroundcolor $warningmessagecolor "`nIf NOTEPAD has executed, then the test has FAILED`n"
+    pause
+}
+
+function rundll() {
+    
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 29. Block RUNDLL32 process launch ---"
+
+$body = @"
+javascript:"\..\mshtml.dll,RunHTMLApplication ";eval("w=new%20ActiveXObject(\"WScript.Shell\");w.run(\"notepad\");window.close()");
+"@
+    try {
+        start-process -filepath "rundll32" -argumentlist $body -ErrorAction Continue
+    }
+    catch {
+    }
+    write-host -foregroundcolor $warningmessagecolor "`nIf NOTEPAD has executed, then the test has FAILED`n"
+    pause
+}
 
 <#          Main                #>
 Clear-Host
@@ -967,6 +1029,9 @@ switch ($results.number) {
     24  {defenderstatus}
     25  {mshta}
     26  {squiblydoo}
+    27  {certutil}
+    28  {wmic}
+    29  {rundll}
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
