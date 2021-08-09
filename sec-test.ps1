@@ -1049,9 +1049,18 @@ function mimispool () {
 function hivevul () {
     # Reference - https://github.com/JoranSlingerland/CVE-2021-36934/blob/main/CVE-2021-36934.ps1
     write-host -ForegroundColor white -backgroundcolor blue "`n--- 31. HiveNightmare / CVE-2021-36934 ---"
+    $samaccess = $true
+    $systemaccess = $true
+    $securityaccess = $true
     $systempath = $env:windir
     $LocalUsersGroup = Get-LocalGroup -SID 'S-1-5-32-545'
-    if (test-path($systempath+"\system32\config\sam")) {
+    try {
+        test-path($systempath+"\system32\config\sam") -ErrorAction Continue
+    }
+    catch {
+        $samaccess = $false
+    }
+    if ($samaccess) {
         write-host -foregroundcolor $processmessagecolor -nonewline "SAM Path exists - "
         $checkPermissions = Get-Acl $env:windir\System32\Config\sam
         if ($LocalUsersGroup) {
@@ -1064,9 +1073,15 @@ function hivevul () {
         }
     }
     else {
-        write-host -foregroundcolor $processmessagecolor "SYSTEM Path does not exists"
+        write-host -foregroundcolor $processmessagecolor "SYSTEM Path does not exists or cannot be accessed"
     }
-    if (test-path($systempath+"\system32\config\system")) {
+    try {
+        test-path($systempath+"\system32\config\system") -ErrorAction Continue
+    }
+    catch {
+        $systemaccess = $false
+    }
+    if ($systemaccess) {
         write-host -foregroundcolor $processmessagecolor -nonewline "SYSTEM Path exists - "
         $checkPermissions = Get-Acl $env:windir\System32\Config\system
         if ($LocalUsersGroup) {
@@ -1079,7 +1094,13 @@ function hivevul () {
         }
     }
     else {
-        write-host -foregroundcolor $processmessagecolor "SYSTEM Path does not exists"
+        write-host -foregroundcolor $processmessagecolor "SYSTEM Path does not exists or cannot be accessed"
+    }
+    try {
+        test-path($systempath+"\system32\config\security") -ErrorAction Continue
+    }
+    catch {
+        $securityaccess = $false
     }
     if (test-path($systempath+"\system32\config\security")) {
         write-host -foregroundcolor $processmessagecolor -nonewline "SECURITY Path exists - "
@@ -1094,7 +1115,7 @@ function hivevul () {
         }
     }
     else {
-        write-host -foregroundcolor $processmessagecolor "SECURITY Path does not exists"
+        write-host -foregroundcolor $processmessagecolor "SECURITY Path does not exists or cannot be accessed"
     }
 }
 
