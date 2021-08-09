@@ -1055,7 +1055,7 @@ function hivevul () {
     $systempath = $env:windir
     $LocalUsersGroup = Get-LocalGroup -SID 'S-1-5-32-545'
     try {
-        test-path($systempath+"\system32\config\sam") -ErrorAction Continue
+        $tryaccess = test-path($systempath+"\system32\config\sam") -ErrorAction stop
     }
     catch {
         $samaccess = $false
@@ -1073,10 +1073,10 @@ function hivevul () {
         }
     }
     else {
-        write-host -foregroundcolor $processmessagecolor "SYSTEM Path does not exists or cannot be accessed"
+        write-host -foregroundcolor $warningmessagecolor "SYSTEM Path does not exists or cannot be accessed"
     }
     try {
-        test-path($systempath+"\system32\config\system") -ErrorAction Continue
+        $tryaccess = test-path($systempath+"\system32\config\system") -ErrorAction stop
     }
     catch {
         $systemaccess = $false
@@ -1089,7 +1089,7 @@ function hivevul () {
                 write-host -foregroundcolor $errormessagecolor "SYSTEM Path vulnerable"
             }
             else {
-                write-host -foregroundcolor $processmessagecolor "SYSTEM Path not vulnerable"
+                write-host -foregroundcolor $warningmessagecolor "SYSTEM Path not vulnerable"
             }
         }
     }
@@ -1097,7 +1097,7 @@ function hivevul () {
         write-host -foregroundcolor $processmessagecolor "SYSTEM Path does not exists or cannot be accessed"
     }
     try {
-        test-path($systempath+"\system32\config\security") -ErrorAction Continue
+        $tryaccess = test-path($systempath+"\system32\config\security") -ErrorAction stop
     }
     catch {
         $securityaccess = $false
@@ -1115,7 +1115,7 @@ function hivevul () {
         }
     }
     else {
-        write-host -foregroundcolor $processmessagecolor "SECURITY Path does not exists or cannot be accessed"
+        write-host -foregroundcolor $warningmessagecolor "SECURITY Path does not exists or cannot be accessed"
     }
 }
 
