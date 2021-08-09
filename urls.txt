@@ -56,6 +56,7 @@ https://admin.microsoft.com/Adminportal/Home?#/modernonboarding/microsoftedgedep
 https://windows365.microsoft.com - Windows 365
 https://cloudpc.microsoft.com - Windows 365
 https://compliance.microsoft.com/m365appprotection - App governance
+https://windows365.microsoft.com/ - Windows 365
 
 ## Security 
 
@@ -96,6 +97,7 @@ https://account.activedirectory.windowsazure.com/ - User Azure AD portal
 https://portal.atp.azure.com - Azure ATP
 https://status.azure.com - Azure Status
 https://www.qnamaker.ai/ - Q and A Maker
+https://portal.atp.azure.com/ - Microsoft Defender for Identity
 
 ## Partner
 
@@ -157,7 +159,7 @@ https://twitter.com/SharePoint - Microsoft SharePoint
 https://twitter.com/AndroidAtMsft - Andoid at Microsoft
 https://twitter.com/windowsATP - Microsoft Defender ATP
 https://twitter.com/MicrosoftGraph - Microsoft Graph
-
+https://twitter.com/W365community - Windows 365 community
 
 ## Podcasts
 

@@ -142,6 +142,10 @@ function displaymenu($mitems) {
         Number = 30;
         Test = "PrintNightmare/Mimispool"
     }
+    $mitems += [PSCustomObject]@{
+        Number = 31;
+        Test = "HiveNightmare/CVE-2021-36934"
+    }
     return $mitems
 }
 
@@ -1042,6 +1046,58 @@ function mimispool () {
     }
 }
 
+function hivevul () {
+    # Reference - https://github.com/JoranSlingerland/CVE-2021-36934/blob/main/CVE-2021-36934.ps1
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 31. HiveNightmare / CVE-2021-36934 ---"
+    $systempath = $env:windir
+    $LocalUsersGroup = Get-LocalGroup -SID 'S-1-5-32-545'
+    if (test-path($systempath+"\system32\config\sam")) {
+        write-host -foregroundcolor $processmessagecolor -nonewline "SAM Path exists - "
+        $checkPermissions = Get-Acl $env:windir\System32\Config\sam
+        if ($LocalUsersGroup) {
+            if ($CheckPermissions.Access.IdentityReference -match $LocalUsersGroup.Name) {
+                write-host -foregroundcolor $errormessagecolor "SAM Path vulnerable"
+            }
+            else {
+                write-host -foregroundcolor $processmessagecolor "SAM Path not vulnerable"
+            }
+        }
+    }
+    else {
+        write-host -foregroundcolor $processmessagecolor "SYSTEM Path does not exists"
+    }
+    if (test-path($systempath+"\system32\config\system")) {
+        write-host -foregroundcolor $processmessagecolor -nonewline "SYSTEM Path exists - "
+        $checkPermissions = Get-Acl $env:windir\System32\Config\system
+        if ($LocalUsersGroup) {
+            if ($CheckPermissions.Access.IdentityReference -match $LocalUsersGroup.Name) {
+                write-host -foregroundcolor $errormessagecolor "SYSTEM Path vulnerable"
+            }
+            else {
+                write-host -foregroundcolor $processmessagecolor "SYSTEM Path not vulnerable"
+            }
+        }
+    }
+    else {
+        write-host -foregroundcolor $processmessagecolor "SYSTEM Path does not exists"
+    }
+    if (test-path($systempath+"\system32\config\security")) {
+        write-host -foregroundcolor $processmessagecolor -nonewline "SECURITY Path exists - "
+        $checkPermissions = Get-Acl $env:windir\System32\Config\security
+        if ($LocalUsersGroup) {
+            if ($CheckPermissions.Access.IdentityReference -match $LocalUsersGroup.Name) {
+                write-host -foregroundcolor $errormessagecolor "SECURITY Path vulnerable"
+            }
+            else {
+                write-host -foregroundcolor $processmessagecolor "SECURITY Path not vulnerable"
+            }
+        }
+    }
+    else {
+        write-host -foregroundcolor $processmessagecolor "SECURITY Path does not exists"
+    }
+}
+
 <#          Main                #>
 Clear-Host
 if ($debug) {       # If -debug command line option specified record log file in parent
@@ -1109,6 +1165,7 @@ switch ($results.number) {
     28  {wmic}
     29  {rundll}
     30  {mimispool}
+    31  {hivevul}
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
