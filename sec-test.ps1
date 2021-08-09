@@ -1094,7 +1094,7 @@ function hivevul () {
         }
     }
     else {
-        write-host -foregroundcolor $processmessagecolor "SYSTEM Path does not exists or cannot be accessed"
+        write-host -foregroundcolor $warningmessagecolor "SYSTEM Path does not exists or cannot be accessed"
     }
     try {
         $tryaccess = test-path($systempath+"\system32\config\security") -ErrorAction stop
