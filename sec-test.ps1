@@ -1089,7 +1089,7 @@ function hivevul () {
                 write-host -foregroundcolor $errormessagecolor "SYSTEM Path vulnerable"
             }
             else {
-                write-host -foregroundcolor $warningmessagecolor "SYSTEM Path not vulnerable"
+                write-host -foregroundcolor $processmessagecolor "SYSTEM Path not vulnerable"
             }
         }
     }
