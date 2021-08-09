@@ -1102,7 +1102,7 @@ function hivevul () {
     catch {
         $securityaccess = $false
     }
-    if (test-path($systempath+"\system32\config\security")) {
+    if ($securityaccess) {
         write-host -foregroundcolor $processmessagecolor -nonewline "SECURITY Path exists - "
         $checkPermissions = Get-Acl $env:windir\System32\Config\security
         if ($LocalUsersGroup) {
