@@ -23,7 +23,7 @@ $warningmessagecolor = "yellow"
 
 Function test-install($modulename) {
     try {
-        $found = Get-InstalledModule -Name $modulename -erroraction Stop    
+        $found = Get-InstalledModule -Name $modulename -erroraction SilentlyContinue    
     }
     catch {
         $found = $false
@@ -107,4 +107,4 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
 Else {
     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
 }
-write-host -foregroundcolor $systemmessagecolor "Script completed`n"
+write-host -foregroundcolor $systemmessagecolor "`nScript completed"
