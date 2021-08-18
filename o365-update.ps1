@@ -58,12 +58,12 @@ Function test-install($modulename) {
                 $result = Read-host -prompt "Install this module (Y/N)?"
             } until (-not [string]::isnullorempty($result))
             if ($result -eq 'Y' -or $result -eq 'y') {
-                write-host -foregroundcolor $processmessagecolor "Installing module",$modulename
+                write-host -foregroundcolor $processmessagecolor "Installing module",$modulename"`n"
                 install-Module -Name $modulename -Force -confirm:$false
             }
         } else {
-            write-host -foregroundcolor $processmessagecolor "Installing module",$modulename
-            install-Module -Name $modulename -Force
+            write-host -foregroundcolor $processmessagecolor "Installing module",$modulename"`n"
+            install-Module -Name $modulename -Force -confirm:$false
         }
     }
 }
