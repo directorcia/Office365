@@ -16,11 +16,12 @@ Allow custom scripts to run just for this instance
 set-executionpolicy -executionpolicy bypass -scope currentuser -force
 #>
 
-## Variables
+#Region Variables
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
+#EndRegion Variables
 
 Clear-Host
 if ($debug) {

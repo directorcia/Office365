@@ -15,11 +15,12 @@ Prerequisites = Windows 10, OFfice, valid Microsoft 365 login, endpoint security
 
 #>
 
-## Variables
+#Region Variables
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
+#EndRegion Variables
 
 function displaymenu($mitems) {
     $mitems += [PSCustomObject]@{
