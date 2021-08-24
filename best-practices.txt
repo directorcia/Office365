@@ -53,6 +53,9 @@ Cyber security step by step guides - https://www.cyber.gov.au/acsc/small-and-med
 National Cyber Security Centre UK Device Security Guidance Configuration - https://github.com/ukncsc/Device-Security-Guidance-Configuration-Packs
 Securing access to Microsoft 365 - https://www.cert.govt.nz/it-specialists/guides/securing-access-to-microsoft-365/
 Best Practices for Preventing Business Disruption from Ransomware Attacks - https://us-cert.cisa.gov/ncas/alerts/aa21-131a
+Protected Utility Program - As Built As Configuration - https://desktop.gov.au/blueprint/abac.html
+Protected Utility Program - Office 365 - https://desktop.gov.au/blueprint/office-365.html
+Protected Utility Program - Security - https://desktop.gov.au/blueprint/security.html
 
 iOS Security
 ------------
