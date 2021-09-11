@@ -147,6 +147,10 @@ function displaymenu($mitems) {
         Number = 31;
         Test = "HiveNightmare/CVE-2021-36934"
     }
+    $mitems += [PSCustomObject]@{
+        Number = 32;
+        Test = "MSHTML/CVE-2021-40444"
+    }
     return $mitems
 }
 
@@ -261,9 +265,14 @@ function processdump() {
     $procdump = $true
     if (-not $result) {
         write-host -foregroundcolor $warningmessagecolor "SysInternals procdump.exe not found in current directory"
-        do {
-            $result = Read-host -prompt "Download SysInternals procdump (Y/N)?"
-        } until (-not [string]::isnullorempty($result))
+        if ($noprompt) {        # if running the script with no prompting
+            do {
+                $result = Read-host -prompt "Download SysInternals procdump (Y/N)?"
+            } until (-not [string]::isnullorempty($result))
+        }
+        else {
+            $result = 'Y'
+        }
         if ($result -eq 'Y' -or $result -eq 'y') {
             write-host -foregroundcolor $processmessagecolor "Download procdump.zip to current directory"
             invoke-webrequest -uri https://download.sysinternals.com/files/Procdump.zip -outfile .\procdump.zip
@@ -1120,6 +1129,19 @@ function hivevul () {
     }
 }
 
+function mshtmlvul() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 32. MSHTML Remote code execution ---"
+    write-host -foregroundcolor $processmessagecolor "Download test Word document to current directory"
+    Invoke-WebRequest -Uri https://raw.githubusercontent.com/directorcia/Office365/example/master/webbrowser.docx -OutFile .\webbrowser.docx
+    write-host -foregroundcolor $processmessagecolor "Open document using Word"
+    Start-Process winword.exe -ArgumentList ".\webbrowser.docx"
+    write-host "`n1. Ensure that CALC.exe cannot be run in any way" 
+    write-host "2. Close Word once complete.`n"
+    pause
+    write-host -foregroundcolor $processmessagecolor "Delete webbrowser.docx"
+    remove-item .\webbrowser.docx  
+}
+
 <#          Main                #>
 Clear-Host
 if ($debug) {       # If -debug command line option specified record log file in parent
@@ -1188,6 +1210,7 @@ switch ($results.number) {
     29  {rundll}
     30  {mimispool}
     31  {hivevul}
+    32  {mshtmlvul}
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
