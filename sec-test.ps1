@@ -217,17 +217,17 @@ function createfile(){
     else {
         write-host -foregroundcolor $errormessagecolor "`nEICAR file creation not detected - test FAILED"
     }
-    $crdtect = $true
+    $crdetect = $true
     try {
         $fileproperty = get-itemproperty .\eicar1.com.txt
     }
     catch {
         write-host -foregroundcolor $processmessagecolor "eicar1.com.txt file not detected - test SUCCEEDED"
-        $crdtect = $false
+        $crdetect = $false
     }
     if ($crdetect) {
         if ($fileproperty.Length -eq 0) {
-            write-host -foregroundcolor $processmessagecolor "eicar1.com.txt detected with file size = 0 - test SUUCCEEDED"
+            write-host -foregroundcolor $processmessagecolor "eicar1.com.txt detected with file size = 0 - test SUCCEEDED"
             write-host -foregroundcolor $processmessagecolor "Removing file .\EICAR1.COM.TXT"
             Remove-Item .\eicar1.com.txt
         }
