@@ -103,7 +103,16 @@ $asrrules += [PSCustomObject]@{
     GUID = "e6db77e5-3df2-4cf1-b95a-636979351e5b"
     ## Reference - https://docs.microsoft.com/en-us/windows/security/threat-protection/microsoft-defender-atp/attack-surface-reduction#block-persistence-through-wmi-event-subscription
 }
-
+$asrrules += [PSCustomObject]@{
+    Name = "Block abuse of exploited vulnerable signed drivers";
+    GUID = "56a863a9-875e-4185-98a7-b882c64b5ce5"
+    ## Reference - https://docs.microsoft.com/en-us/microsoft-365/security/defender-endpoint/attack-surface-reduction-rules?view=o365-worldwide#block-abuse-of-exploited-vulnerable-signed-drivers
+}
+$asrrules += [PSCustomObject]@{
+    Name = "Block persistence through WMI event subscription";
+    GUID = "e6db77e5-3df2-4cf1-b95a-636979351e5b"
+    ## Reference - https://docs.microsoft.com/en-us/microsoft-365/security/defender-endpoint/attack-surface-reduction-rules?view=o365-worldwide#block-persistence-through-wmi-event-subscription
+}
 $enabledvalues = "Not Enabled", "Enabled", "Audit"
 $displaycolor = $errormessagecolor, $processmessagecolor, $warningmessagecolor
 ## https://docs.microsoft.com/en-us/powershell/module/defender/?view=win10-ps
@@ -131,6 +140,8 @@ if (-not [string]::isnullorempty($results.AttackSurfaceReductionRules_ids)) {
             "26190899-1602-49e8-8b27-eb1d0a1ce869" {$index=12;break}
             "7674ba52-37eb-4a4f-a9a1-f0f9a1619a2c" {$index=13;break}
             "e6db77e5-3df2-4cf1-b95a-636979351e5b" {$index=14;break}
+            "56a863a9-875e-4185-98a7-b882c64b5ce5" {$index=15;break}
+            "e6db77e5-3df2-4cf1-b95a-636979351e5b" {$index=16;break}
         }
         switch ($enabled) {
             0 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
