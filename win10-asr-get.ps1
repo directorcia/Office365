@@ -113,12 +113,8 @@ $displaycolor = $errormessagecolor, $processmessagecolor, $warningmessagecolor
 ## https://docs.microsoft.com/en-us/powershell/module/defender/?view=win10-ps
 $results = Get-MpPreference
 write-host -ForegroundColor Gray -backgroundcolor blue "Attack Surface Reduction Rules`n"
-$count = 0 
-
 if (-not [string]::isnullorempty($results.AttackSurfaceReductionRules_ids)) {
-    foreach ($id in $asrrules.GUID) {
-    ##foreach ($id in $results.AttackSurfaceReductionRules_Ids) {
-        $enabled = $results.AttackSurfaceReductionRules_actions[$count]
+    foreach ($id in $asrrules.GUID) {      
         switch ($id) {
             "BE9BA2D9-53EA-4CDC-84E5-9B1EEEE46550" {$index=0;break}
             "D4F940AB-401B-4EFC-AADC-AD5F3C50688A" {$index=1;break}
@@ -137,13 +133,23 @@ if (-not [string]::isnullorempty($results.AttackSurfaceReductionRules_ids)) {
             "e6db77e5-3df2-4cf1-b95a-636979351e5b" {$index=14;break}
             "56a863a9-875e-4185-98a7-b882c64b5ce5" {$index=15;break}
         }
-        switch ($enabled) {
-            0 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
-            1 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
-            2 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
-            default {write-host -foregroundcolor $errormessagecolor $asrrules[$index].name"= Not found"; break}
+        $count = 0
+        $notfound = $true
+        foreach ($entry in $results.AttackSurfaceReductionRules_ids) {
+            if ($entry -match $id) {
+                $enabled = $results.AttackSurfaceReductionRules_actions[$count]             
+                switch ($enabled) {
+                    0 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
+                    1 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
+                    2 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
+                }
+                $notfound = $false
+            }
+            $count++
         }
-        $count++
+        if ($notfound) {
+            write-host -foregroundcolor $errormessagecolor $asrrules[$index].name"= Not found"
+        }
     }
 }
 else {
