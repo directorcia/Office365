@@ -64,7 +64,7 @@ https://portal.msrc.microsoft.com/en-us/engage/cars - Submit Abuse report. This 
 https://servicetrust.microsoft.com/ - Service trust portal. Review the available independent audit reports for Microsoft's Cloud services, which provide information about compliance with data protection standards and regulatory requirements, such as International Organization for Standardization (ISO), Service Organization Controls (SOC), National Institute of Standards and Technology (NIST), Federal Risk and Authorization Management Program (FedRAMP), and the General Data Protection Regulation (GDPR)
 https://www.microsoft.com/en-us/trustcenter - Trust center
 https://protection.office.com - Office 365 Security portal
-https://securescore.microsoft.com - Microsoft Secure Score
+https://security.microsoft.com/securescore - Microsoft Secure Score
 https://portal.cloudappsecurity.com - Office 365 Cloud App security
 https://security.microsoft.com/ - Microsoft 365 Security Center
 https://protection.office.com/gdprdashboard - GDPR Dashbaord
@@ -86,6 +86,13 @@ https://protection.office.com/configurationAnalyzer - Configuration Analyzer
 https://security.microsoft.com/restrictedusers - Restricted users portal
 https://o365atp.com/ - Office 365 ATP Safe Links Decoder
 https://mha.azurewebsites.net/ - Message Header Analyzer
+https://security.microsoft.com/antimalwarev2 - Malware filter
+https://security.microsoft.com/antispam - Connection Filter, Spam Filter, Outbound Spam Filter
+https://security.microsoft.com/quarantine - Quarantine
+https://security.microsoft.com/dkimv2 - DKIM
+https://security.microsoft.com/safeattachmentv2 - Safe Attachments
+https://security.microsoft.com/safelinksv2 - Safe Links
+https://security.microsoft.com/restrictedusers - Action Center
 
 ## Azure
 
@@ -98,6 +105,11 @@ https://portal.atp.azure.com - Azure ATP
 https://status.azure.com - Azure Status
 https://www.qnamaker.ai/ - Q and A Maker
 https://portal.atp.azure.com/ - Microsoft Defender for Identity
+
+## Microsoft Management Agent
+
+https://go.microsoft.com/fwlink/?LinkId=828603 - Windows 64-bit agent
+https://go.microsoft.com/fwlink/?LinkId=828604 - Windows 32-bit agent
 
 ## Partner
 
