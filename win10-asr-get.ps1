@@ -113,6 +113,13 @@ $displaycolor = $errormessagecolor, $processmessagecolor, $warningmessagecolor
 ## https://docs.microsoft.com/en-us/powershell/module/defender/?view=win10-ps
 $results = Get-MpPreference
 write-host -ForegroundColor Gray -backgroundcolor blue "Attack Surface Reduction Rules`n"
+if ($results.AttackSurfaceReductionRules_ids.count -lt $asrrules.count) {
+    $textcolor = $warningmessagecolor
+}
+else {
+    $textcolor = $processmessagecolor
+}
+write-host -foregroundcolor $textcolor $results.AttackSurfaceReductionRules_ids.count,"of",$asrrules.count,"ASR rules found active`n"
 if (-not [string]::isnullorempty($results.AttackSurfaceReductionRules_ids)) {
     foreach ($id in $asrrules.GUID) {      
         switch ($id) {
