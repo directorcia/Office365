@@ -27,35 +27,35 @@ write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     write-host -foregroundcolor $processmessagecolor "NuGet provider"
-    Install-PackageProvider -Name NuGet -Force
+    Install-PackageProvider -Name NuGet -Force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Azure AD module"
-    Install-Module -Name AzureAD -force
+    Install-Module -Name AzureAD -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Azure Information Protection module"
-    Install-module -name aipservice -Force
+    Install-module -name aipservice -Force -confirm:$false
 ##    Install-Module -Name AADRM -force                       ## Support for the AADRM module ends July 15, 2020
     write-host -foregroundcolor $processmessagecolor "Install Teams Module"
-    Install-Module -Name MicrosoftTeams -Force
+    Install-Module -Name MicrosoftTeams -Force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install SharePoint Online module"
-    Install-Module -Name Microsoft.Online.SharePoint.PowerShell -force
+    Install-Module -Name Microsoft.Online.SharePoint.PowerShell -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Microsoft Online module"
-    Install-Module -Name MSOnline -force
+    Install-Module -Name MSOnline -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Exchange Online V2 module"
-    Install-Module PowershellGet -Force
-    Install-Module -Name ExchangeOnlineManagement -force
+    Install-Module PowershellGet -Force -confirm:$false
+    Install-Module -Name ExchangeOnlineManagement -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Azure module"
     ## Old Azure module
     ## Install-Module -name AzureRM -Force
     ## New Az module
-    Install-Module -name Az -force
+    Install-Module -name Az -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install SharePoint PnP module"
-    Install-Module PnP.PowerShell -Force
+    Install-Module PnP.PowerShell -Force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Microsoft Graph Module"
-    Install-Module -Name Microsoft.Graph -force
+    Install-Module -Name Microsoft.Graph -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Windows Autopilot Module"
     ## will also update dependent AzureAD and Microsoft.Graph.Intune modules
-    Install-Module -Name WindowsAutoPilotIntune -force
+    Install-Module -Name WindowsAutoPilotIntune -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Centralised Add-in Deployment"
-    Install-module -name O365CentralizedAddInDeployment
+    Install-module -name O365CentralizedAddInDeployment -confirm:$false
 }
 else {
     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"

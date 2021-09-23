@@ -125,7 +125,7 @@ write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell 
 ## Connect to Exchange Online service
 write-host -foregroundcolor $processmessagecolor "Connecting to Security and Compliance Center"
 try {
-    $result = Connect-IPPSSession | Out-Null
+    $result = Connect-IPPSSession -warningaction "SilentlyContinue" | Out-Null
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Security and Compliance Center`n"

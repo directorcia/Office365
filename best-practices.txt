@@ -29,7 +29,6 @@ Microsoft password policy recommendations - https://docs.microsoft.com/en-us/mic
 Microsoft - Password Guidance - https://www.microsoft.com/en-us/research/publication/password-guidance/
 Responding to a compromised email account - https://docs.microsoft.com/en-us/microsoft-365/security/office-365-security/responding-to-a-compromised-email-account?view=o365-worldwide
 Hardening Microsoft Office 365 ProPlus, Office 2019 and Office 2016 - https://www.cyber.gov.au/acsc/view-all-content/publications/hardening-microsoft-office-365-proplus-office-2019-and-office-2016
-Hardening Hardening Microsoft Windows 10 version 1909 Workstations - https://www.cyber.gov.au/sites/default/files/2020-06/PROTECT%20-%20Hardening%20Microsoft%20Windows%2010%20version%201909%20Workstations%20%28June%202020%29.pdf
 Practical guide to securing remote work using Microsoft 365 Business Premium - https://techcommunity.microsoft.com/t5/small-and-medium-business-blog/practical-guide-to-securing-remote-work-using-microsoft-365/ba-p/1354772
 Cyber Essentials: Requirements for IT infrastructure - https://www.ncsc.gov.uk/files/Cyber-Essentials-Requirements-for-IT-infrastructure-2-1.pdf
 Securing privileged access for hybrid and cloud deployments in Azure AD - https://docs.microsoft.com/en-us/azure/active-directory/roles/security-planning
@@ -52,6 +51,25 @@ Small Business Cyber Security Guide - https://www.cyber.gov.au/acsc/view-all-con
 Australian Business Cyber Security Assessment Tool - https://digitaltools.business.gov.au/jfe/form/SV_cRMe9MTmaq6QmrA?ref=bga
 Cyber security step by step guides - https://www.cyber.gov.au/acsc/small-and-medium-businesses/step-by-step-guides
 National Cyber Security Centre UK Device Security Guidance Configuration - https://github.com/ukncsc/Device-Security-Guidance-Configuration-Packs
+Securing access to Microsoft 365 - https://www.cert.govt.nz/it-specialists/guides/securing-access-to-microsoft-365/
+Best Practices for Preventing Business Disruption from Ransomware Attacks - https://us-cert.cisa.gov/ncas/alerts/aa21-131a
+Protected Utility Program - As Built As Configuration - https://desktop.gov.au/blueprint/abac.html
+Protected Utility Program - Office 365 - https://desktop.gov.au/blueprint/office-365.html
+Protected Utility Program - Security - https://desktop.gov.au/blueprint/security.html
+
+iOS Security
+------------
+Security Configuration Guide – Apple iOS 14 Devices - https://www.cyber.gov.au/acsc/view-all-content/publications/security-configuration-guide-apple-ios-14-devices
+iOS Hardening Configuration Guide - https://www.cyber.gov.au/sites/default/files/2019-03/iOS9_Hardening_Guide.pdf
+
+Android Security
+----------------
+Security Configuration Guide – Samsung Galaxy S10, S20 and Note 20 Devices - https://www.cyber.gov.au/acsc/view-all-content/publications/security-configuration-guide-samsung-galaxy-s10-s20-and-note-20-devices
+
+Windows 10 Security
+-------------------
+Hardening Microsoft Windows 10 version 21H1 Workstations - https://www.cyber.gov.au/acsc/view-all-content/publications/hardening-microsoft-windows-10-version-21h1-workstations
+Hardening Hardening Microsoft Windows 10 version 1909 Workstations - https://www.cyber.gov.au/sites/default/files/2020-06/PROTECT%20-%20Hardening%20Microsoft%20Windows%2010%20version%201909%20Workstations%20%28June%202020%29.pdf
 
 Defender for Endpoint
 ---------------------

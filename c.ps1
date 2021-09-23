@@ -47,7 +47,7 @@ if (-not $noupdate) {
 if (-not $noprompt) {
     write-host -foregroundcolor $warningmessagecolor  "    * use the -noprompt parameter on the command line present no prompts"
 }
-
+#Region Modules
 $scripts = @()
 $scripts += [PSCustomObject]@{
     Name = "o365-connect-tms.ps1";
@@ -124,6 +124,8 @@ $scripts += [PSCustomObject]@{
     Service = "SharePoint Online PNP";  
     Module = "pnp.powershell"  
 }
+#EndRegion Modules
+
 if (-not $noprompt) {
     try {
         $results = $scripts | select-object service | Sort-Object Service | Out-GridView -PassThru -title "Select services to connect to (Multiple selections permitted) "

@@ -21,9 +21,57 @@ $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
 
+function test-package($packagename) {
+    try {
+        $found = Get-PackageProvider -Name $packagename -erroraction SilentlyContinue    
+    }
+    catch {
+        $found = $false
+    }
+    if ($found) {          ## If module exists then update
+        #get version of the module (selects the first if there are more versions installed)
+        $version = (Get-PackageProvider -name $packagename) | Sort-Object Version -Descending  | Select-Object Version -First 1
+        #get version of the module in psgallery
+        $psgalleryversion = Find-PackageProvider -Name $packagename | Sort-Object Version -Descending | Select-Object Version -First 1
+        #convert to string for comparison
+        $stringver = $version | Select-Object @{n='Version'; e={$_.Version -as [string]}}
+        $a = $stringver | Select-Object version -ExpandProperty version
+        #convert to string for comparison
+        $onlinever = $psgalleryversion | Select-Object @{n='Version'; e={$_.Version -as [string]}}
+        $b = $onlinever | Select-Object Version -ExpandProperty Version
+        #version compare
+        if ([version]"$a" -ge [version]"$b") {
+            Write-Host -foregroundcolor $processmessagecolor "    Local package $a greater or equal to Gallery package $b"
+            write-host -foregroundcolor $processmessagecolor "    No update required`n"
+        }
+        else {
+            Write-Host -foregroundcolor $warningmessagecolor "    Local package $a lower version than Gallery package $b"
+            write-host -foregroundcolor $warningmessagecolor "    Will be updated"
+            update-packageprovider -name $packagename -force -confirm:$false
+            Write-Host
+        }
+    }
+    else {                                                      ## If module doesn't exist then prompt to update
+        write-host -foregroundcolor $warningmessagecolor -nonewline "    [Warning]"$pacakgename" package not found.`n"
+        if ($prompt) {
+            do {
+                $result = Read-host -prompt "Install this package (Y/N)?"
+            } until (-not [string]::isnullorempty($result))
+            if ($result -eq 'Y' -or $result -eq 'y') {
+                write-host -foregroundcolor $processmessagecolor "Installing package",$packagename"`n"
+                Install-PackageProvider -Name $packagename -Force -confirm:$false
+            }
+        } else {
+            write-host -foregroundcolor $processmessagecolor "Installing package",$packagename"`n"
+            Install-PackageProvider -Name $packagename -Force -confirm:$false
+        }
+    }
+}
+
+
 Function test-install($modulename) {
     try {
-        $found = Get-InstalledModule -Name $modulename -erroraction Stop    
+        $found = Get-InstalledModule -Name $modulename -erroraction SilentlyContinue    
     }
     catch {
         $found = $false
@@ -58,12 +106,12 @@ Function test-install($modulename) {
                 $result = Read-host -prompt "Install this module (Y/N)?"
             } until (-not [string]::isnullorempty($result))
             if ($result -eq 'Y' -or $result -eq 'y') {
-                write-host -foregroundcolor $processmessagecolor "Installing module",$modulename
+                write-host -foregroundcolor $processmessagecolor "Installing module",$modulename"`n"
                 install-Module -Name $modulename -Force -confirm:$false
             }
         } else {
-            write-host -foregroundcolor $processmessagecolor "Installing module",$modulename
-            install-Module -Name $modulename -Force
+            write-host -foregroundcolor $processmessagecolor "Installing module",$modulename"`n"
+            install-Module -Name $modulename -Force -confirm:$false
         }
     }
 }
@@ -78,6 +126,8 @@ write-host -ForegroundColor $processmessagecolor "Prompt to install missing modu
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    write-host -foregroundcolor $processmessagecolor "Update NuGet provider"
+    test-package -packagename NuGet
     write-host -foregroundcolor $processmessagecolor "Update Azure AD module"
     test-install -modulename AzureAD
     write-host -foregroundcolor $processmessagecolor "Update Azure Information Protection module"
@@ -107,4 +157,4 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
 Else {
     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
 }
-write-host -foregroundcolor $systemmessagecolor "Script completed`n"
+write-host -foregroundcolor $systemmessagecolor "`nScript completed"
