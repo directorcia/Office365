@@ -59,7 +59,7 @@ $policyparams = @{
 
 new-hostedcontentfilterpolicy @policyparams
 
-write-host -foregroundcolor $processmessagecolor"Set new filter rule"
+write-host -foregroundcolor $processmessagecolor "Set new filter rule"
 
 $ruleparams = @{
     'name' = $rulename;

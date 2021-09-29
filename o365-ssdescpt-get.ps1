@@ -62,7 +62,7 @@ $method = "GET"
 
 write-host -foregroundcolor $processmessagecolor "Run Graph API Query"
 # Run Graph API query 
-$query = Invoke-WebRequest -Method $method -Uri $uri -ContentType "application/json" -Headers @{Authorization = "Bearer $token" } -ErrorAction Stop 
+$query = Invoke-WebRequest -Method $method -Uri $uri -ContentType "application/json" -Headers @{Authorization = "Bearer $token" } -ErrorAction Stop -UseBasicParsing
 
 write-host -foregroundcolor $processmessagecolor "Parse results"
 $ConvertedOutput = $query | Select-Object -ExpandProperty content | ConvertFrom-Json

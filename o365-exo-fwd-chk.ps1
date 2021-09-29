@@ -41,13 +41,13 @@ write-host -foregroundcolor $processmessagecolor "Check Mailbox Forwards - Start
 foreach ($mailbox in $mailboxes) {
     Write-Host -foregroundColor Gray "Mailbox forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
     if ($mailbox.DeliverToMailboxAndForward) { ## if email forwarding is active
-        Write-Host -foregroundColor $errormessagecolor "`nMailbox forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)" 
-        Write-host -foregroundColor $errormessagecolor "Forwarding address = $($mailbox.forwardingsmtpaddress)`n" 
+        Write-Host -foregroundColor $errormessagecolor "`n    Mailbox forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)" 
+        Write-host -foregroundColor $errormessagecolor "    Forwarding address = $($mailbox.forwardingsmtpaddress)`n" 
     }
     else {
         if ($mailbox.forwardingsmtpaddress){ ## if email forward email address has been set
-            Write-Host -foregroundColor $warnmessagecolor "`nMailbox forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)"
-            Write-host -foregroundColor $warnmessagecolor "Forwarding address = $($mailbox.forwardingsmtpaddress)`n"
+            Write-Host -foregroundColor $warnmessagecolor "`n    Mailbox forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)"
+            Write-host -foregroundColor $warnmessagecolor "    Forwarding address = $($mailbox.forwardingsmtpaddress)`n"
         }
     }
 }
@@ -58,28 +58,34 @@ foreach ($mailbox in $mailboxes)
 {
   Write-Host -foregroundcolor gray "Outlook forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
   $rules = get-inboxrule -mailbox $mailbox.userprincipalname
+  if (-not [string]::isnullorempty($rules)) {
+      write-host
+  }
   foreach ($rule in $rules)
     {
        If ($rule.enabled) {
-        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo -or $rule.movetofolder) { write-host -ForegroundColor $warnmessagecolor "`nSuspect Enabled Rule name -",$rule.name }
-        If ($rule.forwardto) { write-host -ForegroundColor $errormessagecolor "Forward to:",$rule.forwardto,"`n" }
-        If ($rule.RedirectTo) { write-host -ForegroundColor $errormessagecolor "Redirect to:",$rule.redirectto,"`n" }
-        If ($rule.CopyToFolder) { write-host -ForegroundColor $errormessagecolor "Copy to folder:",$rule.copytofolder,"`n" }
-        if ($rule.DeleteMessage) { write-host -ForegroundColor $errormessagecolor "Delete message:", $rule.deletemessage,"`n" }
-        if ($rule.ForwardAsAttachmentTo) { write-host -ForegroundColor $errormessagecolor "Forward as attachment to:",$rule.forwardasattachmentto, "`n"}
-        if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $errormessagecolor "Sent TXT msg to:",$rule.sendtextmessagenotificationto, "`n" }
-        if ($rule.movetofolder) { write-host -ForegroundColor $errormessagecolor "Move to folder:", $rule.movetofolder, "`n" }
+        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo -or $rule.movetofolder) { write-host -ForegroundColor $warnmessagecolor "    Suspect Enabled Rule name -",$rule.name }
+        If ($rule.forwardto) { write-host -ForegroundColor $errormessagecolor "    Forward to:",$rule.forwardto.split(" ")[0]}
+            If ($rule.RedirectTo) { write-host -ForegroundColor $errormessagecolor "    Redirect to:", $rule.redirectto.split(" ")[0]}
+        If ($rule.CopyToFolder) { write-host -ForegroundColor $errormessagecolor "    Copy to folder:",$rule.copytofolder}
+        if ($rule.DeleteMessage) { write-host -ForegroundColor $errormessagecolor "    Delete message:", $rule.deletemessage}
+            if ($rule.ForwardAsAttachmentTo) { write-host -ForegroundColor $errormessagecolor "    Forward as attachment to:", $rule.forwardasattachmentto.split(" ")[0]}
+        if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $errormessagecolor "    Sent TXT msg to:",$rule.sendtextmessagenotificationto}
+        if ($rule.movetofolder) { write-host -ForegroundColor $errormessagecolor "    Move to folder:", $rule.movetofolder }
     }
         else {
-        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo -or $rulemovetofolder) { write-host -ForegroundColor $warnmessagecolor "`nSuspect Disabled Rule name -",$rule.name }
-        If ($rule.forwardto) { write-host -ForegroundColor $warnmessagecolor "Forward to:",$rule.forwardto,"`n" }
-        If ($rule.RedirectTo) { write-host -ForegroundColor $warnmessagecolor "Redirect to:",$rule.redirectto,"`n" }
-        If ($rule.CopyToFolder) { write-host -ForegroundColor $warnmessagecolor "Copy to folder:",$rule.copytofolder,"`n" }
-        if ($rule.DeleteMessage) { write-host -ForegroundColor $warnmessagecolor "Delete message:", $rule.deletemessage,"`n" }
-        if ($rule.ForwardAsAttachmentTo) { write-host -ForegroundColor $warnmessagecolor "Forward as attachment to:",$rule.forwardasattachmentto,"`n"}
-        if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $warnmessagecolor "Sent TXT msg to:",$rule.sendtextmessagenotificationto,"`n" }
-        if ($rule.movetofolder) { write-host -ForegroundColor $errormessagecolor "Move to folder:", $rule.movetofolder, "`n" }
+        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo -or $rulemovetofolder) { write-host -ForegroundColor $warnmessagecolor "    Suspect Disabled Rule name -",$rule.name }
+            If ($rule.forwardto) { write-host -ForegroundColor $warnmessagecolor "    Forward to:", $rule.forwardto.split(" ")[0]}
+            If ($rule.RedirectTo) { write-host -ForegroundColor $warnmessagecolor "    Redirect to:", $rule.redirectto.split(" ")[0]}
+        If ($rule.CopyToFolder) { write-host -ForegroundColor $warnmessagecolor "    Copy to folder:",$rule.copytofolder }
+        if ($rule.DeleteMessage) { write-host -ForegroundColor $warnmessagecolor "    Delete message:", $rule.deletemessage}
+            if ($rule.ForwardAsAttachmentTo) { write-host -ForegroundColor $warnmessagecolor "    Forward as attachment to:", $rule.forwardasattachmentto.split(" ")[0]}
+        if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $warnmessagecolor "    Sent TXT msg to:",$rule.sendtextmessagenotificationto}
+        if ($rule.movetofolder) { write-host -ForegroundColor $errormessagecolor "    Move to folder:", $rule.movetofolder}
         }
+    }
+    if (-not [string]::isnullorempty($rules)) {
+        write-host
     }
 }
 write-host -foregroundcolor $processmessagecolor "`nCheck Outlook Rule Forwards - Finish`n"
@@ -91,11 +97,11 @@ foreach ($mailbox in $mailboxes)
   $rules = get-sweeprule -mailbox $mailbox.userprincipalname
   foreach ($rule in $rules) {
     if ($rule.enabled) { ## if Sweep is active 
-        Write-Host -foregroundcolor $errormessagecolor "`nSweep rules enabled for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-        Write-host -foregroundColor $errormessagecolor "Name = ",$rule.name
-        Write-host -foregroundColor $errormessagecolor "Source Folder = ",$rule.sourcefolder 
-        write-host -foregroundColor $errormessagecolor "Destination folder = ",$rule.destinationfolder
-        Write-host -foregroundColor $errormessagecolor "Keep for days = ",$rule.keepfordays"`n"
+        Write-Host -foregroundcolor $errormessagecolor "`n    Sweep rules enabled for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
+        Write-host -foregroundColor $errormessagecolor "    Name = ",$rule.name
+        Write-host -foregroundColor $errormessagecolor "    Source Folder = ",$rule.sourcefolder 
+        write-host -foregroundColor $errormessagecolor "    Destination folder = ",$rule.destinationfolder
+        Write-host -foregroundColor $errormessagecolor "    Keep for days = ",$rule.keepfordays"`n"
         }
     }
 }
