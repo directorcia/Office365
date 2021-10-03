@@ -31,15 +31,23 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     write-host -foregroundcolor $processmessagecolor "Install Azure AD module"
     Install-Module -Name AzureAD -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Azure Information Protection module"
-    Install-module -name aipservice -Force -confirm:$false
 ##    Install-Module -Name AADRM -force                       ## Support for the AADRM module ends July 15, 2020
+    $aadrmcheck = get-module -listavailable -name aadrm
+    if ($aadrmcheck) {
+        write-host -foregroundcolor $processmessagecolor "Older module Azure AD Rights management module (AADRM) is installed"
+        write-host -foregroundcolor $processmessagecolor "Uninstalling AADRM module as support ended July 15, 2020 "
+        uninstall -module aadrm -force -confirm:$false
+        write-host -foregroundcolor $processmessagecolor "Now Azure Information Protection module will be installed"
+    }
+    Install-module -name aipservice -Force -confirm:$false
+
     write-host -foregroundcolor $processmessagecolor "Install Teams Module"
     Install-Module -Name MicrosoftTeams -Force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install SharePoint Online module"
     Install-Module -Name Microsoft.Online.SharePoint.PowerShell -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Microsoft Online module"
     Install-Module -Name MSOnline -force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "Install Exchange Online V2 module"
+    write-host -foregroundcolor $processmessagecolor "Install Exchange Online module"
     Install-Module PowershellGet -Force -confirm:$false
     Install-Module -Name ExchangeOnlineManagement -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Azure module"
