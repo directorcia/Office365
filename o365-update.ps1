@@ -131,6 +131,13 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     write-host -foregroundcolor $processmessagecolor "Update Azure AD module"
     test-install -modulename AzureAD
     write-host -foregroundcolor $processmessagecolor "Update Azure Information Protection module"
+    $aadrmcheck = get-module -listavailable -name aadrm
+    if ($aadrmcheck) {
+        write-host -foregroundcolor $processmessagecolor "Older module Azure AD Rights management module (AADRM) is installed"
+        write-host -foregroundcolor $processmessagecolor "Uninstalling AADRM module as support ended July 15, 2020 "
+        uninstall -module aadrm -force -confirm:$false
+        write-host -foregroundcolor $processmessagecolor "Now Azure Information Protection module will be installed"
+    }
     test-install -modulename AIPService
     write-host -foregroundcolor $processmessagecolor "Update Teams Module"
     test-install -modulename MicrosoftTeams
