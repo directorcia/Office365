@@ -56,6 +56,12 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     ## New Az module
     Install-Module -name Az -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install SharePoint PnP module"
+    $pnpcheck = get-module -listavailable -name SharePointPnPPowerShellOnline
+    if ($pnpcheck) {
+        write-host -foregroundcolor $processmessagecolor "Older SharePoint PnP module is installed. Removing"
+        uninstall -module SharePointPnPPowerShellOnline -allversions -force -confirm:$false
+        write-host -foregroundcolor $processmessagecolor "New SharePoint PnP module will be installed"
+    }
     Install-Module PnP.PowerShell -Force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Microsoft Graph Module"
     Install-Module -Name Microsoft.Graph -force -confirm:$false
