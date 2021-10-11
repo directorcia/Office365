@@ -36,7 +36,7 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     if ($aadrmcheck) {
         write-host -foregroundcolor $processmessagecolor "Older module Azure AD Rights management module (AADRM) is installed"
         write-host -foregroundcolor $processmessagecolor "Uninstalling AADRM module as support ended July 15, 2020 "
-        uninstall -module aadrm -force -confirm:$false
+        uninstall-module aadrm -force -confirm:$false
         write-host -foregroundcolor $processmessagecolor "Now Azure Information Protection module will be installed"
     }
     Install-module -name aipservice -Force -confirm:$false
@@ -59,7 +59,7 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     $pnpcheck = get-module -listavailable -name SharePointPnPPowerShellOnline
     if ($pnpcheck) {
         write-host -foregroundcolor $processmessagecolor "Older SharePoint PnP module is installed. Removing"
-        uninstall -module SharePointPnPPowerShellOnline -allversions -force -confirm:$false
+        uninstall-module SharePointPnPPowerShellOnline -allversions -force -confirm:$false
         write-host -foregroundcolor $processmessagecolor "New SharePoint PnP module will be installed"
     }
     Install-Module PnP.PowerShell -Force -confirm:$false
