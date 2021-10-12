@@ -27,7 +27,6 @@ write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    <# Test for Execution policy #>
     write-host -ForegroundColor $processmessagecolor "Checking PowerShell Execution Policy"
     $result = Get-ExecutionPolicy -Scope CurrentUser
     if ($result -ne "Bypass") {
