@@ -30,14 +30,14 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     write-host -ForegroundColor $processmessagecolor "Checking PowerShell Execution Policy"
     $result = Get-ExecutionPolicy -Scope CurrentUser
     if ($result -ne "Bypass") {
-        write-host -ForegroundColor $warningmessagecolor "[Warning] - Execution policy for Currentuser not set to bypass to allow scripts to run"
-        write-host -ForegroundColor $processmessagecolor "Setting Powershell execution policy for Currentuser to bypass to allow scripts to run"        
+        write-host -ForegroundColor $warningmessagecolor "    [Warning] - Execution policy for Currentuser not set to bypass to allow scripts to run"
+        write-host -ForegroundColor $processmessagecolor "    Setting Powershell execution policy for Currentuser to bypass to allow scripts to run"        
         set-executionpolicy -executionpolicy bypass -scope currentuser -force
     }
     else {
-        write-host -ForegroundColor $processmessagecolor "Execution policy for Currentuser is set to bypass to allow scripts to run"
+        write-host -ForegroundColor $processmessagecolor "    Execution policy for Currentuser is set to bypass to allow scripts to run"
     }
-    write-host -foregroundcolor $processmessagecolor "NuGet provider"
+    write-host -foregroundcolor $processmessagecolor "`nInstall NuGet provider"
     Install-PackageProvider -Name NuGet -Force -confirm:$false | Out-Null
     write-host -foregroundcolor $processmessagecolor "Install Azure AD module"
     Install-Module -Name AzureAD -force -confirm:$false
@@ -45,10 +45,10 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
 ##    Install-Module -Name AADRM -force                       ## Support for the AADRM module ends July 15, 2020
     $aadrmcheck = get-module -listavailable -name aadrm
     if ($aadrmcheck) {
-        write-host -foregroundcolor $warningmessagecolor "[Warning] Older module Azure AD Rights management module (AADRM) is still installed"
-        write-host -foregroundcolor $processmessagecolor "Uninstalling AADRM module as support ended July 15, 2020 "
+        write-host -foregroundcolor $warningmessagecolor "    [Warning] Older module Azure AD Rights management module (AADRM) is still installed"
+        write-host -foregroundcolor $processmessagecolor "    Uninstalling AADRM module as support ended July 15, 2020 "
         uninstall-module aadrm -force -confirm:$false
-        write-host -foregroundcolor $processmessagecolor "New Azure Information Protection module will now be installed"
+        write-host -foregroundcolor $processmessagecolor "    New Azure Information Protection module will now be installed"
     }
     Install-module -name aipservice -Force -confirm:$false
 
@@ -69,10 +69,10 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     write-host -foregroundcolor $processmessagecolor "Install SharePoint PnP module"
     $pnpcheck = get-module -listavailable -name SharePointPnPPowerShellOnline
     if ($pnpcheck) {
-        write-host -foregroundcolor $warningmessagecolor "[Warning] Older SharePoint PnP module is still installed"
-        write-host -foregroundcolor $processmessagecolor "Uninstalling older SharePoint PnP module"
+        write-host -foregroundcolor $warningmessagecolor "    [Warning] Older SharePoint PnP module is still installed"
+        write-host -foregroundcolor $processmessagecolor "    Uninstalling older SharePoint PnP module"
         uninstall-module SharePointPnPPowerShellOnline -allversions -force -confirm:$false
-        write-host -foregroundcolor $processmessagecolor "New SharePoint PnP module will now be installed"
+        write-host -foregroundcolor $processmessagecolor "    New SharePoint PnP module will now be installed"
     }
     Install-Module PnP.PowerShell -Force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "Install Microsoft Graph Module"
