@@ -80,7 +80,7 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     write-host -foregroundcolor $processmessagecolor "(11 of 12) Install Windows Autopilot Module"
     ## will also update dependent AzureAD and Microsoft.Graph.Intune modules
     Install-Module -Name WindowsAutoPilotIntune -force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "(12 of 12)Install Centralised Add-in Deployment"
+    write-host -foregroundcolor $processmessagecolor "(12 of 12) Install Centralised Add-in Deployment"
     Install-module -name O365CentralizedAddInDeployment -force -confirm:$false
 }
 else {
