@@ -22,7 +22,7 @@ $warningmessagecolor = "yellow"
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
 Clear-Host
-
+if ((get-host).name -match "ISE") {Write-host "`n`n`n`n`n`n`n`n`n"}     # move text down for ISE where dialog will hide
 write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
