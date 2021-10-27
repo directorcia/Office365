@@ -65,6 +65,7 @@ https://portal.msrc.microsoft.com/en-us/engage/cars - Submit Abuse report. This 
 https://servicetrust.microsoft.com/ - Service trust portal. Review the available independent audit reports for Microsoft's Cloud services, which provide information about compliance with data protection standards and regulatory requirements, such as International Organization for Standardization (ISO), Service Organization Controls (SOC), National Institute of Standards and Technology (NIST), Federal Risk and Authorization Management Program (FedRAMP), and the General Data Protection Regulation (GDPR)
 https://www.microsoft.com/en-us/trustcenter - Trust center
 https://protection.office.com - Office 365 Security portal
+https://admin.microsoft.com/AdminPortal/Home?#/modernonboarding/mfasetupguide - Configure and enforce multifactor authentication
 https://security.microsoft.com/securescore - Microsoft Secure Score
 https://portal.cloudappsecurity.com - Office 365 Cloud App security
 https://security.microsoft.com/ - Microsoft 365 Security Center

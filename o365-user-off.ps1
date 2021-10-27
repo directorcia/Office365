@@ -6,9 +6,9 @@ Source - https://github.com/directorcia/Office365/blob/master/o365-user-off.ps1
 Description - Disable a user's access to Office 365 services
 
 Prerequisites = 3
-1. Ensure connected to Office 365 Azure AD
-2. Ensure connected to Exchange Online
-3. Ensure connected to SharePoint Online
+1. Ensure connected to Azure AD (AzureAD module)
+2. Ensure connected to Exchange Online (ExchangeOnlineManagement module)
+3. Ensure connected to SharePoint Online (Microsoft.Online.SharePoint.PowerShell module)
 
 More scripts available by joining http://www.ciaopspatron.com
 
