@@ -42,6 +42,7 @@ $Sku = @{
 	"ProjectPremium"						 = "Project Online Premium"
 	"ECAL_SERVICES"						     = "ECAL"
 	"EMS"								     = "Enterprise Mobility Suite"
+	"EMSPREMIUM"                             = "ENTERPRISE MOBILITY + SECURITY E5"
 	"RIGHTSMANAGEMENT_ADHOC"				 = "Windows Azure Rights Management"
 	"MCOMEETADV"							 = "PSTN conferencing"
 	"SHAREPOINTSTORAGE"					     = "SharePoint storage"

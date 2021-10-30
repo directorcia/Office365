@@ -126,11 +126,11 @@ write-host -ForegroundColor $processmessagecolor "Prompt to install missing modu
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    write-host -foregroundcolor $processmessagecolor "Update NuGet provider"
+    write-host -foregroundcolor $processmessagecolor "(1 of 13) Update NuGet provider"
     test-package -packagename NuGet
-    write-host -foregroundcolor $processmessagecolor "Update Azure AD module"
+    write-host -foregroundcolor $processmessagecolor "(2 of 13) Update Azure AD module"
     test-install -modulename AzureAD
-    write-host -foregroundcolor $processmessagecolor "Update Azure Information Protection module"
+    write-host -foregroundcolor $processmessagecolor "(3 of 13) Update Azure Information Protection module"
     $aadrmcheck = get-module -listavailable -name aadrm
     if ($aadrmcheck) {
         write-host -foregroundcolor $warningmessagecolor "    [Warning] Older module Azure AD Rights management module (AADRM) is still installed"
@@ -139,19 +139,19 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
         write-host -foregroundcolor $processmessagecolor "    Now Azure Information Protection module will now be installed"
     }
     test-install -modulename AIPService
-    write-host -foregroundcolor $processmessagecolor "Update Teams Module"
+    write-host -foregroundcolor $processmessagecolor "(4 of 13) Update Teams Module"
     test-install -modulename MicrosoftTeams
-    write-host -foregroundcolor $processmessagecolor "Update SharePoint Online module"
+    write-host -foregroundcolor $processmessagecolor "(5 of 13) Update SharePoint Online module"
     test-install -modulename Microsoft.Online.SharePoint.PowerShell
-    write-host -foregroundcolor $processmessagecolor "Update Microsoft Online module"
+    write-host -foregroundcolor $processmessagecolor "(6 of 13) Update Microsoft Online module"
     test-install -modulename MSOnline
-    write-host -foregroundcolor $processmessagecolor "Update PowerShellGet module"
+    write-host -foregroundcolor $processmessagecolor "(7 of 13) Update PowerShellGet module"
     test-install -modulename PowershellGet
-    write-host -foregroundcolor $processmessagecolor "Update Exchange Online module"
+    write-host -foregroundcolor $processmessagecolor "(8 of 13) Update Exchange Online module"
     test-install -modulename ExchangeOnlineManagement
-    write-host -foregroundcolor $processmessagecolor "Update Azure module"
+    write-host -foregroundcolor $processmessagecolor "(9 of 13) Update Azure module"
     test-install -modulename Az 
-    write-host -foregroundcolor $processmessagecolor "Update SharePoint PnP module"
+    write-host -foregroundcolor $processmessagecolor "(10 of 13) Update SharePoint PnP module"
     $pnpcheck = get-module -listavailable -name SharePointPnPPowerShellOnline
     if ($pnpcheck) {
         write-host -foregroundcolor $warningmessagecolor "    [Warning] Older SharePoint PnP module is still installed"
@@ -160,12 +160,12 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
         write-host -foregroundcolor $processmessagecolor "    New SharePoint PnP module will now be installed"
     }
     test-install -modulename PnP.PowerShell
-    write-host -foregroundcolor $processmessagecolor "Update Microsoft Graph module"
+    write-host -foregroundcolor $processmessagecolor "(11 of 13) Update Microsoft Graph module"
     test-install -modulename Microsoft.Graph 
-    write-host -foregroundcolor $processmessagecolor "Update Windows Autopilot Module"
+    write-host -foregroundcolor $processmessagecolor "(12 of 13) Update Windows Autopilot Module"
     ## will also update dependent AzureAD and Microsoft.Graph.Intune modules
     test-install -modulename WindowsAutoPilotIntune
-    write-host -foregroundcolor $processmessagecolor "Centralised Add-in Deployment"
+    write-host -foregroundcolor $processmessagecolor "(13 of 13) Centralised Add-in Deployment"
     test-install -modulename O365CentralizedAddInDeployment
 }
 Else {
