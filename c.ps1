@@ -75,7 +75,7 @@ $scripts += [PSCustomObject]@{
     Module ="ExchangeOnlineManagement"    
 }
 $scripts += [PSCustomObject]@{
-    Name = "o365-connect-ctldply.ps1";
+    Name = "o365-connect-ctrldply.ps1";
     Service = "Central Add-in deployment";
     Module = "";    
 }
