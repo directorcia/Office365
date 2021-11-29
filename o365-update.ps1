@@ -135,7 +135,7 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     if ($aadrmcheck) {
         write-host -foregroundcolor $warningmessagecolor "    [Warning] Older module Azure AD Rights management module (AADRM) is still installed"
         write-host -foregroundcolor $processmessagecolor "    Uninstalling AADRM module as support ended July 15, 2020 "
-        uninstall-module aadrm -all versions -force -confirm:$false
+        uninstall-module aadrm -allversions -force -confirm:$false
         write-host -foregroundcolor $processmessagecolor "    Now Azure Information Protection module will now be installed"
     }
     test-install -modulename AIPService
