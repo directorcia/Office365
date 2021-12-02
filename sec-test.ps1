@@ -1136,7 +1136,7 @@ function hivevul () {
 function mshtmlvul() {
     write-host -ForegroundColor white -backgroundcolor blue "`n--- 32. MSHTML remote code execution ---"
     write-host -foregroundcolor $processmessagecolor "Download test Word document to current directory"
-    Invoke-WebRequest -Uri https://github.com/directorcia/Office365/raw/master/example/WebBrowser.docx -OutFile .\webbrowser.docx
+    Invoke-WebRequest -Uri https://github.com/directorcia/examples/raw/main/WebBrowser.docx -OutFile .\webbrowser.docx
     write-host -foregroundcolor $processmessagecolor "Open document using Word"
     Start-Process winword.exe -ArgumentList ".\webbrowser.docx"
     write-host "`n1. Click on the Totally Safe.txt embedded item at top of document"
@@ -1150,7 +1150,7 @@ function mshtmlvul() {
 function formshtml() {
     write-host -ForegroundColor white -backgroundcolor blue "`n--- 33. Forms HTML controls remote code execution ---"
     write-host -foregroundcolor $processmessagecolor "Download test Word document to current directory"
-    Invoke-WebRequest -Uri https://github.com/directorcia/Office365/raw/master/example/Forms.HTML.docx -OutFile .\forms.html.docx
+    Invoke-WebRequest -Uri https://github.com/directorcia/examples/raw/main/Forms.HTML.docx -OutFile .\forms.html.docx
     write-host -foregroundcolor $processmessagecolor "Open document using Word"
     Start-Process winword.exe -ArgumentList ".\forms.html.docx"
     write-host "`n1. Click on the embedded item at top of document"
