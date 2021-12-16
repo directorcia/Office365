@@ -1179,6 +1179,7 @@ function backdoordrop() {
     write-host "2. Click enable editing if displayed" 
     write-host "3. Click enable content if displayed"
     write-host "4. Click the OK button on dialog if appears"
+    pause
     try {
         $result = test-path($env:USERPROFILE+"\desktop\WinATP-Intro-Backdoor.exe") -ErrorAction stop
     }
