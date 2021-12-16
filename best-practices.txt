@@ -57,6 +57,9 @@ Best Practices for Preventing Business Disruption from Ransomware Attacks - http
 Protected Utility Program - As Built As Configuration - https://desktop.gov.au/blueprint/abac.html
 Protected Utility Program - Office 365 - https://desktop.gov.au/blueprint/office-365.html
 Protected Utility Program - Security - https://desktop.gov.au/blueprint/security.html
+Microsoft’s DART ransomware approach and best practices - https://docs.microsoft.com/en-us/security/compass/incident-response-playbook-dart-ransomware-approach
+Microsoft Security alerts - a reference guide - https://docs.microsoft.com/en-us/azure/defender-for-cloud/alerts-reference?azure-portal=true
+Submit a driver for analysis - https://www.microsoft.com/en-us/wdsi/driversubmission
 
 iOS Security
 ------------

