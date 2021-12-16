@@ -1178,7 +1178,7 @@ function backdoordrop() {
     write-host "`n1. Use the password = WDATP!diy# to open document"
     write-host "2. Click enable editing if displayed" 
     write-host "3. Click enable content if displayed"
-    write-host "4. Click the OK button on dialog if appears"
+    write-host "4. Click the OK button on dialog if appears`n"
     pause
     try {
         $result = test-path($env:USERPROFILE+"\desktop\WinATP-Intro-Backdoor.exe") -ErrorAction stop
@@ -1187,16 +1187,16 @@ function backdoordrop() {
         $result = $false
     }
     if ($result) {
-        write-host -foregroundcolor $errormessagecolor "WinATP-Intro-Backdoor.exe - test FAILED`n"
-        write-host -foregroundcolor $processmessagecolor "Delete WinATP-Intro-Backdoor.exe"
+        write-host -foregroundcolor $errormessagecolor "`nWinATP-Intro-Backdoor.exe - test FAILED`n"
+        write-host -foregroundcolor $processmessagecolor "Delete WinATP-Intro-Backdoor.exe`n"
         remove-item ($env:USERPROFILE+"\desktop\WinATP-Intro-Backdoor.exe")
     }
     else {
-        write-host -foregroundcolor $processmessagecolor "WinATP-Intro-Backdoor.exe not found - test SUCCEEDED`n"
+        write-host -foregroundcolor $processmessagecolor "`nWinATP-Intro-Backdoor.exe not found - test SUCCEEDED`n"
     } 
     write-host "5. Close Word once complete.`n"
     pause
-    write-host -foregroundcolor $processmessagecolor "`nDelete RS4_WinATP-Intro-Invoice.docm"
+    write-host -foregroundcolor $processmessagecolor "`nDelete RS4_WinATP-Intro-Invoice.docm`n"
     remove-item .\RS4_WinATP-Intro-Invoice.docm  
 }
 
