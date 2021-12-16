@@ -1171,9 +1171,9 @@ function formshtml() {
 
 function backdoordrop() {
     write-host -ForegroundColor white -backgroundcolor blue "`n--- 34. Document drops backdoor ---"
-    write-host -foregroundcolor $processmessagecolor "Download test Word document to current directory"
+    write-host -foregroundcolor $processmessagecolor "Download test Word document (RS4_WinATP-Intro-Invoice.docm) to current directory"
     Invoke-WebRequest -Uri https://github.com/directorcia/examples/raw/main/RS4_WinATP-Intro-Invoice.docm -OutFile .\RS4_WinATP-Intro-Invoice.docm
-    write-host -foregroundcolor $processmessagecolor "Open document using Word"
+    write-host -foregroundcolor $processmessagecolor "Open document RS4_WinATP-Intro-Invoice.docm using Word"
     Start-Process winword.exe -ArgumentList ".\RS4_WinATP-Intro-Invoice.docm"
     write-host "`n1. Use the password = WDATP!diy# to open document"
     write-host "2. Click enable editing if displayed" 
