@@ -60,6 +60,7 @@ Protected Utility Program - Security - https://desktop.gov.au/blueprint/security
 Microsoft’s DART ransomware approach and best practices - https://docs.microsoft.com/en-us/security/compass/incident-response-playbook-dart-ransomware-approach
 Microsoft Security alerts - a reference guide - https://docs.microsoft.com/en-us/azure/defender-for-cloud/alerts-reference?azure-portal=true
 Submit a driver for analysis - https://www.microsoft.com/en-us/wdsi/driversubmission
+Known exploited vulnerabilities catalog - https://www.cisa.gov/known-exploited-vulnerabilities-catalog
 
 iOS Security
 ------------
