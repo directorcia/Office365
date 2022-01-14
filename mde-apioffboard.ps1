@@ -32,10 +32,10 @@ if ($debug) {
 }
 
 write-host -foregroundcolor $systemmessagecolor "Defender for Endpoint Offboarding via API script started`n"
-
-$applicationid = ""     # enter Azure AD app application id value here
-$appsecret = ""         # enter Azure AD app application secret here
-$tenantid = ""          # enter Azure AD tenant id here
+# Application (client) ID, tenant ID and secret
+$applicationid = "<Update>"     # enter Azure AD app application id value here
+$appsecret = "<Update>"         # enter Azure AD app application secret here
+$tenantid = "<Update>"          # enter Azure AD tenant id here
 
 ## Script from - https://www.lee-ford.co.uk/getting-started-with-microsoft-graph-with-powershell/
 
