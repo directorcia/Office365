@@ -37,11 +37,11 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     else {
         write-host -ForegroundColor $processmessagecolor " - Currentuser is set to bypass to allow scripts to run"
     }
-    write-host -foregroundcolor $processmessagecolor "`n(1 of 15) Install NuGet provider"
+    write-host -foregroundcolor $processmessagecolor "`n(1 of 16) Install NuGet provider"
     Install-PackageProvider -Name NuGet -Force -confirm:$false | Out-Null
-    write-host -foregroundcolor $processmessagecolor "(2 of 15) Install Azure AD module"
+    write-host -foregroundcolor $processmessagecolor "(2 of 16) Install Azure AD module"
     Install-Module -Name AzureAD -force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "(3 of 15) Install Azure Information Protection module"
+    write-host -foregroundcolor $processmessagecolor "(3 of 16) Install Azure Information Protection module"
 ##    Install-Module -Name AADRM -force                       ## Support for the AADRM module ends July 15, 2020
     $aadrmcheck = get-module -listavailable -name aadrm
     if ($aadrmcheck) {
@@ -52,22 +52,22 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     }
     Install-module -name aipservice -Force -confirm:$false
 
-    write-host -foregroundcolor $processmessagecolor "(4 of 15) Install Teams Module"
+    write-host -foregroundcolor $processmessagecolor "(4 of 16) Install Teams Module"
     Install-Module -Name MicrosoftTeams -Force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "(5 of 15) Install SharePoint Online module"
+    write-host -foregroundcolor $processmessagecolor "(5 of 16) Install SharePoint Online module"
     Install-Module -Name Microsoft.Online.SharePoint.PowerShell -force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "(6 of 15) Install Microsoft Online module"
+    write-host -foregroundcolor $processmessagecolor "(6 of 16) Install Microsoft Online module"
     Install-Module -Name MSOnline -force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "(7 of 15) Install PowerShell Get module"
+    write-host -foregroundcolor $processmessagecolor "(7 of 16) Install PowerShell Get module"
     Install-Module -Name PowerShellGet -force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "(8 of 15) Install Exchange Online module"
+    write-host -foregroundcolor $processmessagecolor "(8 of 16) Install Exchange Online module"
     Install-Module -Name ExchangeOnlineManagement -force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "(9 of 15) Install Azure module"
+    write-host -foregroundcolor $processmessagecolor "(9 of 16) Install Azure module"
     ## Old Azure module
     ## Install-Module -name AzureRM -Force
     ## New Az module
     Install-Module -name Az -force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "(10 of 15) Install SharePoint PnP module"
+    write-host -foregroundcolor $processmessagecolor "(10 of 16) Install SharePoint PnP module"
     $pnpcheck = get-module -listavailable -name SharePointPnPPowerShellOnline
     if ($pnpcheck) {
         write-host -foregroundcolor $warningmessagecolor " - [Warning] Older SharePoint PnP module is still installed"
@@ -76,17 +76,18 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
         write-host -foregroundcolor $processmessagecolor " - New SharePoint PnP module will now be installed"
     }
     Install-Module PnP.PowerShell -Force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "(11 of 15) Install Microsoft Graph Module"
+    write-host -foregroundcolor $processmessagecolor "(11 of 16) Install Microsoft Graph Module"
     Install-Module -Name Microsoft.Graph -force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "(12 of 15) Install Windows Autopilot Module"
+    write-host -foregroundcolor $processmessagecolor "(12 of 16) Install Windows Autopilot Module"
     ## will also update dependent AzureAD and Microsoft.Graph.Intune modules
     Install-Module -Name WindowsAutoPilotIntune -force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "(13 of 15) Install Centralised Add-in Deployment"
+    write-host -foregroundcolor $processmessagecolor "(13 of 16) Install Centralised Add-in Deployment"
     Install-module -name O365CentralizedAddInDeployment -force -confirm:$false
-    write-host -foregroundcolor $processmessagecolor "(14 of 15) Install PowerApps Module"
+    write-host -foregroundcolor $processmessagecolor "(14 of 16) Install PowerApps Module"
     install-module -name Microsoft.PowerApps.PowerShell -confirm:$false -AllowClobber
+    write-host -foregroundcolor $processmessagecolor "(15 of 16) Install PowerApps Administration Module"
     install-module -name Microsoft.PowerApps.Administration.PowerShell -confirm:$false -allowclobber
-    write-host -foregroundcolor $processmessagecolor "(15 of 15) Install Microsoft 365 Commerce Module"
+    write-host -foregroundcolor $processmessagecolor "(16 of 16) Install Microsoft 365 Commerce Module"
     install-module -name MSCommerce -confirm:$false
 }
 else {
