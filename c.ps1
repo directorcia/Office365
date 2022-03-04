@@ -124,6 +124,16 @@ $scripts += [PSCustomObject]@{
     Service = "SharePoint Online PNP";  
     Module = "pnp.powershell"  
 }
+$scripts += [PSCustomObject]@{
+    Name = "o365-connect-msc.ps1";
+    Service = "Microsoft 365 Commerce";  
+    Module = "mscommerce"  
+}
+$scripts += [PSCustomObject]@{
+    Name = "o365-connect-pa.ps1";
+    Service = "PowerApps";  
+    Module = "Microsoft.PowerApps.PowerShell"  
+}
 #EndRegion Modules
 
 if (-not $noprompt) {

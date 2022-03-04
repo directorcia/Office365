@@ -36,7 +36,7 @@ write-host -foregroundcolor $systemmessagecolor "Microsoft Online Connection scr
 write-host -ForegroundColor $processmessagecolor "Prompt =",(-not $noprompt)
 
 if (get-module -listavailable -name msonline) {    ## Has the Microsoft Online PowerShell module been installed?
-    write-host -ForegroundColor $processmessagecolor "Exchange Online V2 PowerShell module installed"
+    write-host -ForegroundColor $processmessagecolor "Microsoft Online module installed"
 }
 else {
     write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[001] - Microsoft Online PowerShell module not installed`n"
