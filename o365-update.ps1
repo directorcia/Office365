@@ -95,7 +95,7 @@ Function test-install($modulename) {
         else {
             Write-Host -foregroundcolor $warningmessagecolor "    Local module $a lower version than Gallery module $b"
             write-host -foregroundcolor $warningmessagecolor "    Will be updated"
-            update-module -name $modulename -force -confirm:$false -allowclobber
+            update-module -name $modulename -force -confirm:$false
             Write-Host
         }
     }
