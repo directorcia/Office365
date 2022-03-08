@@ -59,7 +59,7 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     write-host -foregroundcolor $processmessagecolor "(6 of 16) Install Microsoft Online module"
     Install-Module -Name MSOnline -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "(7 of 16) Install PowerShell Get module"
-    Install-Module -Name PowerShellGet -force -confirm:$false
+    Install-Module -Name PowerShellGet -force -confirm:$false -allowclobber
     write-host -foregroundcolor $processmessagecolor "(8 of 16) Install Exchange Online module"
     Install-Module -Name ExchangeOnlineManagement -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "(9 of 16) Install Azure module"
@@ -84,11 +84,11 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     write-host -foregroundcolor $processmessagecolor "(13 of 16) Install Centralised Add-in Deployment"
     Install-module -name O365CentralizedAddInDeployment -force -confirm:$false
     write-host -foregroundcolor $processmessagecolor "(14 of 16) Install PowerApps Module"
-    install-module -name Microsoft.PowerApps.PowerShell -confirm:$false -AllowClobber
+    install-module -name Microsoft.PowerApps.PowerShell -force -confirm:$false -AllowClobber
     write-host -foregroundcolor $processmessagecolor "(15 of 16) Install PowerApps Administration Module"
-    install-module -name Microsoft.PowerApps.Administration.PowerShell -confirm:$false -allowclobber
+    install-module -name Microsoft.PowerApps.Administration.PowerShell -force -confirm:$false -allowclobber
     write-host -foregroundcolor $processmessagecolor "(16 of 16) Install Microsoft 365 Commerce Module"
-    install-module -name MSCommerce -confirm:$false
+    install-module -name MSCommerce -force -confirm:$false
 }
 else {
     write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
