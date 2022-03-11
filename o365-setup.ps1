@@ -66,7 +66,7 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     ## Old Azure module
     ## Install-Module -name AzureRM -Force
     ## New Az module
-    Install-Module -name Az -force -confirm:$false
+    Install-Module -name Az -force -allowclobber -confirm:$false
     write-host -foregroundcolor $processmessagecolor "(10 of 16) Install SharePoint PnP module"
     $pnpcheck = get-module -listavailable -name SharePointPnPPowerShellOnline
     if ($pnpcheck) {
