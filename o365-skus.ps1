@@ -1,4 +1,6 @@
 ## https://docs.microsoft.com/en-us/azure/active-directory/users-groups-roles/licensing-service-plan-reference
+## https://docs.microsoft.com/en-us/azure/active-directory/enterprise-users/licensing-service-plan-reference
+
 
 $Sku = @{
 	"AAD_BASIC"							     = "Azure Active Directory Basic"
@@ -18,7 +20,7 @@ $Sku = @{
 	"ENTERPRISEPACK"						 = "Enterprise Plan E3"
 	"ENTERPRISEPACKLRG"					     = "Enterprise Plan E3"
 	"ENTERPRISEWITHSCAL"					 = "Enterprise Plan E4"
-	"DESKLESSPACK"						     = "Office 365 (Plan K1)"
+	"DESKLESSPACK"						     = "Office 365 F3"
 	"DESKLESSWOFFPACK"					     = "Office 365 (Plan K2)"
 	"LITEPACK"							     = "Office 365 (Plan P1)"
 	"STANDARDPACK_STUDENT"				     = "Office 365 (Plan A1) for Students"
