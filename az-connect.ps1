@@ -104,7 +104,7 @@ if (-not $noupdate) {
     }
 }
 
-write-host -foregroundcolor $processmessagecolor "Azure PowerShell module loading - Please wait, this may take a while since all service commands are included"
+write-host -foregroundcolor $processmessagecolor "Azure PowerShell module loading - Please wait, this may take a while as all services are included"
 
 Try {
     Import-Module -name az | Out-Null
@@ -122,12 +122,7 @@ write-host -foregroundcolor $processmessagecolor "Azure PowerShell module loaded
 ## Connect to Azure AD service
 write-host -foregroundcolor $processmessagecolor "Connecting to Azure"
 clear-azcontext -force | Out-Null
-if ($noprompt -eq $false) {
-    do {
-        $tenantid = read-host -Prompt "`nEnter target Tenant ID"
-    } until (-not [string]::isnullorempty($tenantid))
-    set-azcontext -Subscription $tenantid
-}
+
 try {
     ## -MaxContextPopulation 1 no longer seems to work??
     $result = Connect-AzAccount | Out-Null
