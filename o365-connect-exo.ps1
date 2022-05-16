@@ -30,8 +30,8 @@ $warningmessagecolor = "yellow"
 Clear-Host
 
 if ($debug) {
-    write-host "Script activity logged at ..\o365-connect-exov2.txt"
-    start-transcript "..\o365-connect-exov2.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
+    write-host "Script activity logged at ..\o365-connect-exo.txt"
+    start-transcript "..\o365-connect-exo.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
 }
 
 write-host -foregroundcolor $systemmessagecolor "Exchange Online Connection script started`n"
