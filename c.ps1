@@ -75,7 +75,7 @@ $scripts += [PSCustomObject]@{
     Module ="ExchangeOnlineManagement"    
 }
 $scripts += [PSCustomObject]@{
-    Name = "o365-connect-mfa-ctldply.ps1";
+    Name = "o365-connect-ctrldply.ps1";
     Service = "Central Add-in deployment";
     Module = "";    
 }
@@ -123,6 +123,16 @@ $scripts += [PSCustomObject]@{
     Name = "o365-connect-pnp.ps1";
     Service = "SharePoint Online PNP";  
     Module = "pnp.powershell"  
+}
+$scripts += [PSCustomObject]@{
+    Name = "o365-connect-msc.ps1";
+    Service = "Microsoft 365 Commerce";  
+    Module = "mscommerce"  
+}
+$scripts += [PSCustomObject]@{
+    Name = "o365-connect-pa.ps1";
+    Service = "PowerApps";  
+    Module = "Microsoft.PowerApps.PowerShell"  
 }
 #EndRegion Modules
 

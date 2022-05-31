@@ -104,7 +104,7 @@ if (-not $noupdate) {
     }
 }
 
-write-host -foregroundcolor $processmessagecolor "Azure PowerShell module loading - Please wait as this may take a while"
+write-host -foregroundcolor $processmessagecolor "Azure PowerShell module loading - Please wait, this may take a while as all services are included"
 
 Try {
     Import-Module -name az | Out-Null
@@ -121,9 +121,11 @@ write-host -foregroundcolor $processmessagecolor "Azure PowerShell module loaded
 
 ## Connect to Azure AD service
 write-host -foregroundcolor $processmessagecolor "Connecting to Azure"
+clear-azcontext -force | Out-Null
+
 try {
-    clear-azcontext -force | Out-Null
-    $result = Connect-AzAccount -MaxContextPopulation 1 | Out-Null
+    ## -MaxContextPopulation 1 no longer seems to work??
+    $result = Connect-AzAccount | Out-Null
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Azure`n"
