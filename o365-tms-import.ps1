@@ -32,7 +32,7 @@ $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
 
-$importfile = ".\teamsimportdata.csv"     ## CSV file that contains data to be imported. Change to suit yoru needs
+$importfile = ".\o365-tms-import.csv"     ## CSV file that contains data to be imported. Change to suit yoru needs
 
 function Create-Channel
 {   
