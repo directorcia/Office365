@@ -10,6 +10,7 @@ Recommended settings for EOP and Defender for Office 365 security - https://docs
 Microsoft 365 and Office 365 email migration performance and best practices - https://docs.microsoft.com/en-us/Exchange/mailbox-migration/office-365-migration-best-practices
 Best practices for public folder preparation before migrations - https://techcommunity.microsoft.com/t5/exchange-team-blog/best-practices-for-public-folder-preparation-before-migrations/ba-p/1909222
 How to Combat Fake Emails using SPF, DKIM, DMARC  - https://www.cyber.gov.au/acsc/view-all-content/publications/how-combat-fake-emails
+Best practices for Outlook - https://support.microsoft.com/office/ba3b7674-ad42-468d-9a42-8ff2ba4c81b2
 
 Security
 --------
@@ -90,6 +91,7 @@ Android Enterprise personally-owned work profile security configurations - https
 
 Microsoft 365
 -------------
+Best practices for collaborating in Microsoft 365 - https://support.microsoft.com/en-gb/office/best-practices-for-collaborating-in-microsoft-365-2c8688f6-21d9-4eed-99ce-1875edb8de0a
 Network connectivity test - https://connectivity.office.com/
 
 MCAS
