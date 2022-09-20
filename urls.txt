@@ -97,6 +97,7 @@ https://security.microsoft.com/safelinksv2 - Safe Links
 https://security.microsoft.com/restrictedusers - Action Center
 https://security.microsoft.com/cloudapps/app-governance - App governance
 https://security.microsoft.com/tenantAllowBlockList - Tenat Allow/Block lists
+https://ti.defender.microsoft.com/ - Microsoft Defender Threat Intelligence
 
 ## Azure
 
