@@ -22,10 +22,10 @@ $warningmessagecolor = "yellow"
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
+Clear-Host
+
 ## Enforce higher version of TLS
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-Clear-Host
 
 if ($debug) {
     write-host "Script activity logged at ..\o365-connect-exo.txt"
