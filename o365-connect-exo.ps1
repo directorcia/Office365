@@ -5,17 +5,12 @@ param(
 )
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
-
 Description - Log to Exchange Online using the V2 module
 Reference - https://docs.microsoft.com/en-us/powershell/exchange/exchange-online/exchange-online-powershell-v2/exchange-online-powershell-v2?view=exchange-ps
-
 Source - https://github.com/directorcia/Office365/blob/master/o365-connect-exo.ps1
-
 Prerequisites = 1
 1. Ensure Exchange Online module is installed
-
 More scripts available by joining http://www.ciaopspatron.com
-
 #>
 
 ## Variables
@@ -28,6 +23,9 @@ $warningmessagecolor = "yellow"
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
 Clear-Host
+
+## Enforce higher version of TLS
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 if ($debug) {
     write-host "Script activity logged at ..\o365-connect-exo.txt"
@@ -46,7 +44,7 @@ else {
         do {
             $response = read-host -Prompt "`nDo you wish to install the Exchange Online PowerShell module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
-        if ($result -eq 'Y' -or $result -eq 'y') {
+        if ($response -eq 'Y' -or $response -eq 'y') {
             write-host -foregroundcolor $processmessagecolor "Installing PowerShellGet module - Administration escalation required"
             Start-Process powershell -Verb runAs -ArgumentList "Install-Module PowershellGet -Force" -wait -WindowStyle Hidden       
             write-host -foregroundcolor $processmessagecolor "Installing Exchange Online PowerShell module - Administration escalation required"
