@@ -32,6 +32,8 @@ write-host -foregroundcolor $processmessagecolor "`nCheck for Azure AD PowerShel
 if (get-module -listavailable -name AzureAD) {
     ## Has the AzureAD PowerShell module been loaded?
     write-host -foregroundcolor $processmessagecolor "Azure AD PowerShell Module found"
+    write-host -foregroundcolor $processmessagecolor "Please login to the Azure AD PowerShell Module"
+    Connect-AzureAD | Out-Null
 }
 else {
     write-host -foregroundcolor $warningmessagecolor -backgroundcolor $errormessagecolor "Azure AD PowerShell Module not installed. Please install and re-run script`n"
