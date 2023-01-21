@@ -23,6 +23,7 @@ $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor="red"
 $warningmessagecolor = "yellow"
+$auditmessagecolor = "magenta"
 
 Clear-Host
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
@@ -108,7 +109,7 @@ $asrrules += [PSCustomObject]@{ # 15
     GUID = "56a863a9-875e-4185-98a7-b882c64b5ce5"
     ## Reference - https://docs.microsoft.com/en-us/microsoft-365/security/defender-endpoint/attack-surface-reduction-rules?view=o365-worldwide#block-abuse-of-exploited-vulnerable-signed-drivers
 }
-$enabledvalues = "Not Enabled", "Enabled", "Audit"
+$enabledvalues = "Not Enabled", "Enabled", "Audit","NOP3", "NOP4", "NOP5", "Warning"
 $displaycolor = $errormessagecolor, $processmessagecolor, $warningmessagecolor
 ## https://docs.microsoft.com/en-us/powershell/module/defender/?view=win10-ps
 $results = Get-MpPreference
@@ -149,6 +150,7 @@ if (-not [string]::isnullorempty($results.AttackSurfaceReductionRules_ids)) {
                     0 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
                     1 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
                     2 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
+                    6 {write-host -foregroundcolor $displaycolor[$enabled] $asrrules[$index].name"="$enabledvalues[$enabled]; break}
                 }
                 $notfound = $false
             }
