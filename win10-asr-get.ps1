@@ -109,7 +109,7 @@ $asrrules += [PSCustomObject]@{ # 15
     ## Reference - https://docs.microsoft.com/en-us/microsoft-365/security/defender-endpoint/attack-surface-reduction-rules?view=o365-worldwide#block-abuse-of-exploited-vulnerable-signed-drivers
 }
 $enabledvalues = "Not Enabled", "Enabled", "Audit"
-$displaycolor = $errormessagecolor, $processmessagecolor, $warningmessagecolor
+$displaycolor = $errormessagecolor, $processmessagecolor, $auditmessagecolor, $NotUsed, $NotUsed, $NotUsed, $warningmessagecolor ## $NotUsed just added for the list to fit from 0-6
 ## https://docs.microsoft.com/en-us/powershell/module/defender/?view=win10-ps
 $results = Get-MpPreference
 write-host -ForegroundColor Gray -backgroundcolor blue "Attack Surface Reduction Rules`n"
