@@ -23,7 +23,7 @@ $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor="red"
 $warningmessagecolor = "yellow"
-$warningmessagecolor = "cyan"
+$auditmessagecolor = "cyan"
 
 Clear-Host
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
