@@ -11,7 +11,7 @@ Description - Log into the Office 365 Security and Compliance Center
 Source - https://github.com/directorcia/Office365/blob/master/o365-connect-sac.ps1
 
 Prerequisites = 1
-1. Ensure msonline module installed or updated
+1. Ensure latest version of Exchange Online module is installed
 
 More scripts available by joining http://www.ciaopspatron.com
 
@@ -35,21 +35,21 @@ if ($debug) {
 write-host -foregroundcolor $systemmessagecolor "Microsoft 365 Security and Compliance Center Connection script started`n"
 write-host -ForegroundColor $processmessagecolor "Prompt =",(-not $noprompt)
 
-if (get-module -listavailable -name ExchangeOnlineManagement) {    ## Has the Exchange Online V2 PowerShell module been installed?
-    write-host -ForegroundColor $processmessagecolor "Exchange Online V2 PowerShell module installed"
+if (get-module -listavailable -name ExchangeOnlineManagement) {    ## Has the Exchange Online PowerShell module been installed?
+    write-host -ForegroundColor $processmessagecolor "Exchange Online PowerShell module installed"
 }
 else {
-    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[001] - Exchange Online V2 PowerShell module not installed`n"
+    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[001] - Exchange Online PowerShell module not installed`n"
     if (-not $noprompt) {
         do {
-            $response = read-host -Prompt "`nDo you wish to install the Exchange Online V2 PowerShell module (Y/N)?"
+            $response = read-host -Prompt "`nDo you wish to install the Exchange Online PowerShell module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
         if ($result -eq 'Y' -or $result -eq 'y') {
             write-host -foregroundcolor $processmessagecolor "Installing PowerShellGet module - Administration escalation required"
             Start-Process powershell -Verb runAs -ArgumentList "Install-Module PowershellGet -Force" -wait -WindowStyle Hidden       
-            write-host -foregroundcolor $processmessagecolor "Installing Exchange Online V2 PowerShell module - Administration escalation required"
+            write-host -foregroundcolor $processmessagecolor "Installing Exchange Online PowerShell module - Administration escalation required"
             Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name ExchangeOnlineManagement -Force -confirm:$false" -wait -WindowStyle Hidden
-            write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module installed"
+            write-host -foregroundcolor $processmessagecolor "Exchange Online PowerShell module installed"
         }
         else {
             write-host -foregroundcolor $processmessagecolor "Terminating script"
@@ -62,13 +62,13 @@ else {
     else {
         write-host -foregroundcolor $processmessagecolor "Installing PowerShellGet module - Administration escalation required"
         Start-Process powershell -Verb runAs -ArgumentList "Install-Module PowershellGet -Force" -wait -WindowStyle Hidden
-        write-host -foregroundcolor $processmessagecolor "Installing Exchange Online V2 PowerShell module - Administration escalation required"
+        write-host -foregroundcolor $processmessagecolor "Installing Exchange Online PowerShell module - Administration escalation required"
         Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name ExchangeOnlineManagement -Force -confirm:$false" -wait -WindowStyle Hidden
-        write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module installed"    
+        write-host -foregroundcolor $processmessagecolor "Exchange Online PowerShell module installed"    
     }
 }
 if (-not $noupdate) {
-    write-host -foregroundcolor $processmessagecolor "Check whether newer version of Exchange Online V2 PowerShell module is available"
+    write-host -foregroundcolor $processmessagecolor "Check whether newer version of Exchange Online PowerShell module is available"
     #get version of the module (selects the first if there are more versions installed)
     $version = (Get-InstalledModule -name ExchangeOnlineManagement) | Sort-Object Version -Descending  | Select-Object Version -First 1
     #get version of the module in psgallery
@@ -89,38 +89,38 @@ if (-not $noupdate) {
         write-host -foregroundcolor $warningmessagecolor "Update recommended"
         if (-not $noprompt) {
             do {
-                $response = read-host -Prompt "`nDo you wish to update the Exchange Online V2 PowerShell module (Y/N)?"
+                $response = read-host -Prompt "`nDo you wish to update the Exchange Online PowerShell module (Y/N)?"
             } until (-not [string]::isnullorempty($response))
             if ($result -eq 'Y' -or $result -eq 'y') {
-                write-host -foregroundcolor $processmessagecolor "Updating Exchange Online V2 PowerShell module - Administration escalation required"
+                write-host -foregroundcolor $processmessagecolor "Updating Exchange Online PowerShell module - Administration escalation required"
                 Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name ExchangeOnlineManagement -Force -confirm:$false" -wait -WindowStyle Hidden
-                write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module - updated"
+                write-host -foregroundcolor $processmessagecolor "Exchange Online PowerShell module - updated"
             }
             else {
-                write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module - not updated"
+                write-host -foregroundcolor $processmessagecolor "Exchange Online PowerShell module - not updated"
             }
         }
         else {
-        write-host -foregroundcolor $processmessagecolor "Updating Exchange Online V2 PowerShell module - Administration escalation required" 
+        write-host -foregroundcolor $processmessagecolor "Updating Exchange Online PowerShell module - Administration escalation required" 
         Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name ExchangeOnlineManagement -Force -confirm:$false" -wait -WindowStyle Hidden
-        write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module - updated"
+        write-host -foregroundcolor $processmessagecolor "Exchange Online PowerShell module - updated"
         }
     }
 }
-write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module loading"
+write-host -foregroundcolor $processmessagecolor "Exchange Online PowerShell module loading"
 
 Try {
     Import-Module ExchangeOnlineManagement | Out-Null
 }
 catch {
-    Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Exchange Online V2 PowerShell module`n"
+    Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Exchange Online PowerShell module`n"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
     if ($debug) {
         Stop-Transcript | Out-Null                ## Terminate transcription
     }
     exit 2
 }
-write-host -foregroundcolor $processmessagecolor "Exchange Online V2 PowerShell module loaded"
+write-host -foregroundcolor $processmessagecolor "Exchange Online PowerShell module loaded"
 
 ## Connect to Exchange Online service
 write-host -foregroundcolor $processmessagecolor "Connecting to Security and Compliance Center"
