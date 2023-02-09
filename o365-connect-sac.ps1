@@ -130,6 +130,9 @@ try {
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Security and Compliance Center`n"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
+    if ($_.Exception.Message -match "failed using OAuth") {
+        Write-Host -ForegroundColor $errormessagecolor "  - Check that WinRM allows Basic Auth`n"
+    }
     if ($debug) {
         Stop-Transcript | Out-Null                 ## Terminate transcription
     }
