@@ -113,6 +113,9 @@ https://status.azure.com - Azure Status
 https://www.qnamaker.ai/ - Q and A Maker
 https://portal.atp.azure.com/ - Microsoft Defender for Identity
 https://portal.azurerms.com/#/admin - Azure Information Protection portal
+https://oai.azure.com/ - Azure OpenAI Studio
+https://apps.azureiotcentral.com/home - IoT Central
+
 
 ## Microsoft Management Agent
 
