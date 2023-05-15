@@ -7,7 +7,7 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Connect to the Microsoft Graph and get vulnerabilities from Microsoft Defender for Endpoint
 Documentation - 
-Source - 
+Source - https://github.com/directorcia/Office365/blob/master/mde-vul-get.ps1
 
 Prerequisites = 1
 1. Azure AD app setup per - https://blog.ciaops.com/2019/04/17/using-interactive-powershell-to-access-the-microsoft-graph/
