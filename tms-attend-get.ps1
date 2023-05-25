@@ -5,8 +5,8 @@ param(
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Connect to the Microsoft Graph and get meetign attendees using the Microsoft Graph
-Documentation - 
-Source - 
+Documentation - https://blog.ciaops.com/2023/05/25/get-teams-meeting-attendees-via-powershell-and-the-microsoft-graph/
+Source - https://github.com/directorcia/Office365/blob/master/tms-attend-get.ps1
 Reference - 
 
 Prerequisites = 1
