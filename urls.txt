@@ -134,6 +134,7 @@ https://o365.rocks/ - Tenant Availability Check
 https://adoption.microsoft.com/extensibility-look-book - Microsoft 365 Extensibility look book gallery
 https://lookbook.microsoft.com/ - SharePoint look book
 https://feedbackportal.microsoft.com/feedback - Product feedback portal
+https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv - SKUs
 
 ## Twitter
 
