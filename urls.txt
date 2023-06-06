@@ -115,6 +115,7 @@ https://portal.atp.azure.com/ - Microsoft Defender for Identity
 https://portal.azurerms.com/#/admin - Azure Information Protection portal
 https://oai.azure.com/ - Azure OpenAI Studio
 https://apps.azureiotcentral.com/home - IoT Central
+https://oai.azure.com/portal = AI Studio
 
 
 ## Microsoft Management Agent
