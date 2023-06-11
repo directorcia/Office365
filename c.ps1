@@ -112,12 +112,7 @@ $scripts += [PSCustomObject]@{
 $scripts += [PSCustomObject]@{
     Name = "mggraph-connect.ps1";
     Service = "Graph (new)";  
-    Module = "MgGraph"  
-}
-$scripts += [PSCustomObject]@{
-    Name = "intune-connect.ps1";
-    Service = "Intune (Graph)";  
-    Module = "msGraph"  
+    Module = "MGGraph"  
 }
 $scripts += [PSCustomObject]@{
     Name = "o365-connect-mfa-ctldply.ps1";
