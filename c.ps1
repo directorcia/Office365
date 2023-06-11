@@ -106,12 +106,12 @@ $scripts += [PSCustomObject]@{
 }
 $scripts += [PSCustomObject]@{
     Name = "msgraph-connect.ps1";
-    Service = "MsGraph";  
+    Service = "MsGraph (old)";  
     Module = "MSGraph"  
 }
 $scripts += [PSCustomObject]@{
     Name = "mggraph-connect.ps1";
-    Service = "MgGraph";  
+    Service = "MgGraph (new)";  
     Module = "MgGraph"  
 }
 $scripts += [PSCustomObject]@{
