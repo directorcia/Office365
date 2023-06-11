@@ -21,6 +21,13 @@ $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
 
+<#
+# Increase the Function Count
+$MaximumFunctionCount = 8192
+# Increase the Variable Count
+$MaximumVariableCount = 8192
+#>
+
 Clear-Host
 if ($debug) {
     write-host "Script activity logged at ..\mggraph-connect.txt"
@@ -41,10 +48,15 @@ catch {
 write-host -foregroundcolor $processmessagecolor "Microsoft Graph module loaded"
 try {
     Connect-MgGraph | Out-Null
-    Select-MgProfile -name "beta"                      # Use this to force a version of the Graph version (v1.0 or beta)
+    Select-MgProfile -name "beta"  -ErrorAction stop                   # Use this to force a version of the Graph version (v1.0 or beta)
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "`n[002] - Failed to connect to Graph - ", $_.Exception.Message
+    if ($PSVersionTable.PSVersion.major -le 5) {
+        Write-Host -ForegroundColor $warningmessagecolor "`n **** WARNING ****"
+        Write-Host -ForegroundColor $warningmessagecolor " Old versions of PowerShell environment don't support full Microsoft Graph loads"
+        Write-Host -ForegroundColor $warningmessagecolor " Either use a newer PowerShell version or just load required modules to reduce memory usage"
+    }
     if ($debug) {
         Stop-Transcript | Out-Null
     }
