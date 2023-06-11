@@ -9,7 +9,7 @@ Best practices for configuring standalone EOP - https://docs.microsoft.com/en-us
 Recommended settings for EOP and Defender for Office 365 security - https://docs.microsoft.com/en-us/microsoft-365/security/office-365-security/recommended-settings-for-eop-and-office365-atp?view=o365-worldwide
 Microsoft 365 and Office 365 email migration performance and best practices - https://docs.microsoft.com/en-us/Exchange/mailbox-migration/office-365-migration-best-practices
 Best practices for public folder preparation before migrations - https://techcommunity.microsoft.com/t5/exchange-team-blog/best-practices-for-public-folder-preparation-before-migrations/ba-p/1909222
-How to Combat Fake Emails using SPF, DKIM, DMARC  - https://www.cyber.gov.au/acsc/view-all-content/publications/how-combat-fake-emails
+Order and precedence of email protection - https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/how-policies-and-protections-are-combined?view=o365-worldwide
 
 Security
 --------
