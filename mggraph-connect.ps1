@@ -41,7 +41,7 @@ catch {
 write-host -foregroundcolor $processmessagecolor "Microsoft Graph module loaded"
 try {
     Connect-MgGraph | Out-Null
-#    Select-MgProfile v1.0                      # Use this to force a version of the Graph version (v1.0 or beta)
+    Select-MgProfile -name "beta"                      # Use this to force a version of the Graph version (v1.0 or beta)
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "`n[002] - Failed to connect to Graph - ", $_.Exception.Message
