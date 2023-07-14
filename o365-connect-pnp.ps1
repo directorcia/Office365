@@ -35,8 +35,8 @@ if ($debug) {
     start-transcript "..\o365-connect-pnp.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
 }
 write-host -foregroundcolor $systemmessagecolor "SharePoint Online PNP Connection script started`n"
-write-host -ForegroundColor $processmessagecolor "Prompt =", (-not $noprompt)
-write-host -ForegroundColor $processmessagecolor "Debug =", (-not $debug)
+write-host -ForegroundColor $processmessagecolor "Prompt =", ($prompt)
+write-host -ForegroundColor $processmessagecolor "Debug =", ($debug)
 write-host -ForegroundColor $processmessagecolor "Update =", (-not $noupdate)
 
 # Microsoft Online Module
