@@ -1,5 +1,5 @@
 param(                         
-    [switch]$noprompt = $false, ## if -noprompt used then user will not be asked for any input
+    [switch]$prompt = $false, ## if -noprompt used then user will not be asked for any input
     [switch]$noupdate = $false, ## if -noupdate used then module will not be checked for more recent version
     [switch]$debug = $false       ## if -debug create a log file
 )
@@ -46,7 +46,7 @@ if (get-module -listavailable -name Microsoft.Graph.Identity.DirectoryManagement
 }
 else {
     write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[001] - Microsoft Graph Identity Directory Management module not installed`n"
-    if (-not $noprompt) {
+    if (prompt) {
         do {
             $response = read-host -Prompt "`nDo you wish to install the Microsoft Graph Identity Directory Management module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
@@ -89,7 +89,7 @@ if (-not $noupdate) {
     else {
         Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
         write-host -foregroundcolor $warningmessagecolor "Update recommended"
-        if (-not $noprompt) {
+        if ($prompt) {
             do {
                 $response = read-host -Prompt "`nDo you wish to update the Microsoft Graph Identity Directory Management PowerShell module (Y/N)?"
             } until (-not [string]::isnullorempty($response))
@@ -131,7 +131,7 @@ if (get-module -listavailable -name Microsoft.Graph.Sites) {
 }
 else {
     write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[004] - SharePoint Online Graph PowerShell module not installed`n"
-    if (-not $noprompt) {
+    if ($prompt) {
         do {
             $response = read-host -Prompt "`nDo you wish to install the SharePoint Online Graph PowerShell module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
@@ -175,7 +175,7 @@ if (-not $noupdate) {
     else {
         Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
         write-host -foregroundcolor $warningmessagecolor "Update recommended"
-        if (-not $noprompt) {
+        if ($prompt) {
             do {
                 $response = read-host -Prompt "`nDo you wish to update the SharePoint Online Graph PowerShell module (Y/N)?"
             } until (-not [string]::isnullorempty($response))
@@ -246,7 +246,7 @@ if (get-module -listavailable -name pnp.powershell) {
 }
 else {
     write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[004] - SharePoint Online PNP PowerShell module not installed`n"
-    if (-not $noprompt) {
+    if ($prompt) {
         do {
             $response = read-host -Prompt "`nDo you wish to install the SharePoint Online PNP PowerShell module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
@@ -290,7 +290,7 @@ if (-not $noupdate) {
     else {
         Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
         write-host -foregroundcolor $warningmessagecolor "Update recommended"
-        if (-not $noprompt) {
+        if ($prompt) {
             do {
                 $response = read-host -Prompt "`nDo you wish to update the SharePoint Online PNP PowerShell module (Y/N)?"
             } until (-not [string]::isnullorempty($response))
