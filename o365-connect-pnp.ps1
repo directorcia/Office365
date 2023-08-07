@@ -1,6 +1,6 @@
 param(                         
-    [switch]$noprompt = $false,   ## if -noprompt used then user will not be asked for any input
-    [switch]$noupdate = $false,   ## if -noupdate used then module will not be checked for more recent version
+    [switch]$prompt = $false, ## if -noprompt used then user will not be asked for any input
+    [switch]$noupdate = $false, ## if -noupdate used then module will not be checked for more recent version
     [switch]$debug = $false       ## if -debug create a log file
 )
 <# CIAOPS
@@ -10,9 +10,10 @@ Description - Log into the SharePoint Online with PnP
 
 Source - https://github.com/directorcia/Office365/blob/master/o365-connect-pnp.ps1
 
-Prerequisites = 2
+Prerequisites = 3
 1. Ensure pnp.powershell module is installed and updated
-2. Ensure MSonline module is installed and updated
+2. Ensure Microsoft.Graph module is installed and updated
+3. Newerversions of the pnp.powershell module require PowerShell V7 or above
 
 More scripts available by joining http://www.ciaopspatron.com
 
@@ -34,24 +35,25 @@ if ($debug) {
     start-transcript "..\o365-connect-pnp.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
 }
 write-host -foregroundcolor $systemmessagecolor "SharePoint Online PNP Connection script started`n"
-write-host -ForegroundColor $processmessagecolor "Prompt =",(-not $noprompt)
-write-host -ForegroundColor $processmessagecolor "Debug =",(-not $debug)
-write-host -ForegroundColor $processmessagecolor "Update =",(-not $noupdate)
+write-host -ForegroundColor $processmessagecolor "Prompt =", ($prompt)
+write-host -ForegroundColor $processmessagecolor "Debug =", ($debug)
+write-host -ForegroundColor $processmessagecolor "Update =", (-not $noupdate)
 
 # Microsoft Online Module
-if (get-module -listavailable -name MSOnline) {    ## Has the Microsoft Online PowerShell module been installed?
-    write-host -ForegroundColor $processmessagecolor "Microsoft Online PowerShell module installed"
+if (get-module -listavailable -name Microsoft.Graph.Identity.DirectoryManagement) {
+    ## Has the Microsoft Graph module been installed?
+    write-host -ForegroundColor $processmessagecolor "Microsoft Graph Identity Directory Management module installed"
 }
 else {
-    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[001] - Microsoft Online PowerShell module not installed`n"
-    if (-not $noprompt) {
+    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[001] - Microsoft Graph Identity Directory Management module not installed`n"
+    if (prompt) {
         do {
-            $response = read-host -Prompt "`nDo you wish to install the Microsoft Online PowerShell module (Y/N)?"
+            $response = read-host -Prompt "`nDo you wish to install the Microsoft Graph Identity Directory Management module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
         if ($result -eq 'Y' -or $result -eq 'y') {
-            write-host -foregroundcolor $processmessagecolor "Installing Microsoft Online PowerShell module - Administration escalation required"
-            Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name msonline -Force -confirm:$false" -wait -WindowStyle Hidden
-            write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module installed"
+            write-host -foregroundcolor $processmessagecolor "Installing Microsoft Graph Identity Directory Management module - Administration escalation required"
+            Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Force -confirm:$false" -wait -WindowStyle Hidden
+            write-host -foregroundcolor $processmessagecolor "Microsoft Graph Identity Directory Management module installed"
         }
         else {
             write-host -foregroundcolor $processmessagecolor "Terminating script"
@@ -62,22 +64,22 @@ else {
         }
     }
     else {
-        write-host -foregroundcolor $processmessagecolor "Installing Microsoft Online module - Administration escalation required"
-        Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name msonline -Force -confirm:$false" -wait -WindowStyle Hidden
-        write-host -foregroundcolor $processmessagecolor "Microsoft Online module installed"    
+        write-host -foregroundcolor $processmessagecolor "Installing Microsoft Graph Identity Directory Management module - Administration escalation required"
+        Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Force -confirm:$false" -wait -WindowStyle Hidden
+        write-host -foregroundcolor $processmessagecolor "Microsoft Graph Identity Directory Management module installed"    
     }
 }
 if (-not $noupdate) {
-    write-host -foregroundcolor $processmessagecolor "Check whether newer version of Microsoft Online PowerShell module is available"
+    write-host -foregroundcolor $processmessagecolor "Check whether newer version of Microsoft Graph Directory Management module is available"
     #get version of the module (selects the first if there are more versions installed)
-    $version = (Get-InstalledModule -name msonline) | Sort-Object Version -Descending  | Select-Object Version -First 1
+    $version = (Get-InstalledModule -name Microsoft.Graph.Identity.DirectoryManagement) | Sort-Object Version -Descending  | Select-Object Version -First 1
     #get version of the module in psgallery
-    $psgalleryversion = Find-Module -Name msonline | Sort-Object Version -Descending | Select-Object Version -First 1
+    $psgalleryversion = Find-Module -Name Microsoft.Graph.Identity.DirectoryManagement | Sort-Object Version -Descending | Select-Object Version -First 1
     #convert to string for comparison
-    $stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
+    $stringver = $version | Select-Object @{n = 'ModuleVersion'; e = { $_.Version -as [string] } }
     $a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
     #convert to string for comparison
-    $onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
+    $onlinever = $psgalleryversion | Select-Object @{n = 'OnlineVersion'; e = { $_.Version -as [string] } }
     $b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
     #version compare
     if ([version]"$a" -ge [version]"$b") {
@@ -87,82 +89,56 @@ if (-not $noupdate) {
     else {
         Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
         write-host -foregroundcolor $warningmessagecolor "Update recommended"
-        if (-not $noprompt) {
+        if ($prompt) {
             do {
-                $response = read-host -Prompt "`nDo you wish to update the Microsoft Online PowerShell module (Y/N)?"
+                $response = read-host -Prompt "`nDo you wish to update the Microsoft Graph Identity Directory Management PowerShell module (Y/N)?"
             } until (-not [string]::isnullorempty($response))
             if ($result -eq 'Y' -or $result -eq 'y') {
-                write-host -foregroundcolor $processmessagecolor "Updating Microsoft Online PowerShell module - Administration escalation required"
-                Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name msonline -Force -confirm:$false" -wait -WindowStyle Hidden
-                write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module - updated"
+                write-host -foregroundcolor $processmessagecolor "Updating Microsoft Graph Identity Directory Management PowerShell module - Administration escalation required"
+                Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Force -confirm:$false" -wait -WindowStyle Hidden
+                write-host -foregroundcolor $processmessagecolor "Microsoft Graph Identity Directory Management PowerShell module - updated"
             }
             else {
-                write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module - not updated"
+                write-host -foregroundcolor $processmessagecolor "Microsoft Graph Identity Directory Management PowerShell module - not updated"
             }
         }
         else {
-        write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module - Administration escalation required" 
-        Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name msonline -Force -confirm:$false" -wait -WindowStyle Hidden
-        write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module - updated"
+            write-host -foregroundcolor $processmessagecolor "Microsoft Graph Identity Directory Management PowerShell module - Administration escalation required" 
+            Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Force -confirm:$false" -wait -WindowStyle Hidden
+            write-host -foregroundcolor $processmessagecolor "Microsoft Graph Identity Directory Management PowerShell module - updated"
         }
     }
 }
 
-write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module loading"
+write-host -foregroundcolor $processmessagecolor "Microsoft Graph Identity Directory Management PowerShell module loading"
 Try {
-    Import-Module msonline | Out-Null
+    Import-Module Microsoft.Graph.Identity.DirectoryManagement | Out-Null
 }
 catch {
-    Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Microsoft Online PowerShell module`n"
+    Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Microsoft Graph Identity Directory Management PowerShell module`n"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
     if ($debug) {
         Stop-Transcript | Out-Null                ## Terminate transcription
     }
     exit 2
 }
-write-host -foregroundcolor $processmessagecolor "Microsoft Online PowerShell module loaded"
-
-## Connect to Office 365 admin service
-write-host -foregroundcolor $processmessagecolor "Connecting to Microsoft 365 Admin service"
-try {
-    connect-msolservice
-}
-catch {
-    Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Microsoft Online`n"
-    Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
-    if ($debug) {
-        Stop-Transcript | Out-Null                ## Terminate transcription
-    }
-    exit 3
-}
-write-host -foregroundcolor $processmessagecolor "Connected to Microsoft 365 Admin service"
-
-## Auto detect SharePoint Online admin domain
-write-host -foregroundcolor $processmessagecolor "Determining SharePoint URL"
-$domains = get-msoldomain                           ## get a list of all domains in tenant
-foreach ($domain in $domains) {                     ## loop through all these domains
-    if ($domain.name.contains('onmicrosoft')) {     ## find the onmicrosoft.com domain
-        $onname = $domain.name.split(".")           ## split the onmicrosoft.com domain when found at the period. Will produce an array that contains each string as an element
-        $tenantname = $onname[0]                    ## the first string in this array is the name of the tenant
-    }                                               ## end of find the on.microsoft.com domain
-}                                                   ## end of the domain checking look
-$tenanturl = "https://" + $tenantname + "-admin.sharepoint.com"
-Write-host -ForegroundColor $processmessagecolor "SharePoint admin URL =", $tenanturl
+write-host -foregroundcolor $processmessagecolor "Microsoft Graph Identity Directory Management PowerShell module loaded"
 
 # SharePoint Online module
-if (get-module -listavailable -name microsoft.online.sharepoint.powershell) {    ## Has the SharePOint Online PowerShell module been installed?
-    write-host -ForegroundColor $processmessagecolor "SharePoint Online PowerShell module installed"
+if (get-module -listavailable -name Microsoft.Graph.Sites) {
+    ## Has the SharePOint Online PowerShell module been installed?
+    write-host -ForegroundColor $processmessagecolor "SharePoint Online Graph PowerShell module installed"
 }
 else {
-    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[004] - SharePoint Online PowerShell module not installed`n"
-    if (-not $noprompt) {
+    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[004] - SharePoint Online Graph PowerShell module not installed`n"
+    if ($prompt) {
         do {
-            $response = read-host -Prompt "`nDo you wish to install the SharePoint Online PowerShell module (Y/N)?"
+            $response = read-host -Prompt "`nDo you wish to install the SharePoint Online Graph PowerShell module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
         if ($result -eq 'Y' -or $result -eq 'y') {
-            write-host -foregroundcolor $processmessagecolor "Installing SharePoint Online PowerShell module - Administration escalation required"
-            Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name microsoft.online.sharepoint.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
-            write-host -foregroundcolor $processmessagecolor "SharePoint Online Online PowerShell module installed"
+            write-host -foregroundcolor $processmessagecolor "Installing SharePoint Online Graph PowerShell module - Administration escalation required"
+            Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name Microsoft.Graph.Sites -Force -confirm:$false" -wait -WindowStyle Hidden
+            write-host -foregroundcolor $processmessagecolor "SharePoint Online Online Graph PowerShell module installed"
         }
         else {
             write-host -foregroundcolor $processmessagecolor "Terminating script"
@@ -173,23 +149,23 @@ else {
         }
     }
     else {
-        write-host -foregroundcolor $processmessagecolor "Installing SharePoint Online module - Administration escalation required"
-        Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name microsoft.online.sharepoint.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
-        write-host -foregroundcolor $processmessagecolor "SharePoint Online module installed"    
+        write-host -foregroundcolor $processmessagecolor "Installing SharePoint Online Graph module - Administration escalation required"
+        Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name Microsoft.Graph.Sites -Force -confirm:$false" -wait -WindowStyle Hidden
+        write-host -foregroundcolor $processmessagecolor "SharePoint Online Graph module installed"    
     }
 }
 
 if (-not $noupdate) {
-    write-host -foregroundcolor $processmessagecolor "Check whether newer version of SharePoint Online PowerShell module is available"
+    write-host -foregroundcolor $processmessagecolor "Check whether newer version of SharePoint Online Graph PowerShell module is available"
     #get version of the module (selects the first if there are more versions installed)
-    $version = (Get-InstalledModule -name microsoft.online.sharepoint.powershell) | Sort-Object Version -Descending  | Select-Object Version -First 1
+    $version = (Get-InstalledModule -name Microsoft.Graph.Sites) | Sort-Object Version -Descending  | Select-Object Version -First 1
     #get version of the module in psgallery
-    $psgalleryversion = Find-Module -Name microsoft.online.sharepoint.powershell | Sort-Object Version -Descending | Select-Object Version -First 1
+    $psgalleryversion = Find-Module -Name Microsoft.Graph.Sites | Sort-Object Version -Descending | Select-Object Version -First 1
     #convert to string for comparison
-    $stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
+    $stringver = $version | Select-Object @{n = 'ModuleVersion'; e = { $_.Version -as [string] } }
     $a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
     #convert to string for comparison
-    $onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
+    $onlinever = $psgalleryversion | Select-Object @{n = 'OnlineVersion'; e = { $_.Version -as [string] } }
     $b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
     #version compare
     if ([version]"$a" -ge [version]"$b") {
@@ -199,64 +175,78 @@ if (-not $noupdate) {
     else {
         Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
         write-host -foregroundcolor $warningmessagecolor "Update recommended"
-        if (-not $noprompt) {
+        if ($prompt) {
             do {
-                $response = read-host -Prompt "`nDo you wish to update the SharePoint Online PowerShell module (Y/N)?"
+                $response = read-host -Prompt "`nDo you wish to update the SharePoint Online Graph PowerShell module (Y/N)?"
             } until (-not [string]::isnullorempty($response))
             if ($result -eq 'Y' -or $result -eq 'y') {
-                write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online PowerShell module - Administration escalation required"
-                Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name microsoft.online.sharepoint.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
-                write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module - updated"
+                write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online Graph PowerShell module - Administration escalation required"
+                Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name Microsoft.Graph.Sites -Force -confirm:$false" -wait -WindowStyle Hidden
+                write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell Graph module - updated"
             }
             else {
-                write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module - not updated"
+                write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell Graph module - not updated"
             }
         }
         else {
-        write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online PowerShell module - Administration escalation required" 
-        Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name microsoft.online.sharepoint.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
-        write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module - updated"
+            write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online Graph PowerShell module - Administration escalation required" 
+            Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name Microsoft.Graph.Sites -Force -confirm:$false" -wait -WindowStyle Hidden
+            write-host -foregroundcolor $processmessagecolor "SharePoint Online Graph PowerShell module - updated"
         }
     }
 }
 
-# Import SharePoint Online module
-write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module loading"
+write-host -foregroundcolor $processmessagecolor "Microsoft Graph SharePoint Online PowerShell module loading"
 Try {
-    Import-Module microsoft.online.sharepoint.powershell -disablenamechecking | Out-Null
+    Import-Module Microsoft.Graph.Sites | Out-Null
 }
 catch {
-    Write-Host -ForegroundColor $errormessagecolor "[005] - Unable to load SharePoint Online PowerShell module`n"
+    Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Microsoft Graph SharePoint Online PowerShell module`n"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
     if ($debug) {
         Stop-Transcript | Out-Null                ## Terminate transcription
     }
-    exit 5
+    exit 2
 }
-write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module loaded"
+write-host -foregroundcolor $processmessagecolor "Microsoft Graph SharePoint Online PowerShell module loaded"
 
-# Connect to SharePoint Online Service
-write-host -foregroundcolor $processmessagecolor "Connecting to SharePoint Online"
-Try {
-    connect-sposervice -url $tenanturl | Out-Null
+## Connect to Office 365 admin service
+write-host -foregroundcolor $processmessagecolor "Connecting to Microsoft Graph"
+try {
+    Connect-MgGraph -Scopes "Sites.Read.All", "sites.ReadWrite.All"
 }
 catch {
-    Write-Host -ForegroundColor $errormessagecolor "[006] - Unable to connect to SharePoint Online`n"
+    Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Microsoft Graph`n"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
     if ($debug) {
         Stop-Transcript | Out-Null                ## Terminate transcription
     }
-    exit 6
+    exit 3
 }
-write-host -foregroundcolor $processmessagecolor "Connected to SharePoint Online"
+write-host -foregroundcolor $processmessagecolor "Connected to Microsoft Graph"
+
+## Auto detect SharePoint Online admin domain
+write-host -foregroundcolor $processmessagecolor "Determining SharePoint URL"
+$domains = get-mgdomain -all                        ## get a list of all domains in tenant
+foreach ($domain in $domains) {
+    ## loop through all these domains
+    if ($domain.id.contains('onmicrosoft')) {
+        ## find the onmicrosoft.com domain
+        $onname = $domain.id.split(".")           ## split the onmicrosoft.com domain when found at the period. Will produce an array that contains each string as an element
+        $tenantname = $onname[0]                    ## the first string in this array is the name of the tenant
+    }                                               ## end of find the on.microsoft.com domain
+}                                                   ## end of the domain checking look
+$tenanturl = "https://" + $tenantname + "-admin.sharepoint.com"
+Write-host -ForegroundColor $processmessagecolor "SharePoint admin URL =", $tenanturl
 
 # SharePoint PNP Online module
-if (get-module -listavailable -name pnp.powershell) {    ## Has the SharePoint Online PNP PowerShell module been installed?
+if (get-module -listavailable -name pnp.powershell) {
+    ## Has the SharePoint Online PNP PowerShell module been installed?
     write-host -ForegroundColor $processmessagecolor "SharePoint Online PNP PowerShell module installed"
 }
 else {
     write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[004] - SharePoint Online PNP PowerShell module not installed`n"
-    if (-not $noprompt) {
+    if ($prompt) {
         do {
             $response = read-host -Prompt "`nDo you wish to install the SharePoint Online PNP PowerShell module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
@@ -287,10 +277,10 @@ if (-not $noupdate) {
     #get version of the module in psgallery
     $psgalleryversion = Find-Module -Name pnp.powershell | Sort-Object Version -Descending | Select-Object Version -First 1
     #convert to string for comparison
-    $stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
+    $stringver = $version | Select-Object @{n = 'ModuleVersion'; e = { $_.Version -as [string] } }
     $a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
     #convert to string for comparison
-    $onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
+    $onlinever = $psgalleryversion | Select-Object @{n = 'OnlineVersion'; e = { $_.Version -as [string] } }
     $b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
     #version compare
     if ([version]"$a" -ge [version]"$b") {
@@ -300,7 +290,7 @@ if (-not $noupdate) {
     else {
         Write-Host -foregroundcolor $warningmessagecolor "Local module $a lower version than Gallery module $b"
         write-host -foregroundcolor $warningmessagecolor "Update recommended"
-        if (-not $noprompt) {
+        if ($prompt) {
             do {
                 $response = read-host -Prompt "`nDo you wish to update the SharePoint Online PNP PowerShell module (Y/N)?"
             } until (-not [string]::isnullorempty($response))
@@ -314,12 +304,31 @@ if (-not $noupdate) {
             }
         }
         else {
-        write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online PNP PowerShell module - Administration escalation required" 
-        Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name pnp.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
-        write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP PowerShell module - updated"
+            write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online PNP PowerShell module - Administration escalation required" 
+            Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name pnp.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
+            write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP PowerShell module - updated"
         }
     }
 }
+
+write-host -foregroundcolor $processmessagecolor "Get all SharePoint Online sites"
+$sites = (Invoke-MgGraphRequest -Uri "https://graph.microsoft.com/beta/sites?search=$($tenantname)" -Method GET).value
+$root = (Invoke-MgGraphRequest -Uri "https://graph.microsoft.com/beta/sites/root" -Method GET)
+##$sites = get-mgsite -search $tenantname
+$siteSummary = @()
+$siteSummary += [pscustomobject]@{       
+    Name         = $root.displayname
+    weburl       = $root.weburl
+}
+Foreach ($site in $sites) {
+    $siteSummary += [pscustomobject]@{       
+        Name         = $site.name
+        weburl       = $site.weburl
+    }
+}
+write-host -foregroundcolor $processmessagecolor "Sites found =",$sitesummary.count
+$result = $sitesummary | select-object Name, weburl | Sort-Object Name,weburl | Out-GridView -OutputMode Single -title "Select SharePoint site to connect to with PNP"
+write-host -foregroundcolor $processmessagecolor "Selected SharePoint Online site =", $result.weburl
 
 # Import SharePoint Online PNP module
 write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP PowerShell module loading"
@@ -327,7 +336,7 @@ Try {
     Import-Module pnp.powershell | Out-Null
 }
 catch {
-    Write-Host -ForegroundColor $errormessagecolor "[005] - Unable to load SharePoint Online PNP PowerShell module`n"
+    Write-Host -ForegroundColor $errormessagecolor "[005] - Unable to load SharePoint Online PNP PowerShell module. Try using PowerShell V7 or above`n"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
     if ($debug) {
         Stop-Transcript | Out-Null                ## Terminate transcription
@@ -336,15 +345,10 @@ catch {
 }
 write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP PowerShell module loaded"
 
-write-host -foregroundcolor $processmessagecolor "Get all SharePoint Online sites"
-$sites = get-sposite -IncludePersonalSite $true -Limit all
-$result = $sites | select-object URL | Sort-Object URL | Out-GridView -OutputMode Single -title "Select SharePoint site to connect to with PNP"
-write-host -foregroundcolor $processmessagecolor "Selected SharePoint Online site =",$result.url
-
 # Connect to SharePoint Online PNP Service
 write-host -foregroundcolor $processmessagecolor "Connecting to SharePoint PNP Online"
 Try {
-    connect-pnponline -url $result.url -launchbrowser -devicelogin | Out-Null
+    connect-pnponline -url $result.weburl -launchbrowser -devicelogin | Out-Null
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[006] - Unable to connect to SharePoint Online PNP`n"
