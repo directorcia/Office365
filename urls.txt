@@ -59,6 +59,7 @@ https://cloudpc.microsoft.com - Windows 365
 https://compliance.microsoft.com/m365appprotection - App governance
 https://windows365.microsoft.com/ - Windows 365
 https://cloudpc.microsoft.com - Windows 365
+https://aka.ms/loopadmin - Enable Microsoft Loop in tenant
 
 ## Security 
 
