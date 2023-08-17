@@ -25,8 +25,25 @@ $errormessagecolor="red"
 $warningmessagecolor = "yellow"
 $auditmessagecolor = "cyan"
 
+function amiadmin {
+    # Check for elevated permissions
+    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+    If  (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        $result = $false        # Not admin
+    }
+    else {
+        $result = $true         # admin
+    }
+    return($result)
+}
+
 Clear-Host
 write-host -foregroundcolor $systemmessagecolor "Script started`n"
+write-host -foregroundcolor $processmessagecolor "Test for elevated priviledges`n"
+if (-not(amiadmin)) {
+    write-host -foregroundcolor $errormessagecolor "*** ERROR *** - Please re-run PowerShell environment as Administrator`n"
+    exit 1
+}
 
 $asrrules = @()
 $asrrules += [PSCustomObject]@{ # 0
