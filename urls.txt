@@ -62,6 +62,7 @@ https://cloudpc.microsoft.com - Windows 365
 https://aka.ms/loopadmin - Enable Microsoft Loop in tenant
 https://copilot.microsoft.com - Copilot
 https://copilotstudio.microsoft.com/ - Copilot studio
+https://admin.microsoft.com/Adminportal/Home#/MicrosoftSearch - Microsoft Search and Intelligence
 
 ## Security 
 
