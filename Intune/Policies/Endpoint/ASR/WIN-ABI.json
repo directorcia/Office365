@@ -1,7 +1,7 @@
 {
     "creationSource": null,
-    "description": "",
-    "name": "App and Browser Isolation",
+    "description": "Best Practices Endpoint Security ASR App and Browser isolation",
+    "name": "BP - Endpoint ASR App and Browser isolation - Windows 10",
     "platforms": "windows10",
     "priorityMetaData": null,
     "roleScopeTagIds": [
