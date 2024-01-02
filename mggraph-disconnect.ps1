@@ -6,7 +6,7 @@ param(
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Disconnect from the Mirosoft Graph
-Source - 
+Source - https://github.com/directorcia/Office365/blob/master/mggraph-disconnect.ps1
 
 Prerequisites = 1
 1. Ensure Microsoft.Graph module is loaded
@@ -18,6 +18,9 @@ $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
+
+## If you have running scripts that don't have a certificate, run this command once to disable that level of security
+##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
 Clear-Host
 if ($debug) {
