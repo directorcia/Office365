@@ -29,8 +29,8 @@ if ($debug) {
 }
 
 <#  ----- [Start] Graph PowerShell module check -----   #>
-if (get-module -listavailable -name Microsoft.Graph) {    ## Has the Graph module been loaded?
-    write-host -ForegroundColor $processmessagecolor "Graph module found"
+if (get-module -listavailable -name Microsoft.Graph.Authentication) {    ## Has the Graph import module been installed?
+    write-host -ForegroundColor $processmessagecolor "Graph authentication module found"
 }
 else {
     write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[001] - Graph PowerShell module not installed. Please install and re-run script - ", $_.Exception.Message
