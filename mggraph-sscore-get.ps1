@@ -4,9 +4,8 @@ param(
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Description - Connect to the Microsoft Graph and retrieve all the items in Secure Score
-Documentation - 
-Source - 
+Description - Connect to the Microsoft Graph and retrieve all the items in Secure Score for the last 90 days
+Source - https://github.com/directorcia/Office365/blob/master/mggraph-sscore-get.ps1
 
 Prerequisites = 1
 1. Microsoft Graph module installed - https://www.powershellgallery.com/packages/Microsoft.Graph/
