@@ -69,7 +69,6 @@ https://admin.microsoft.com/Adminportal/Home#/MicrosoftSearch - Microsoft Search
 https://portal.msrc.microsoft.com/en-us/engage/cars - Submit Abuse report. This form is to report suspected cyberattacks or abuse originating from Microsoft Online Services, such as Microsoft Azure, Bing, Outlook, One Drive, and Office 365. This includes malicious network activity originating from a Microsoft IP address. It also includes distribution of malicious content or other illicit or illegal material through a Microsoft Online Service.
 https://servicetrust.microsoft.com/ - Service trust portal. Review the available independent audit reports for Microsoft's Cloud services, which provide information about compliance with data protection standards and regulatory requirements, such as International Organization for Standardization (ISO), Service Organization Controls (SOC), National Institute of Standards and Technology (NIST), Federal Risk and Authorization Management Program (FedRAMP), and the General Data Protection Regulation (GDPR)
 https://www.microsoft.com/en-us/trustcenter - Trust center
-https://protection.office.com - Office 365 Security portal
 https://admin.microsoft.com/AdminPortal/Home?#/modernonboarding/mfasetupguide - Configure and enforce multifactor authentication
 https://security.microsoft.com/securescore - Microsoft Secure Score
 https://portal.cloudappsecurity.com - Office 365 Cloud App security
@@ -78,18 +77,18 @@ https://protection.office.com/gdprdashboard - GDPR Dashbaord
 https://securitycenter.windows.com - Microsoft Defender for Endpoint Security Center
 https://portal.azure.com/#blade/Microsoft_AAD_IAM/ActiveDirectoryMenuBlade/SignIns - Azure AD Sign ins
 https://sender.office.com/ - Office 365 Anti-Spam IP Delist Portal
-https://protection.office.com/managealerts - Activity Alerts
-https://protection.office.com/alertpolicies - Protection Alerts
-https://protection.office.com/reportsubmission - Submit security report
+https://security.microsoft.com/managealerts - Activity Alerts
+https://security.microsoft.com/alertpolicies - Protection Alerts
+https://security.microsoft.com/reportsubmission - Submit security report
 https://passwordreset.microsoftonline.com - Azure AD Password reset
 https://protection.office.com/antispam - Exchange Anti spam console
 https://account.activedirectory.windowsazure.com/usermanagement/mfasettings.aspx - MFA Settings
 https://compliance.microsoft.com/compliancescore - Compliance Score
-http://protection.office.com/quarantine - View quantined emails and files
+https://security.microsoft.com/quarantine - View quantined emails and files
 https://protection.office.com/insightdashboard - Security and Compliance report dashboard
-https://protection.office.com/unifiedauditlog - Audit logs
-https://protection.office.com/campaigns - Email spam campaigns dashboard
-https://protection.office.com/configurationAnalyzer - Configuration Analyzer
+https://security.microsoft.com/unifiedauditlog - Audit logs
+https://security.microsoft.com/campaigns - Email spam campaigns dashboard
+https://security.microsoft.com/configurationAnalyzer - Configuration Analyzer
 https://security.microsoft.com/restrictedusers - Restricted users portal
 https://o365atp.com/ - Office 365 ATP Safe Links Decoder
 https://mha.azurewebsites.net/ - Message Header Analyzer
