@@ -1,0 +1,1 @@
+# Due to security detections this file is now located at - https://github.com/directorcia/examples/blob/main/sec-test.ps1
