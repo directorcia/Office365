@@ -142,4 +142,8 @@ $Sku = @{
 	"MDATP_Server" 							 = "Microsoft Defender for Endpoint Server"
 	"WIN_DEF_ATP" 							 = "MICROSOFT DEFENDER FOR ENDPOINT"
 	"IDENTITY_THREAT_PROTECTION_FOR_EMS_E5"  = "Microsoft 365 E5 Security for EMS E5"
+ 	"POWERAPPS_DEV"                          = "Microsoft Power Apps for Developer"
+    	"Microsoft_Teams_Exploratory_Dept"       = "Microsoft Teams Exploratory"
+    	"Microsoft_Teams_Rooms_Basic_without_Audio_Conferencing" = "Microsoft Teams Rooms Basic without Audio Conferencing"
+    	"PROJECT_PLAN3_DEPT"                     = "Project Plan 3"
 }
