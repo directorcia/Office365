@@ -11,7 +11,7 @@ Description - Log into the Office 365 admin portal and the SharePoint Online por
 Source - https://github.com/directorcia/Office365/blob/master/o365-connect-spo.ps1
 
 Prerequisites = 2
-1. Ensure msonline module installed or updated
+1. Ensure Graph module installed or updated
 2. Ensure SharePoint online PowerShell module installed or updated
 
 More scripts available by joining http://www.ciaopspatron.com
