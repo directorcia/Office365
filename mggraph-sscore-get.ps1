@@ -40,7 +40,7 @@ else {
     exit 1                              ## Terminate script
 }
 
-$scopes = "SecurityEvents.ReadWrite.All"
+$scopes = "SecurityEvents.Read.All"
 write-host -foregroundcolor $processmessagecolor "Settings Scopes = $scopes"
 write-host -foregroundcolor $processmessagecolor "Connect to Microsoft Graph"
 Connect-MgGraph -scopes $scopes -NoWelcome | Out-Null
