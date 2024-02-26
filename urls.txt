@@ -105,6 +105,7 @@ https://security.microsoft.com/cloudapps/app-governance - App governance
 https://security.microsoft.com/tenantAllowBlockList - Tenat Allow/Block lists
 https://entra.microsoft.com/ - Microsoft Entra
 https://ti.defender.microsoft.com - Microsoft Defender Threat Intelligence
+https://mto.security.microsoft.com/ - Multi tenant management
 
 ## Azure
 
