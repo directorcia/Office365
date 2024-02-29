@@ -1,5 +1,6 @@
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
+Updated by Roy Klooster - https://github.com/royklo
 
 Source - https://github.com/directorcia/Office365/blob/master/win10-asr-get.ps1
 
@@ -126,6 +127,24 @@ $asrrules += [PSCustomObject]@{ # 15
     GUID = "56a863a9-875e-4185-98a7-b882c64b5ce5"
     ## Reference - https://docs.microsoft.com/en-us/microsoft-365/security/defender-endpoint/attack-surface-reduction-rules?view=o365-worldwide#block-abuse-of-exploited-vulnerable-signed-drivers
 }
+$asrrules += [PSCustomObject]@{ # 16 
+    Name = "Block rebooting machine in Safe Mode (preview)";
+    GUID = "33ddedf1-c6e0-47cb-833e-de6133960387"
+    ## Reference - https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/attack-surface-reduction-rules-reference?view=o365-worldwide#block-rebooting-machine-in-safe-mode-preview
+}
+$asrrules += [PSCustomObject]@{ # 17 
+    Name = "Block use of copied or impersonated system tools (preview)";
+    GUID = "c0033c00-d16d-4114-a5a0-dc9b3a7d2ceb"
+    ## Reference - https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/attack-surface-reduction-rules-reference?view=o365-worldwide#block-use-of-copied-or-impersonated-system-tools-preview
+}
+$asrrules += [PSCustomObject]@{ # 18 
+    Name = "Block Webshell creation for Servers";
+    GUID = "a8f5898e-1dc8-49a9-9878-85004b8a61e6"
+    ## Reference - https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/attack-surface-reduction-rules-reference?view=o365-worldwide#block-webshell-creation-for-servers
+}
+
+
+
 $enabledvalues = "Not Enabled", "Enabled", "Audit", "NA3", "NA4", "NA5", "Warning" ## $NA3-5 just added for the list to fit from 0-6
 $displaycolor = $errormessagecolor, $processmessagecolor, $auditmessagecolor, $NotUsed, $NotUsed, $NotUsed, $warningmessagecolor ## $NotUsed just added for the list to fit from 0-6
 ## https://docs.microsoft.com/en-us/powershell/module/defender/?view=win10-ps
@@ -157,6 +176,9 @@ if (-not [string]::isnullorempty($results.AttackSurfaceReductionRules_ids)) {
             "7674ba52-37eb-4a4f-a9a1-f0f9a1619a2c" {$index=13;break}
             "e6db77e5-3df2-4cf1-b95a-636979351e5b" {$index=14;break}
             "56a863a9-875e-4185-98a7-b882c64b5ce5" {$index=15;break}
+            "33ddedf1-c6e0-47cb-833e-de6133960387" {$index=16;break}
+            "c0033c00-d16d-4114-a5a0-dc9b3a7d2ceb" {$index=17;break}
+            "a8f5898e-1dc8-49a9-9878-85004b8a61e6" {$index=18;break}
         }
         $count = 0
         $notfound = $true
