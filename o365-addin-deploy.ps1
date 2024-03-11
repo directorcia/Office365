@@ -4,7 +4,7 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 Description - Deploy popular Outlook addins centrally
 
 Source - https://github.com/directorcia/Office365/blob/master/o365-addin-deploy.ps1
-Reference - https://docs.microsoft.com/en-us/office365/enterprise/use-the-centralized-deployment-powershell-cmdlets-to-manage-add-ins
+Reference - https://learn.microsoft.com/en-us/microsoft-365/enterprise/use-the-centralized-deployment-powershell-cmdlets-to-manage-add-ins?view=o365-worldwide
 
 Prerequisites = 1
 1. Ensure connected to the Office 365 Central Deployment Service
