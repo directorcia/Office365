@@ -135,7 +135,7 @@ if ($prompt) {
     }
 }
 
-write-host -ForegroundColor $processmessagecolor "Get Identity Authoization Best Practice policy from CIAOPS Best Practice repo"
+write-host -ForegroundColor $processmessagecolor "Get Identity Authorization Best Practice policy from CIAOPS Best Practice repo"
 $asrbpurl = "https://raw.githubusercontent.com/directorcia/bp/main/EntraID/authorization.json"
 try {
     $query = invoke-webrequest -method GET -ContentType "application/json" -uri $asrbpurl -UseBasicParsing
