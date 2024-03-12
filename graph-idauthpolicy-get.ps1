@@ -65,18 +65,23 @@ function entra-settings() {
     else {
         write-host -foregroundcolor $processmessagecolor "- Allow user consent for risk apps =", $request.value.allowUserConsentForRiskyApps
     }
+    # This setting corresponds to the Restrict non-admin users from creating tenants setting in the User settings menu in the Microsoft Entra admin center.
     if ($request.value.defaultuserrolepermissions.allowedToCreateTenants -notmatch $bpsettings.defaultuserrolepermissions.allowedToCreateTenants) {
         write-host -foregroundcolor $errormessagecolor "- Users can create Entra tenants =", $request.value.defaultuserrolepermissions.allowedToCreateTenants 
     }
     else {
         write-host -foregroundcolor $processmessagecolor "- Users can create Entra tenants =", $request.value.defaultuserrolepermissions.allowedToCreateTenants 
     }
+    # This setting corresponds to the Users can register applications setting in the User settings menu in the Microsoft Entra admin center.
     if ($request.value.defaultuserrolepermissions.allowedToCreateApps -notmatch $bpsettings.defaultuserrolepermissions.allowedToCreateApps) {
         write-host -foregroundcolor $errormessagecolor "- Users can create apps =", $request.value.defaultuserrolepermissions.allowedToCreateApps 
     }
     else {
         write-host -foregroundcolor $processmessagecolor "- Users can create apps =", $request.value.defaultuserrolepermissions.allowedToCreateApps
     }
+    # This setting corresponds to the following menus in the Microsoft Entra admin center:
+    #    The Users can create security groups in Microsoft Entra admin centers, API or PowerShell setting in the Group settings menu.
+    #    Users can create security groups setting in the User settings menu.
     if ($request.value.defaultuserrolepermissions.allowedToCreateSecurityGroups -notmatch $bpsettings.defaultuserrolepermissions.allowedToCreateSecurityGroups) {
         write-host -foregroundcolor $errormessagecolor "- Users can create security groups =", $request.value.defaultuserrolepermissions.allowedToCreateSecurityGroups 
     }
