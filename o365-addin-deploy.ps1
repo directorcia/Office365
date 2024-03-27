@@ -54,14 +54,6 @@ catch {
     Write-Host -ForegroundColor $errormessagecolor "`n[003] - Failed to add asset = WA104005406 (Typically it is already installed)"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message,"`n"
 }
-write-host -foregroundcolor $processmessagecolor "Deploy Findtime"
-try {
-    New-OrganizationAddIn -AssetId 'WA104379803' -Locale 'en-AU' -ContentMarket 'en-AU' -ErrorAction Stop | Out-Null ## FindTime
-}
-Catch {
-    Write-Host -ForegroundColor $errormessagecolor "`n[004] - Failed to add asset = WA104379803 (Typically it is already installed)"
-    Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message,"`n"
-}
 
 ## Enable in tenant
 write-host -foregroundcolor $processmessagecolor "Enable Report Message in tenant"
@@ -80,14 +72,6 @@ catch {
     Write-Host -ForegroundColor $errormessagecolor "`n[006] - Failed to enable asset (Typically it is already installed)"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message,"`n"
 }
-write-host -foregroundcolor $processmessagecolor "Enable Findtime in tenant"
-try {
-    Set-OrganizationAddIn -ProductId 9758a0e2-7861-440f-b467-1823144e5b65 -Enabled $true | Out-Null ## FindTime
-}
-catch {
-    Write-Host -ForegroundColor $errormessagecolor "`n[007] - Failed to enable asset (Typically it is already installed)"
-    Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message,"`n"
-}
 
 ## Assign addins to all users
 write-host -foregroundcolor $processmessagecolor "Assign Report Message to all users"
@@ -104,14 +88,6 @@ try {
 }
 Catch {
     Write-Host -ForegroundColor $errormessagecolor "`n[009] - Failed to assign asset (Typically it is already installed)"
-    Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message,"`n"
-}
-write-host -foregroundcolor $processmessagecolor "Enable Findtime to all users"
-try {
-    Set-OrganizationAddInAssignments -ProductId 9758a0e2-7861-440f-b467-1823144e5b65 -AssignToEveryone $true | Out-Null ## FindTime
-}
-catch {
-    Write-Host -ForegroundColor $errormessagecolor "`n[010] - Failed to assign asset (Typically it is already installed)"
     Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message,"`n"
 }
 
