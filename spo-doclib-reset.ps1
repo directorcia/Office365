@@ -53,7 +53,7 @@ write-host -ForegroundColor $processmessagecolor "Select List"
 $result = $lists | select-object Title, Id | Sort-Object Title | Out-GridView -OutputMode Single -title "Select List"
 
 write-host -ForegroundColor $processmessagecolor "Read items"
-$items=(Get-PnPListItem -List $result.id -Fields "Title","GUID").FieldValues
+$items=(Get-PnPListItem -List $result.id -pagesize 10000 -Fields "Title","GUID").FieldValues
 
 write-host -ForegroundColor $processmessagecolor "Reset all permissions on all items to inherit`n"
 if ($prompt) {
