@@ -67,9 +67,11 @@ if ($prompt) {
         exit 2
     }
 }
-
+$count=0
+$totalitems = $items.Count
 foreach ($item in $items) {
-    write-host -nonewline "Id =",$item.ID,"FileRef =",$item.FileRef
+    ++$count
+    write-host -nonewline "[$count of $totalitems] Id =",$item.ID,"FileRef =",$item.FileRef
     try {
         Set-PnPListItemPermission -List $result.id -Identity $item.ID -InheritPermissions
         write-host -foregroundcolor $processmessagecolor " - Success"
