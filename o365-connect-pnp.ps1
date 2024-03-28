@@ -213,7 +213,7 @@ write-host -foregroundcolor $processmessagecolor "Microsoft Graph SharePoint Onl
 ## Connect to Office 365 admin service
 write-host -foregroundcolor $processmessagecolor "Connecting to Microsoft Graph"
 try {
-    Connect-MgGraph -Scopes "Sites.Read.All", "sites.ReadWrite.All"
+    Connect-MgGraph -Scopes "Sites.Read.All", "sites.ReadWrite.All,Domain.Read.All"
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Microsoft Graph`n"
