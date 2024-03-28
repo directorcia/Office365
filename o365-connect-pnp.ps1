@@ -227,7 +227,7 @@ write-host -foregroundcolor $processmessagecolor "Connected to Microsoft Graph"
 
 ## Auto detect SharePoint Online admin domain
 write-host -foregroundcolor $processmessagecolor "Determining SharePoint URL"
-$domains = get-mgdomain -all                        ## get a list of all domains in tenant
+$domains = get-mgdomain                        ## get a list of all domains in tenant
 foreach ($domain in $domains) {
     ## loop through all these domains
     if ($domain.id.contains('onmicrosoft')) {
