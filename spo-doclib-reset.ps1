@@ -69,8 +69,15 @@ if ($prompt) {
 }
 
 foreach ($item in $items) {
-    write-host "Id =",$item.ID,"FileRef =",$item.FileRef
-    Set-PnPListItemPermission -List $result.id -Identity $item.ID -InheritPermissions
+    write-host -nonewline "Id =",$item.ID,"FileRef =",$item.FileRef
+    try {
+        Set-PnPListItemPermission -List $result.id -Identity $item.ID -InheritPermissions
+        write-host -foregroundcolor $processmessagecolor " - Success"
+    }
+    catch {
+        write-host -foregroundcolor $errormessagecolor " - Failed"
+        write-host -foregroundcolor $errormessagecolor "`n", $_.Exception.Message
+    }
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nReset Document Library permissions - complete`n"
