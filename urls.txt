@@ -107,6 +107,8 @@ https://entra.microsoft.com/ - Microsoft Entra
 https://ti.defender.microsoft.com - Microsoft Defender Threat Intelligence
 https://mto.security.microsoft.com/ - Multi tenant management
 https://securitycopilot.microsoft.com/ - Security Copilot
+https://security.microsoft.com/securitysettings/endpoints/offboarding - Defender for Endpoint offboarding
+https://security.microsoft.com/securitysettings/endpoints/onboarding - Defender for Endpoint onboarding
 
 ## Azure
 
