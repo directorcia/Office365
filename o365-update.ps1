@@ -125,7 +125,7 @@ write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 write-host -ForegroundColor $processmessagecolor "Prompt to install missing modules =",$prompt"`n"
 
 $ps = $PSVersionTable.PSVersion
-Write-host -foregroundcolor $processmessagecolor "Detected supported PowerShell version: $($ps.Major).$($ps.Minor)"
+Write-host -foregroundcolor $processmessagecolor "Detected supported PowerShell version: $($ps.Major).$($ps.Minor)`n"
 if ($ps.Major -lt 7) {
     $modulecount = 16       
 } else {
