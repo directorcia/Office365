@@ -132,17 +132,20 @@ if ($ps.Major -lt 7) {
     $modulecount = 15       # NUGET is not supported in PowerShell 7
 }
 
-$counter = 0
+$counter = 1
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     if ($ps.Major -lt 7) {
-        write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Update NuGet provider"
+        ++$counter
+        write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Update NuGet provider"
         test-package -packagename NuGet
     }
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Update Azure AD module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Update Azure AD module"
     test-install -modulename AzureAD
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Update Azure Information Protection module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Update Azure Information Protection module"
     $aadrmcheck = get-module -listavailable -name aadrm
     if ($aadrmcheck) {
         write-host -foregroundcolor $warningmessagecolor "    [Warning] Older module Azure AD Rights management module (AADRM) is still installed"
@@ -151,19 +154,26 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
         write-host -foregroundcolor $processmessagecolor "    Now Azure Information Protection module will now be installed"
     }
     test-install -modulename AIPService
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Update Teams Module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Update Teams Module"
     test-install -modulename MicrosoftTeams
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Update SharePoint Online module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Update SharePoint Online module"
     test-install -modulename Microsoft.Online.SharePoint.PowerShell
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Update Microsoft Online module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Update Microsoft Online module"
     test-install -modulename MSOnline
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Update PowerShellGet module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Update PowerShellGet module"
     test-install -modulename PowershellGet
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Update Exchange Online module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Update Exchange Online module"
     test-install -modulename ExchangeOnlineManagement
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Update Azure module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Update Azure module"
     test-install -modulename Az 
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Update SharePoint PnP module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Update SharePoint PnP module"
     $pnpcheck = get-module -listavailable -name SharePointPnPPowerShellOnline
     if ($pnpcheck) {
         write-host -foregroundcolor $warningmessagecolor "    [Warning] Older SharePoint PnP module is still installed"
@@ -172,18 +182,24 @@ If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
         write-host -foregroundcolor $processmessagecolor "    New SharePoint PnP module will now be installed"
     }
     test-install -modulename PnP.PowerShell
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Update Microsoft Graph module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Update Microsoft Graph module"
     test-install -modulename Microsoft.Graph 
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Update Windows Autopilot Module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Update Windows Autopilot Module"
     ## will also update dependent AzureAD and Microsoft.Graph.Intune modules
     test-install -modulename WindowsAutoPilotIntune
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Centralised Add-in Deployment"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Centralised Add-in Deployment"
     test-install -modulename O365CentralizedAddInDeployment
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) PowerApps"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) PowerApps"
     test-install -modulename Microsoft.PowerApps.PowerShell
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) PowerApps Administration module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) PowerApps Administration module"
     test-install -modulename Microsoft.PowerApps.Administration.PowerShell
-    write-host -foregroundcolor $processmessagecolor "($(++$counter) of $($modulecount)) Microsoft 365 Commerce module"
+    ++$counter
+    write-host -foregroundcolor $processmessagecolor "($($counter) of $($modulecount)) Microsoft 365 Commerce module"
     test-install -modulename MSCommerce
 }
 Else {
