@@ -125,14 +125,14 @@ write-host -foregroundcolor $systemmessagecolor "Start Script`n"
 write-host -ForegroundColor $processmessagecolor "Prompt to install missing modules =",$prompt"`n"
 
 $ps = $PSVersionTable.PSVersion
-Write-host -foregroundcolor $processmessagecolor "`nDetected supported PowerShell version: $($ps.Major).$($ps.Minor)"
+Write-host -foregroundcolor $processmessagecolor "Detected supported PowerShell version: $($ps.Major).$($ps.Minor)"
 if ($ps.Major -lt 7) {
     $modulecount = 16       
 } else {
     $modulecount = 15       # NUGET is not supported in PowerShell 7
 }
 
-$counter = 0
+$counter = 1
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
