@@ -132,7 +132,7 @@ if ($ps.Major -lt 7) {
     $modulecount = 15       # NUGET is not supported in PowerShell 7
 }
 
-$counter = 1
+$counter = 0
 
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 If ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
