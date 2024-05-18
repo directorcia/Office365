@@ -42,7 +42,7 @@ catch {
 }
 write-host -foregroundcolor $processmessagecolor "Intune module loaded"
 try {
-    Connect-MSGraph | Out-Null
+    Connect-MgGraph | Out-Null
 }
 catch {
        Write-Host -ForegroundColor $errormessagecolor "[002] - Failed to connect to Intune - ", $_.Exception.Message
