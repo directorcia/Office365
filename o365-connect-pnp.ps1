@@ -39,6 +39,16 @@ write-host -ForegroundColor $processmessagecolor "Prompt =", ($prompt)
 write-host -ForegroundColor $processmessagecolor "Debug =", ($debug)
 write-host -ForegroundColor $processmessagecolor "Update =", (-not $noupdate)
 
+$ps = $PSVersionTable.PSVersion
+if ($ps.Major -lt 7) {
+    write-host -foregroundcolor $errormessagecolor "`nThis script requires PowerShell version 7 or above`n"
+    if ($debug) {
+        Stop-Transcript | Out-Null                 ## Terminate transcription
+    }
+    exit 1
+}
+Write-host -foregroundcolor $processmessagecolor "`nDetected supported PowerShell version: $($ps.Major).$($ps.Minor)"
+
 # Microsoft Online Module
 if (get-module -listavailable -name Microsoft.Graph.Identity.DirectoryManagement) {
     ## Has the Microsoft Graph module been installed?
