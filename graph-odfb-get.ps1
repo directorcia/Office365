@@ -9,6 +9,7 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Report on ODFB for tenant
 Source - https://github.com/directorcia/Office365/blob/master/graph-odfb-get.ps1
+Documentation - https://blog.ciaops.com/2024/07/16/odfb-summary-script/
 
 Prerequisites = 1
 1. Ensure the MS Graph module is installed
