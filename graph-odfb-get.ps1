@@ -8,9 +8,9 @@ param(
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Report on ODFB for tenant
-Source - 
+Source - https://github.com/directorcia/Office365/blob/master/graph-odfb-get.ps1
 
-Prerequisites = 2
+Prerequisites = 1
 1. Ensure the MS Graph module is installed
 
 #>
