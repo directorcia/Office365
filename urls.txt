@@ -65,6 +65,7 @@ https://copilotstudio.microsoft.com/ - Copilot studio
 https://admin.microsoft.com/Adminportal/Home#/MicrosoftSearch - Microsoft Search and Intelligence
 https://portal.mesh.microsoft.com/ - Microsoft Mesh
 https://mesh.cloud.microsoft/ - Microsoft Mesh
+https://insights.cloud.microsoft/#/CopilotDashboard - Copilot admin dashboard
 
 ## Security 
 
