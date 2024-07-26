@@ -3,7 +3,7 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Connect to the Microsoft Graph
 
-Source - https://github.com/directorcia/Office365/blob/master/graph-gloabladmins-get.ps1
+Source - https://github.com/directorcia/Office365/blob/master/graph-globaladmins-get.ps1
 
 Prerequisites = 1
 1. Graph module installed
