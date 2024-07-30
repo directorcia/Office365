@@ -28,13 +28,23 @@ $warningmessagecolor = "yellow"
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
 Clear-Host
-
 if ($debug) {
-    write-host "Script activity logged at ..\o365-connect-spo.txt"
-    start-transcript "..\o365-connect-spo.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
+    start-transcript "..\o365-connect-spo.txt" | Out-Null
+    write-host -foregroundcolor $processmessagecolor "[Info] = Script activity logged at ..\o365-connect-spo.txt`n"
+}
+else {
+    write-host -foregroundcolor $processmessagecolor "[Info] = Debug mode disabled`n"
 }
 write-host -foregroundcolor $systemmessagecolor "SharePoint Online Connection script started`n"
-write-host -ForegroundColor $processmessagecolor "Prompt =",(-not $noprompt)
+if ($prompt) {
+    write-host -foregroundcolor $processmessagecolor "[Info] = Prompt mode enabled"
+}
+else {
+    write-host -foregroundcolor $processmessagecolor "[Info] = Prompt mode disabled"
+}
+write-host -foregroundcolor $processmessagecolor "[Info] = Checking PowerShell version"
+$ps = $PSVersionTable.PSVersion
+Write-host -foregroundcolor $processmessagecolor "- Detected supported PowerShell version: $($ps.Major).$($ps.Minor)"
 
 # Microsoft Online Module
 if (get-module -listavailable -name Microsoft.Graph.Identity.DirectoryManagement) {    ## Has the Microsoft Online PowerShell module been installed?
@@ -222,7 +232,13 @@ if (-not $noupdate) {
 # Import SharePoint Online module
 write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module loading"
 Try {
-    Import-Module microsoft.online.sharepoint.powershell -disablenamechecking | Out-Null
+    if ($ps.Major -lt 6) {
+        $result = Import-Module microsoft.online.sharepoint.powershell -disablenamechecking
+    }
+    else {
+        write-host -foregroundcolor $processmessagecolor "[Info] = Using compatibility mode`n"
+        $result = Import-Module microsoft.online.sharepoint.powershell -disablenamechecking -UseWindowsPowerShell
+    }
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[005] - Unable to load SharePoint Online PowerShell module`n"
