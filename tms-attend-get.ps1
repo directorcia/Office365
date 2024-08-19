@@ -36,7 +36,7 @@ write-host -foregroundcolor $systemmessagecolor "Get Teams meeting attendees - s
 
 # Connect to MSGraph
 write-host -foregroundcolor $processmessagecolor "Connect to the Microsoft Graph"
-Select-MgProfile beta
+# Select-MgProfile beta
 Connect-MgGraph -Tenant $tenantid -Scopes $scopes
 
 # Get user GUID from email address
