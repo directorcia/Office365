@@ -118,8 +118,8 @@ function entra-auth-methods() {
 
 if ($debug) {
     # create a log file of process if option enabled
-    write-host "Script activity logged at .\graph-bp-get.txt"
-    start-transcript ".\graph-bp-get.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
+    write-host "Script activity logged at .\graph-idauthpolicy-get.txt"
+    start-transcript ".\graph-idauthpolicy-get.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
 }
 
 Clear-Host
