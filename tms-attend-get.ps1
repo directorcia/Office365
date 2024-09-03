@@ -18,7 +18,7 @@ Prerequisites = 1
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 
-$scopes = "OnlineMeetingArtifact.Read.All, OnlineMeetings.Read" # required to read meeting data
+$scopes = "OnlineMeetingArtifact.Read.All, OnlineMeetings.Read","User.Read.All" # required to read meeting data
 
 #region Change to suit environment
 $tenantid = "tenant.onmicrosoft.com"                       # e.g. tenant.onmicrosoft.com
@@ -36,8 +36,8 @@ write-host -foregroundcolor $systemmessagecolor "Get Teams meeting attendees - s
 
 # Connect to MSGraph
 write-host -foregroundcolor $processmessagecolor "Connect to the Microsoft Graph"
-Select-MgProfile beta
-Connect-MgGraph -Tenant $tenantid -Scopes $scopes
+# Select-MgProfile beta
+Connect-MgGraph -Tenant $tenantid -Scopes $scopes -nowelcome
 
 # Get user GUID from email address
 write-host -foregroundcolor $processmessagecolor "Get meeting creator GUID"

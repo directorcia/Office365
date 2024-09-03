@@ -60,11 +60,14 @@ https://compliance.microsoft.com/m365appprotection - App governance
 https://windows365.microsoft.com/ - Windows 365
 https://cloudpc.microsoft.com - Windows 365
 https://aka.ms/loopadmin - Enable Microsoft Loop in tenant
-https://copilot.microsoft.com - Copilot
-https://copilotstudio.microsoft.com/ - Copilot studio
 https://admin.microsoft.com/Adminportal/Home#/MicrosoftSearch - Microsoft Search and Intelligence
 https://portal.mesh.microsoft.com/ - Microsoft Mesh
 https://mesh.cloud.microsoft/ - Microsoft Mesh
+
+## Copilot
+https://copilot.microsoft.com - Copilot
+https://copilotstudio.microsoft.com/ - Copilot studio
+https://web.powerva.microsoft.com/ - Copilot Studio
 https://insights.cloud.microsoft/#/CopilotDashboard - Copilot admin dashboard
 https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv - List of SKUs
 
@@ -111,6 +114,7 @@ https://mto.security.microsoft.com/ - Multi tenant management
 https://securitycopilot.microsoft.com/ - Security Copilot
 https://security.microsoft.com/securitysettings/endpoints/offboarding - Defender for Endpoint offboarding
 https://security.microsoft.com/securitysettings/endpoints/onboarding - Defender for Endpoint onboarding
+https://mto.security.microsoft.com - Multi tenant XDR
 
 ## Azure
 
