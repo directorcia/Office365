@@ -11,17 +11,16 @@ Prerequisites = 1
 #>
 
 ## Variables
-$systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $appname = "Reset"
 
 clear-host
-Write-Host -foregroundcolor $systemmessagecolor "Connecting to Microsoft Graph..."
+Write-Host -foregroundcolor $processmessagecolor "Connecting to Microsoft Graph..."
 Connect-MgGraph -Scopes "Application.ReadWrite.All", "Directory.ReadWrite.All", "Application.Read.All","Directory.Read.All","AppRoleAssignment.ReadWrite.All" -NoWelcome
 
-Write-Host -foregroundcolor $systemmessagecolor "Creating a new application..."
+Write-Host -foregroundcolor $processmessagecolor "Creating a new application..."
 $app = New-MgApplication -DisplayName $appname -ErrorAction Stop -Web @{ RedirectUris = @('https://portal.office.com/') }
-Write-Host -foregroundcolor $systemmessagecolor "Adding an application password..."
+Write-Host -foregroundcolor $processmessagecolor "Adding an application password..."
 $apppwd = Add-MgApplicationPassword -ApplicationId $app.Id -ErrorAction Stop ## Get Azure AD app password
 
 # Step 2: Create a service principal for the application
@@ -39,7 +38,7 @@ Write-Host "Application (client) ID: $($applicationid)"
 Write-Host "             App Secret: $($apppwd.SecretText)"
 Write-Host "   Service Principal ID: $($servicePrincipal.Id)`n"
 
-Write-Host -foregroundcolor $systemmessagecolor "Setting permissions for the application..."
+Write-Host -foregroundcolor $processmessagecolor "Setting permissions for the application..."
 # Define variables
 $resourceAppId = "00000003-0000-0000-c000-000000000000"  # Microsoft Graph App ID
 # https://learn.microsoft.com/en-us/graph/permissions-reference
@@ -68,11 +67,11 @@ $requiredResourceAccess = @(
     }
 )
 
-Write-Host -foregroundcolor $systemmessagecolor "Updating the application with new permissions..."
+Write-Host -foregroundcolor $processmessagecolor "Updating the application with new permissions..."
 # Update the application with new permissions
 Update-MgApplication -ApplicationId $app.Id -RequiredResourceAccess $requiredResourceAccess -ErrorAction Stop
 
-Write-Host -foregroundcolor $systemmessagecolor "Granting admin consent for all permissions..."
+Write-Host -foregroundcolor $processmessagecolor "Granting admin consent for all permissions..."
 # Grant admin consent for all permissions in browser
 $applicationid = $app.AppId
 $tenantid = (get-mgcontext).tenantid
