@@ -43,13 +43,15 @@ Write-Host -foregroundcolor $systemmessagecolor "Setting permissions for the app
 # Define variables
 $resourceAppId = "00000003-0000-0000-c000-000000000000"  # Microsoft Graph App ID
 # https://learn.microsoft.com/en-us/graph/permissions-reference
+
 $permissions = @(
+    # https://learn.microsoft.com/en-us/powershell/module/microsoft.graph.users/update-mguser?view=graph-powershell-1.0#description
     @{
-        id = "3011c876-62b7-4ada-afa2-506cbbecc68c"  # GUID for User.EnableDisableAccount.All 3011c876-62b7-4ada-afa2-506cbbecc68c [yes]
+        id = "3011c876-62b7-4ada-afa2-506cbbecc68c"  # GUID for User.EnableDisableAccount.All 3011c876-62b7-4ada-afa2-506cbbecc68c
         type = "Role"                                # Use "Role" for application permissions
     },
     @{
-        id = "19dbc75e-c2e2-444c-a770-ec69d8559fc7"  # GUID for Directory.ReadWrite.All 19dbc75e-c2e2-444c-a770-ec69d8559fc7 [yes]
+        id = "19dbc75e-c2e2-444c-a770-ec69d8559fc7"  # GUID for Directory.ReadWrite.All 19dbc75e-c2e2-444c-a770-ec69d8559fc7
         type = "Role"                                # Use "Role" for application permissions
     },
     @{
