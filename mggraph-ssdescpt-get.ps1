@@ -1,5 +1,4 @@
 param(                           ## if no parameter used then login without MFA and use interactive mode
-    [switch]$debug = $false, ## if -debug parameter capture log information
     [switch]$prompt = $false     ## if -prompt parameter used prompt user for input
 )
 <# CIAOPS
@@ -25,7 +24,7 @@ $errormessagecolor = "red"
 ##  set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
 Clear-Host
-if ($debug) {
+if ($prompt) {
     write-host -foregroundcolor $processmessagecolor "Script activity logged at ..\mggraph-ssdescpt-get.txt"
     start-transcript "..\mggraph-ssdescpt-get.txt"
 }
