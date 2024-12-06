@@ -7,7 +7,7 @@ param(
 
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Description - Report on ODFB for tenant
+Description - Report on licenses for tenant
 Source - https://github.com/directorcia/Office365/blob/master/graph-licenses-get.ps1
 Documentation - https://github.com/directorcia/Office365/wiki/Report-tenant-licenses
 
