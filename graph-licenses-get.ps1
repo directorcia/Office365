@@ -14,6 +14,14 @@ Documentation - https://github.com/directorcia/Office365/wiki/Report-tenant-lice
 Prerequisites = 1
 1. Ensure the MS Graph module is installed
 
+If you find value in this script please support the author of these scripts by:
+
+- https://ko-fi.com/ciaops
+
+or 
+
+- becoming a CIAOPS Patron: https://www.ciaops.com/patron
+
 #>
 
 ## Variables
@@ -50,6 +58,19 @@ if ($prompt) {
         write-host
     }
 }
+If ($prompt) { Read-Host -Prompt "`n[PROMPT] -- Press Enter to continue" }
+
+# Make call out to CIAOPS BP repository to get a list of all the product codes and store in a variable called $skulist
+Write-host -ForegroundColor $processmessagecolor "Get Product codes via web request"
+try {
+    $query = invoke-webrequest -method GET -ContentType "application/json" -uri https://raw.githubusercontent.com/directorcia/bp/refs/heads/main/skus.json -UseBasicParsing
+}
+catch {
+    Write-Host -ForegroundColor $errormessagecolor "[001]", $_.Exception.Message
+}
+$skulist = $query.content | ConvertFrom-Json
+
+If ($prompt) { Read-Host -Prompt "`n[PROMPT] -- Press Enter to continue" }
 
 $Url = "https://graph.microsoft.com/beta/subscribedSkus"
 write-host -foregroundcolor $processmessagecolor "Make Graph request for all licenses"
@@ -62,14 +83,16 @@ catch {
 }
 $licensesummary = @()
 foreach ($result in $results) {
+    $partnumber=$result.skupartnumber
     $licenseSummary += [pscustomobject]@{                                                  ## Build array item
         license   = $result.skupartnumber
+        name      = $skulist.$partnumber
         available = $result.prepaidunits.enabled
         assigned  = $result.consumedunits
     }
 }
 
-$licenseSummary | sort-object skupartnumber | select-object license,available,assigned | format-table
+$licenseSummary | sort-object skupartnumber | select-object License,Name,Available,Assigned | format-table
 
 if ($csv) {
     write-host -foregroundcolor $processmessagecolor "`nOutput to CSV", $outputFile
