@@ -60,16 +60,33 @@ if ($prompt) {
 }
 If ($prompt) { Read-Host -Prompt "`n[PROMPT] -- Press Enter to continue" }
 
+
 # Get all devices
+$Url = "https://graph.microsoft.com/beta/devices"
 write-host -foregroundcolor $processmessagecolor "Make Graph request for all devices"
-$devices = Get-MgDevice
+try {
+    $results = (Invoke-MgGraphRequest -Uri $Url -Method GET).value
+}
+catch {
+    Write-Host -ForegroundColor $errormessagecolor "`n"$_.Exception.Message
+    exit (0)
+}
+$devicesummary = @()
+foreach ($result in $results) {
+        $deviceSummary += [pscustomobject]@{                                                  ## Build array item
+        Displayname     = $result.displayname
+        DeviceID        = $result.DeviceId
+        OperatingSystem = $result.OperatingSystem
+        Trusttype       = $result.Trusttype
+    }
+}
 
 # Output the devices
-$devices | Format-Table DisplayName, DeviceId, OperatingSystem, TrustType
+$devicesummary | Format-Table DisplayName, DeviceId, OperatingSystem, Trusttype
 
 if ($csv) {
     write-host -foregroundcolor $processmessagecolor "`nOutput to CSV", $outputFile
-    $devices | export-csv $outputFile -NoTypeInformation
+    $devicesummary | export-csv $outputFile -NoTypeInformation
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nGraph devices script - Finished"
