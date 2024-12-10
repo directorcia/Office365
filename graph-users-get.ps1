@@ -8,8 +8,8 @@ param(
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Report on licenses for tenant
-Source - https://github.com/directorcia/Office365/blob/master/graph-devices-get.ps1
-Documentation - https://github.com/directorcia/Office365/wiki/Report-tenant-devices
+Source - https://github.com/directorcia/Office365/blob/master/graph-users-get.ps1
+Documentation - https://github.com/directorcia/Office365/wiki/Report-Tenant-Users
 
 Prerequisites = 1
 1. Ensure the MS Graph module is installed
@@ -29,18 +29,18 @@ $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
-$outputFile = "..\graph-devices.csv"
+$outputFile = "..\graph-users.csv"
 
 if ($debug) {
     # create a log file of process if option enabled
-    write-host "Script activity logged at .\graph-devices-get.txt"
-    start-transcript ".\graph-devices-get.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
+    write-host "Script activity logged at .\graph-users-get.txt"
+    start-transcript ".\graph-users-get.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
 }
 
 Clear-Host
-write-host -foregroundcolor $systemmessagecolor "Tenant device report script - Started`n"
+write-host -foregroundcolor $systemmessagecolor "Tenant user report script - Started`n"
 write-host -foregroundcolor $processmessagecolor "Connect to MS Graph"
-$scopes = "Device.Read.All"
+$scopes = "User.ReadBasic.All, User.Read.All, User.ReadWrite.All, Directory.Read.All, Directory.ReadWrite.All"
 connect-mggraph -scopes $scopes -nowelcome | Out-Null
 $graphcontext = Get-MgContext
 write-host -foregroundcolor $processmessagecolor "Connected account =", $graphcontext.Account
@@ -61,8 +61,9 @@ If ($prompt) { Read-Host -Prompt "`n[PROMPT] -- Press Enter to continue" }
 
 
 # Get all devices
-$Url = "https://graph.microsoft.com/beta/devices"
-write-host -foregroundcolor $processmessagecolor "Make Graph request for all devices"
+# https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
+$Url = "https://graph.microsoft.com/beta/users?&`$top=999" 
+write-host -foregroundcolor $processmessagecolor "Make Graph request for all users"
 try {
     $results = (Invoke-MgGraphRequest -Uri $Url -Method GET).value
 }
@@ -70,22 +71,22 @@ catch {
     Write-Host -ForegroundColor $errormessagecolor "`n"$_.Exception.Message
     exit (0)
 }
-$devicesummary = @()
+$usersummary = @()
 foreach ($result in $results) {
-        $deviceSummary += [pscustomobject]@{                                                  ## Build array item
-        Displayname     = $result.displayname
-        DeviceID        = $result.DeviceId
-        OperatingSystem = $result.OperatingSystem
-        Trusttype       = $result.Trusttype
+    $userSummary += [pscustomobject]@{                                                  ## Build array item
+        Displayname       = $result.displayname
+        UserPrincipalName = $result.userPrincipalName
+        AccountEnabled    = $result.accountEnabled
+        UserType          = $result.userType
     }
 }
 
 # Output the devices
-$devicesummary | Format-Table DisplayName, DeviceId, OperatingSystem, Trusttype
+$usersummary | sort-object displayname | Format-Table DisplayName, UserPrincipalName, AccountEnabled, UserType
 
 if ($csv) {
     write-host -foregroundcolor $processmessagecolor "`nOutput to CSV", $outputFile
-    $devicesummary | export-csv $outputFile -NoTypeInformation
+    $usersummary | export-csv $outputFile -NoTypeInformation
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nGraph devices script - Finished"
