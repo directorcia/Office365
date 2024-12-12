@@ -82,7 +82,7 @@ foreach ($result in $results) {
 }
 
 # Output the Signins
-$signinsummary | Format-Table ClientAppUsed, IpAddress, IsINteractive, UserPrincipalName
+$signinsummary | Format-Table ClientAppUsed, IpAddress, IsInteractive, UserPrincipalName
 
 if ($csv) {
     write-host -foregroundcolor $processmessagecolor "`nOutput to CSV", $outputFile
