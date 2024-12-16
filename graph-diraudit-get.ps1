@@ -7,9 +7,9 @@ param(
 
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
-Description - Report on signins for tenant
-Source - https://github.com/directorcia/Office365/blob/master/graph-signins-get.ps1
-Documentation - https://github.com/directorcia/Office365/wiki/Get-tenant-signins
+Description - Report directory audit for tenant
+Source - https://github.com/directorcia/Office365/blob/master/graph-diraudit-get.ps1
+Documentation - https://github.com/directorcia/Office365/wiki/Report-directory-activity-in-a-tenant
 
 Prerequisites = 1
 1. Ensure the MS Graph module is installed
@@ -29,16 +29,16 @@ $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
-$outputFile = "..\graph-signins.csv"
+$outputFile = "..\graph-diraudit.csv"
 
 if ($debug) {
     # create a log file of process if option enabled
-    write-host "Script activity logged at .\graph-signins-get.txt"
-    start-transcript ".\graph-signins-get.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
+    write-host "Script activity logged at .\graph-diraudit-get.txt"
+    start-transcript ".\graph-diraudit-get.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
 }
 
 Clear-Host
-write-host -foregroundcolor $systemmessagecolor "Tenant signins report script - Started`n"
+write-host -foregroundcolor $systemmessagecolor "Tenant directory audit report script - Started`n"
 write-host -foregroundcolor $processmessagecolor "Connect to MS Graph"
 $scopes = "AuditLog.Read.All","Directory.Read.All"
 connect-mggraph -scopes $scopes -nowelcome | Out-Null
@@ -60,10 +60,10 @@ if ($prompt) {
 If ($prompt) { Read-Host -Prompt "`n[PROMPT] -- Press Enter to continue" }
 
 
-# Get all devices
-# https://learn.microsoft.com/en-us/graph/api/signin-list?view=graph-rest-1.0&tabs=http
-$Url = "https://graph.microsoft.com/beta/auditLogs/signIns"
-write-host -foregroundcolor $processmessagecolor "Make Graph request for signins"
+# Get all records from directory audit
+# https://learn.microsoft.com/en-us/graph/api/directoryaudit-list?view=graph-rest-1.0&tabs=http
+$Url = "https://graph.microsoft.com/beta/auditLogs/directoryaudits"
+write-host -foregroundcolor $processmessagecolor "Make Graph request for audit records"
 try {
     $results = (Invoke-MgGraphRequest -Uri $Url -Method GET).value
 }
@@ -71,22 +71,13 @@ catch {
     Write-Host -ForegroundColor $errormessagecolor "`n"$_.Exception.Message
     exit (0)
 }
-$signinsummary = @()
-foreach ($result in $results) {
-    $SigninSummary += [pscustomobject]@{                                                  ## Build array item
-        ClientAppUsed     = $result.ClientAppUsed
-        IpAddress         = $result.ipaddress
-        IsINteractive     = $result.isinteractive
-        UserPrincipalName = $result.UserPrincipalName
-    }
-}
 
 # Output the Signins
-$signinsummary | Format-Table ClientAppUsed, IpAddress, IsInteractive, UserPrincipalName
+$results | select-object Loggedbyservice,Activitydisplayname,Result,Operationtype,Category,Activitydatetime | Format-Table -AutoSize
 
 if ($csv) {
     write-host -foregroundcolor $processmessagecolor "`nOutput to CSV", $outputFile
-    $signinsummary | export-csv $outputFile -NoTypeInformation
+    $results | export-csv $outputFile -NoTypeInformation
 }
 
 write-host -foregroundcolor $systemmessagecolor "`nGraph devices script - Finished"
