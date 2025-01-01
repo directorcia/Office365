@@ -5,6 +5,7 @@ Description - Check which email boxes have forwarding options set.
 Will check mailbox forwarding, rules set by Outlook client and Sweep setting
 
 Source - https://github.com/directorcia/Office365/blob/master/o365-exo-fwd-chk.ps1
+Documentation - https://github.com/directorcia/Office365/wiki/Report-email-forwards
 
 Prerequisites = 1
 1. Ensure connection to Exchange Online has already been completed

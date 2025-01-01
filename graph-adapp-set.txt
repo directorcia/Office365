@@ -1,0 +1,24 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20241221090850
+Username: AzureAD\RobertDCrane
+RunAs User: AzureAD\RobertDCrane
+Configuration Name: 
+Machine: SURFACE-PRO-7 (Microsoft Windows NT 6.2.9200.0)
+Host Application: C:\downloads\source\office365\graph-adapp-add.exe 8869ff2423edcb8AEF29C229034bffcf
+Process ID: 41600
+PSVersion: 5.1.22621.4391
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.22621.4391
+BuildVersion: 10.0.22621.4391
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Script started. Version = 0.94 Beta
+>>>>>> Copyright www.ciaops.com <<<<<<
+--- Script to add a static Azure AD application to multiple tenants ---
+
+Check for Azure AD PowerShell module
+Azure AD PowerShell Module found
