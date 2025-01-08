@@ -7,6 +7,7 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 Description - Update all the relevant Microsoft Online PowerShell modules
 
 Source - https://github.com/directorcia/Office365/blob/master/o365-update.ps1
+Documentation - https://github.com/directorcia/Office365/wiki/Update-all-Microsoft-Cloud-PowerShell-modules
 
 ## Prerequisites = 1
 ## 1. Run PowerShell environment as an administrator
