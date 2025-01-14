@@ -64,7 +64,13 @@ https://admin.microsoft.com/Adminportal/Home#/MicrosoftSearch - Microsoft Search
 https://portal.mesh.microsoft.com/ - Microsoft Mesh
 https://mesh.cloud.microsoft/ - Microsoft Mesh
 
+## Intune
+
+https://intune.microsoft.com - Intune management portal
+https://portal.manage.microsoft.com/enrollment/webenrollment/ios - iOS web device enrollment
+
 ## Copilot
+
 https://copilot.microsoft.com - Copilot
 https://copilotstudio.microsoft.com/ - Copilot studio
 https://web.powerva.microsoft.com/ - Copilot Studio
