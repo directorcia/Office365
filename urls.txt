@@ -107,7 +107,6 @@ https://o365atp.com/ - Office 365 ATP Safe Links Decoder
 https://mha.azurewebsites.net/ - Message Header Analyzer
 https://security.microsoft.com/antimalwarev2 - Malware filter
 https://security.microsoft.com/antispam - Connection Filter, Spam Filter, Outbound Spam Filter
-https://security.microsoft.com/quarantine - Quarantine
 https://security.microsoft.com/dkimv2 - DKIM
 https://security.microsoft.com/safeattachmentv2 - Safe Attachments
 https://security.microsoft.com/safelinksv2 - Safe Links
