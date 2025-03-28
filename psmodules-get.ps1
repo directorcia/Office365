@@ -77,7 +77,7 @@ function Get-OldPSModules {
 
 # Main script
 Clear-Host
-write-host -foregroundcolor $systemmessagecolor "Script started - Report PowerShell MOdule versions`n"
+write-host -foregroundcolor $systemmessagecolor "Script started - Report PowerShell Module versions`n"
 
 write-host -foregroundcolor $processmessagecolor "[Info] = Checking PowerShell version"
 $ps = $PSVersionTable.PSVersion
