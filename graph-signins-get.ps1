@@ -100,7 +100,7 @@ $overallTimer = [System.Diagnostics.Stopwatch]::StartNew()
 # Get signins with pagination and field selection for better performance
 # https://learn.microsoft.com/en-us/graph/api/signin-list?view=graph-rest-1.0&tabs=http
 $baseUrl = "https://graph.microsoft.com/beta/auditLogs/signIns"
-$selectFields = "clientAppUsed,ipAddress,isInteractive,userPrincipalName,createdDateTime"
+$selectFields = "clientAppUsed,ipAddress,isInteractive,userPrincipalName,createdDateTime,status"
 $url = "$baseUrl`?`$select=$selectFields&`$top=100"
 write-host -foregroundcolor $processmessagecolor "Make Graph request for signins with pagination"
 
@@ -121,12 +121,33 @@ do {
         $totalRecords += $results.Count
         
         foreach ($result in $results) {
+            # Convert UTC time to local time using InvariantCulture to handle different regional settings
+            try {
+                # Try to parse using DateTime.ParseExact with ISO 8601 format that Graph API typically returns
+                $utcDateTime = [DateTime]::ParseExact($result.createdDateTime, "yyyy-MM-ddTHH:mm:ss.fffffffZ", [System.Globalization.CultureInfo]::InvariantCulture)
+                $localDateTime = $utcDateTime.ToLocalTime()
+            }
+            catch {
+                # Fallback method if the format is different
+                try {
+                    # Try parsing with a more flexible approach
+                    $utcDateTime = [DateTime]::Parse($result.createdDateTime, [System.Globalization.CultureInfo]::InvariantCulture)
+                    $localDateTime = $utcDateTime.ToLocalTime()
+                }
+                catch {
+                    # If all parsing fails, just use the original string
+                    Write-Host -ForegroundColor $warningmessagecolor "Could not parse date: $($result.createdDateTime). Using as-is."
+                    $localDateTime = $result.createdDateTime
+                }
+            }
+            
             $SigninSummary += [pscustomobject]@{                                                  ## Build array item
                 ClientAppUsed     = $result.ClientAppUsed
                 IpAddress         = $result.ipaddress
                 IsInteractive     = $result.isinteractive
                 UserPrincipalName = $result.UserPrincipalName
-                CreatedDateTime   = $result.createdDateTime
+                CreatedDateTime   = $localDateTime
+                Status            = if ($result.status.errorCode -eq 0) { "Success" } else { "Failure: $($result.status.failureReason)" }
             }
         }
         
@@ -174,7 +195,7 @@ if ($signinsummary.Count -gt 1000) {
 }
 
 # Output the Signins with selective properties for better performance
-$signinsummary | Format-Table ClientAppUsed, IpAddress, IsInteractive, UserPrincipalName, CreatedDateTime
+$signinsummary | Format-Table ClientAppUsed, IpAddress, IsInteractive, UserPrincipalName, CreatedDateTime, Status
 
 if ($csv) {
     write-host -foregroundcolor $processmessagecolor "`nOutput to CSV", $outputFile
