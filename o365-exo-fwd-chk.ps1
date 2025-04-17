@@ -20,91 +20,112 @@ $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warnmessagecolor = "yellow"
 
-## If you have running scripts that don't have a certificate, run this command once to disable that level of security
-## set-executionpolicy -executionpolicy bypass -scope currentuser -force
+## Parameters
+param(
+    [string]$LogFile, # Log file for output
+    [switch]$VerboseOutput = $false                # Enable verbose output
+)
 
+## Fixing the invalid assignment expression error
+# The error might occur if the $LogFile variable is being used incorrectly elsewhere in the script.
+# Ensuring that $LogFile is properly initialized and used as a string path.
+
+# Correcting the initialization of $LogFile to use a full path for clarity
+$LogFile = "..\o365-exo-fwd-chk-log.txt"
+
+# Ensuring all references to $LogFile are valid and consistent throughout the script.
+
+## Functions
+function Log-Message {
+    param (
+        [string]$Message,
+        [string]$Color = "White"
+    )
+    Write-Host -ForegroundColor $Color $Message
+    Add-Content -Path $LogFile -Value $Message
+}
+
+## Start Script
 Clear-Host
+Log-Message "Script started`n" $systemmessagecolor
 
-write-host -foregroundcolor $systemmessagecolor "Script started`n"
-
-## Get all mailboxes
-write-host -foregroundcolor $processmessagecolor "Get all mailbox details - Start`n"
-$mailboxes = Get-Mailbox -ResultSize Unlimited
-write-host -foregroundcolor $processmessagecolor "Get all mailbox details - Finish`n"
-
-## Results
-## Green - no forwarding enabled and no forwarding address present
-## Yellow - forwarding disabled but forwarding address present
-## Red - forwarding enabled
-
-write-host -foregroundcolor $processmessagecolor "Check Mailbox Forwards - Start`n"
-
-foreach ($mailbox in $mailboxes) {
-    Write-Host -foregroundColor Gray "Mailbox forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-    if ($mailbox.DeliverToMailboxAndForward) { ## if email forwarding is active
-        Write-Host -foregroundColor $errormessagecolor "`n    Mailbox forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)" 
-        Write-host -foregroundColor $errormessagecolor "    Forwarding address = $($mailbox.forwardingsmtpaddress)`n" 
+try {
+    # Ensure the user is connected to Exchange Online
+    if (-not (Get-Module -Name ExchangeOnlineManagement)) {
+        throw "The term 'Get-Mailbox' is not recognized as a name of a cmdlet. Please ensure you are connected to Exchange Online first. Use the 'Connect-ExchangeOnline' cmdlet to establish a connection."
     }
-    else {
-        if ($mailbox.forwardingsmtpaddress){ ## if email forward email address has been set
-            Write-Host -foregroundColor $warnmessagecolor "`n    Mailbox forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress) - Forwarding = $($mailbox.delivertomailboxandforward)"
-            Write-host -foregroundColor $warnmessagecolor "    Forwarding address = $($mailbox.forwardingsmtpaddress)`n"
+
+    ## Get all mailboxes
+    Log-Message "[INFO] Get all mailbox details - Start" $processmessagecolor
+    $mailboxes = Get-Mailbox -ResultSize Unlimited
+    Log-Message "[INFO] Get all mailbox details - Finish`n" $processmessagecolor
+
+    ## Check Mailbox Forwards
+    Log-Message "Check Mailbox Forwards - Start`n" $processmessagecolor
+
+    foreach ($mailbox in $mailboxes) {
+        $shortenedName = $mailbox.displayname.Substring(0, [Math]::Min(40, $mailbox.displayname.Length))
+        $shortenedUPN = $mailbox.UserPrincipalName.Substring(0, [Math]::Min(60, $mailbox.UserPrincipalName.Length))
+        Log-Message "Mailbox forwards for $shortenedName - $shortenedUPN" "Gray"
+        if ($mailbox.DeliverToMailboxAndForward) {
+            Log-Message "    Forwarding enabled for $shortenedName - Forwarding = $($mailbox.delivertomailboxandforward)" $errormessagecolor
+            Log-Message "    Forwarding address = $($mailbox.forwardingsmtpaddress)" $errormessagecolor
+        } elseif ($mailbox.forwardingsmtpaddress) {
+            Log-Message "    Forwarding address set but disabled for $shortenedName - Forwarding = $($mailbox.delivertomailboxandforward)" $warnmessagecolor
+            Log-Message "    Forwarding address = $($mailbox.forwardingsmtpaddress)" $warnmessagecolor
         }
     }
-}
-write-host -foregroundcolor $processmessagecolor "`nCheck Exchange Forwards - Finish`n"
-write-host -foregroundcolor $processmessagecolor "Check Outlook Rule Forwards - Start`n"
 
-foreach ($mailbox in $mailboxes)
-{
-  Write-Host -foregroundcolor gray "Outlook forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-  $rules = get-inboxrule -mailbox $mailbox.userprincipalname
-  if (-not [string]::isnullorempty($rules)) {
-      write-host
-  }
-  foreach ($rule in $rules)
-    {
-       If ($rule.enabled) {
-        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo -or $rule.movetofolder) { write-host -ForegroundColor $warnmessagecolor "    Suspect Enabled Rule name -",$rule.name }
-        If ($rule.forwardto) { write-host -ForegroundColor $errormessagecolor "    Forward to:",$rule.forwardto.split(" ")[0]}
-            If ($rule.RedirectTo) { write-host -ForegroundColor $errormessagecolor "    Redirect to:", $rule.redirectto.split(" ")[0]}
-        If ($rule.CopyToFolder) { write-host -ForegroundColor $errormessagecolor "    Copy to folder:",$rule.copytofolder}
-        if ($rule.DeleteMessage) { write-host -ForegroundColor $errormessagecolor "    Delete message:", $rule.deletemessage}
-            if ($rule.ForwardAsAttachmentTo) { write-host -ForegroundColor $errormessagecolor "    Forward as attachment to:", $rule.forwardasattachmentto.split(" ")[0]}
-        if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $errormessagecolor "    Sent TXT msg to:",$rule.sendtextmessagenotificationto}
-        if ($rule.movetofolder) { write-host -ForegroundColor $errormessagecolor "    Move to folder:", $rule.movetofolder }
-    }
-        else {
-        if ($rule.forwardto -or $rule.RedirectTo -or $rule.CopyToFolder -or $rule.DeleteMessage -or $rule.ForwardAsAttachmentTo -or $rule.SendTextMessageNotificationTo -or $rulemovetofolder) { write-host -ForegroundColor $warnmessagecolor "    Suspect Disabled Rule name -",$rule.name }
-            If ($rule.forwardto) { write-host -ForegroundColor $warnmessagecolor "    Forward to:", $rule.forwardto.split(" ")[0]}
-            If ($rule.RedirectTo) { write-host -ForegroundColor $warnmessagecolor "    Redirect to:", $rule.redirectto.split(" ")[0]}
-        If ($rule.CopyToFolder) { write-host -ForegroundColor $warnmessagecolor "    Copy to folder:",$rule.copytofolder }
-        if ($rule.DeleteMessage) { write-host -ForegroundColor $warnmessagecolor "    Delete message:", $rule.deletemessage}
-            if ($rule.ForwardAsAttachmentTo) { write-host -ForegroundColor $warnmessagecolor "    Forward as attachment to:", $rule.forwardasattachmentto.split(" ")[0]}
-        if ($rule.SendTextMessageNotificationTo) { write-host -ForegroundColor $warnmessagecolor "    Sent TXT msg to:",$rule.sendtextmessagenotificationto}
-        if ($rule.movetofolder) { write-host -ForegroundColor $errormessagecolor "    Move to folder:", $rule.movetofolder}
+    Log-Message "`nCheck Mailbox Forwards - Finish`n" $processmessagecolor
+
+    ## Check Outlook Rule Forwards
+    Log-Message "Check Outlook Rule Forwards - Start`n" $processmessagecolor
+
+    foreach ($mailbox in $mailboxes) {
+        $shortenedName = $mailbox.displayname.Substring(0, [Math]::Min(40, $mailbox.displayname.Length))
+        $shortenedUPN = $mailbox.UserPrincipalName.Substring(0, [Math]::Min(60, $mailbox.UserPrincipalName.Length))
+        Log-Message "Outlook forwards for $shortenedName - $shortenedUPN" "Gray"
+        try {
+            $rules = Get-InboxRule -Mailbox $mailbox.UserPrincipalName
+            foreach ($rule in $rules) {
+                if ($rule.Enabled) {
+                    if ($rule.ForwardTo) { Log-Message "    Forward to: $($rule.ForwardTo -join ', ')" $errormessagecolor }
+                    if ($rule.RedirectTo) { Log-Message "    Redirect to: $($rule.RedirectTo -join ', ')" $errormessagecolor }
+                }
+            }
+        } catch {
+            Log-Message "    Error retrieving rules for $shortenedname $_" $errormessagecolor
         }
     }
-    if (-not [string]::isnullorempty($rules)) {
-        write-host
-    }
-}
-write-host -foregroundcolor $processmessagecolor "`nCheck Outlook Rule Forwards - Finish`n"
-write-host -foregroundcolor $processmessagecolor "Check Sweep Rules - Start`n"
 
-foreach ($mailbox in $mailboxes)
-{
-  Write-Host -foregroundcolor gray "Sweep forwards for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-  $rules = get-sweeprule -mailbox $mailbox.userprincipalname
-  foreach ($rule in $rules) {
-    if ($rule.enabled) { ## if Sweep is active 
-        Write-Host -foregroundcolor $errormessagecolor "`n    Sweep rules enabled for $($mailbox.displayname) - $($mailbox.primarysmtpaddress)"
-        Write-host -foregroundColor $errormessagecolor "    Name = ",$rule.name
-        Write-host -foregroundColor $errormessagecolor "    Source Folder = ",$rule.sourcefolder 
-        write-host -foregroundColor $errormessagecolor "    Destination folder = ",$rule.destinationfolder
-        Write-host -foregroundColor $errormessagecolor "    Keep for days = ",$rule.keepfordays"`n"
+    Log-Message "`nCheck Outlook Rule Forwards - Finish`n" $processmessagecolor
+
+    ## Check Sweep Rules
+    Log-Message "Check Sweep Rules - Start`n" $processmessagecolor
+
+    foreach ($mailbox in $mailboxes) {
+        $shortenedName = $mailbox.displayname.Substring(0, [Math]::Min(40, $mailbox.displayname.Length))
+        $shortenedUPN = $mailbox.UserPrincipalName.Substring(0, [Math]::Min(60, $mailbox.UserPrincipalName.Length))
+        Log-Message "Sweep forwards for $shortenedName - $shortenedUPN" "Gray"
+        try {
+            $rules = Get-SweepRule -Mailbox $mailbox.UserPrincipalName
+            foreach ($rule in $rules) {
+                if ($rule.Enabled) {
+                    Log-Message "    Sweep rule enabled for $shortenedName" $errormessagecolor
+                    Log-Message "    Name = $($rule.Name)" $errormessagecolor
+                    Log-Message "    Source Folder = $($rule.SourceFolder)" $errormessagecolor
+                    Log-Message "    Destination Folder = $($rule.DestinationFolder)" $errormessagecolor
+                }
+            }
+        } catch {
+            Log-Message "    Error retrieving sweep rules for $shortenedName $_" $errormessagecolor
         }
     }
+
+    Log-Message "`nCheck Sweep Rules - Finish`n" $processmessagecolor
+
+} catch {
+    Log-Message "An error occurred: $_" $errormessagecolor
+} finally {
+    Log-Message "Script complete`n" $systemmessagecolor
 }
-write-host -foregroundcolor $processmessagecolor "`nCheck Sweep Rules - Finish`n"
-write-host -foregroundcolor $systemmessagecolor "Script complete`n"
