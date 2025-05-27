@@ -1,7 +1,9 @@
 param(                        
-    [switch]$debug = $false, ## if -debug parameter don't prompt for input
-    [switch]$csv = $false, ## export to CSV
-    [switch]$prompt = $false    ## if -prompt parameter used user prompted for input
+    [switch]$debug = $false,    ## if -debug parameter don't prompt for input
+    [switch]$csv = $false,      ## export to CSV
+    [switch]$prompt = $false,   ## if -prompt parameter used user prompted for input
+    [int]$maxPages = 10,        ## maximum number of pages to retrieve (default: 10)
+    [switch]$allPages = $false  ## retrieve all available pages, ignoring maxPages
 )
 <#CIAOPS
 
@@ -59,30 +61,141 @@ if ($prompt) {
 }
 If ($prompt) { Read-Host -Prompt "`n[PROMPT] -- Press Enter to continue" }
 
+# Function to handle retries with exponential backoff
+function Invoke-WithRetry {
+    param (
+        [scriptblock]$ScriptBlock,
+        [int]$MaxRetries = 3,
+        [int]$InitialBackoffSeconds = 2
+    )
+    
+    $retryCount = 0
+    $success = $false
+    $result = $null
 
-# Get all devices
-# https://learn.microsoft.com/en-us/graph/api/signin-list?view=graph-rest-1.0&tabs=http
-$Url = "https://graph.microsoft.com/beta/auditLogs/signIns"
-write-host -foregroundcolor $processmessagecolor "Make Graph request for signins"
-try {
-    $results = (Invoke-MgGraphRequest -Uri $Url -Method GET).value
-}
-catch {
-    Write-Host -ForegroundColor $errormessagecolor "`n"$_.Exception.Message
-    exit (0)
-}
-$signinsummary = @()
-foreach ($result in $results) {
-    $SigninSummary += [pscustomobject]@{                                                  ## Build array item
-        ClientAppUsed     = $result.ClientAppUsed
-        IpAddress         = $result.ipaddress
-        IsINteractive     = $result.isinteractive
-        UserPrincipalName = $result.UserPrincipalName
+    while (-not $success -and $retryCount -lt $MaxRetries) {
+        try {
+            $result = & $ScriptBlock
+            $success = $true
+        }
+        catch {
+            $retryCount++            
+            if ($retryCount -ge $MaxRetries) {
+                Write-Host -ForegroundColor $errormessagecolor "Failed after $MaxRetries retries: $_"
+                throw
+            }
+            
+            $backoffSeconds = $InitialBackoffSeconds * [Math]::Pow(2, $retryCount - 1)
+            Write-Host -ForegroundColor $warningmessagecolor "Attempt $retryCount failed. Retrying in $backoffSeconds seconds..."
+            Start-Sleep -Seconds $backoffSeconds
+        }
     }
+    
+    return $result
 }
 
-# Output the Signins
-$signinsummary | Format-Table ClientAppUsed, IpAddress, IsInteractive, UserPrincipalName
+# Start timing execution
+$overallTimer = [System.Diagnostics.Stopwatch]::StartNew()
+
+# Get signins with pagination and field selection for better performance
+# https://learn.microsoft.com/en-us/graph/api/signin-list?view=graph-rest-1.0&tabs=http
+$baseUrl = "https://graph.microsoft.com/beta/auditLogs/signIns"
+$selectFields = "clientAppUsed,ipAddress,isInteractive,userPrincipalName,createdDateTime,status"
+$url = "$baseUrl`?`$select=$selectFields&`$top=100"
+write-host -foregroundcolor $processmessagecolor "Make Graph request for signins with pagination"
+
+$signinsummary = @()
+$pageCount = 0
+$totalRecords = 0
+
+do {
+    $pageTimer = [System.Diagnostics.Stopwatch]::StartNew()
+    $pageCount++
+    
+    try {
+        $response = Invoke-WithRetry -ScriptBlock {
+            Invoke-MgGraphRequest -Uri $url -Method GET
+        }
+        
+        $results = $response.value
+        $totalRecords += $results.Count
+        
+        foreach ($result in $results) {
+            # Convert UTC time to local time using InvariantCulture to handle different regional settings
+            try {
+                # Try to parse using DateTime.ParseExact with ISO 8601 format that Graph API typically returns
+                $utcDateTime = [DateTime]::ParseExact($result.createdDateTime, "yyyy-MM-ddTHH:mm:ss.fffffffZ", [System.Globalization.CultureInfo]::InvariantCulture)
+                $localDateTime = $utcDateTime.ToLocalTime()
+            }
+            catch {
+                # Fallback method if the format is different
+                try {
+                    # Try parsing with a more flexible approach
+                    $utcDateTime = [DateTime]::Parse($result.createdDateTime, [System.Globalization.CultureInfo]::InvariantCulture)
+                    $localDateTime = $utcDateTime.ToLocalTime()
+                }
+                catch {
+                    # If all parsing fails, just use the original string
+                    Write-Host -ForegroundColor $warningmessagecolor "Could not parse date: $($result.createdDateTime). Using as-is."
+                    $localDateTime = $result.createdDateTime
+                }
+            }
+            
+            $SigninSummary += [pscustomobject]@{                                                  ## Build array item
+                ClientAppUsed     = $result.ClientAppUsed
+                IpAddress         = $result.ipaddress
+                IsInteractive     = $result.isinteractive
+                UserPrincipalName = $result.UserPrincipalName
+                CreatedDateTime   = $localDateTime
+                Status            = if ($result.status.errorCode -eq 0) { "Success" } else { "Failure: $($result.status.failureReason)" }
+            }
+        }
+        
+        $pageTimer.Stop()
+        write-host -foregroundcolor $processmessagecolor "Retrieved page $pageCount with $($results.Count) records in $($pageTimer.Elapsed.TotalSeconds) seconds"
+        
+        # Get URL for next page if it exists
+        $url = $response.'@odata.nextLink'
+    }
+    catch {
+        Write-Host -ForegroundColor $errormessagecolor "`n"$_.Exception.Message
+        exit (0)
+    }
+
+    # Check if we've reached the maximum number of pages and we're not retrieving all pages
+    if (-not $allPages -and $pageCount -ge $maxPages) {
+        write-host -foregroundcolor $warningmessagecolor "Reached maximum page limit of $maxPages. Use -allPages to retrieve all available data."
+        $url = $null  # Clear the URL to stop the loop
+        break
+    }
+} while ($url)
+
+write-host -foregroundcolor $processmessagecolor "Retrieved $totalRecords total records across $pageCount pages"
+
+# Stop the overall timer and display total execution time
+$overallTimer.Stop()
+write-host -foregroundcolor $processmessagecolor "Total execution time: $($overallTimer.Elapsed.TotalSeconds) seconds"
+
+# Process results more efficiently using a parallel approach for large datasets
+if ($signinsummary.Count -gt 1000) {
+    write-host -foregroundcolor $processmessagecolor "Processing large dataset with optimized approach"
+    
+    # Define the number of items to process per batch
+    $batchSize = [Math]::Min(5000, $signinsummary.Count)
+    
+    # Process data in batches to avoid memory issues
+    $processedResults = @()
+    for ($i = 0; $i -lt $signinsummary.Count; $i += $batchSize) {
+        $batch = $signinsummary | Select-Object -Skip $i -First $batchSize
+        $processedResults += $batch
+    }
+    
+    # Replace the original array with the processed results
+    $signinsummary = $processedResults
+}
+
+# Output the Signins with selective properties for better performance
+$signinsummary | Format-Table ClientAppUsed, IpAddress, IsInteractive, UserPrincipalName, CreatedDateTime, Status
 
 if ($csv) {
     write-host -foregroundcolor $processmessagecolor "`nOutput to CSV", $outputFile
