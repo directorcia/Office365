@@ -21,7 +21,13 @@
 #>
 param(
     [Parameter(Mandatory = $true)]
-    [string]$HeaderFilePath
+    [string]$HeaderFilePath,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$Verbose = $false,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$ShowRawHeaders = $false
 )
 
 #region Helper Functions for Output Formatting
@@ -51,7 +57,9 @@ function Write-TestResult {
         [string]$Result,
         [string]$Description = "",
         [string]$Reference = "",
-        [string]$ForcedColor = "" # Allows overriding default color logic
+        [string]$ForcedColor = "", # Allows overriding default color logic
+        [string]$VerboseDetails = "", # Additional details for verbose mode
+        [string]$RawHeaderValue = "" # Raw header value for display in verbose mode
     )
     
     $effectiveColor = "White" # Default color
@@ -75,6 +83,17 @@ function Write-TestResult {
     Write-Host " $Result" -ForegroundColor $effectiveColor
     if ($Description) { Write-Host "    Description: $Description" -ForegroundColor Gray }
     if ($Reference) { Write-Host "    Reference: $Reference" -ForegroundColor DarkGray }
+    
+    # Display additional verbose information if verbose mode is enabled
+    if ($Global:VerboseOutput) {
+        if ($VerboseDetails) { 
+            Write-Host "    Verbose Details: $VerboseDetails" -ForegroundColor Magenta 
+        }
+        if ($RawHeaderValue -and $Global:ShowRawHeaders) {
+            Write-Host "    Raw Header Value: " -NoNewline -ForegroundColor DarkGray
+            Write-Host $RawHeaderValue -ForegroundColor Gray
+        }
+    }
 }
 
 #endregion Helper Functions
@@ -92,6 +111,17 @@ try {
     $headerContent = Get-Content $HeaderFilePath -Raw
     Write-ColoredText "Successfully loaded email header from: $HeaderFilePath" "Green"
     Write-ColoredText "Header size: $([math]::Round($headerContent.Length / 1024, 2)) KB" "Gray"
+    
+    # Set up global verbose flags based on parameters
+    $Global:VerboseOutput = $Verbose
+    $Global:ShowRawHeaders = $ShowRawHeaders
+    
+    if ($Global:VerboseOutput) {
+        Write-ColoredText "VERBOSE OUTPUT MODE ENABLED" "Magenta"
+        if ($Global:ShowRawHeaders) {
+            Write-ColoredText "RAW HEADERS DISPLAY ENABLED" "Magenta"
+        }
+    }
 }
 catch {
     Write-Error "Failed to read file: $_"
@@ -757,6 +787,14 @@ function Show-References {
 Clear-Host
 # Run all analyses
 try {
+    # Display usage information if verbose is enabled
+    if ($Global:VerboseOutput) {
+        Write-Header "VERBOSE ANALYSIS MODE"
+        Write-ColoredText "Running in VERBOSE mode with enhanced output" "Magenta"
+        Write-ColoredText "You'll see additional technical details and explanations for each header" "Magenta"
+        Write-Host "`n"
+    }
+    
     Analyze-Authentication
     Analyze-SpamFiltering # Includes SCL, Forefront, MS-Antispam, ATP properties, Mailbox Delivery
     Analyze-SafeAttachments
@@ -769,6 +807,9 @@ try {
     Write-Header "ANALYSIS COMPLETE"
     Write-ColoredText "Report generated successfully!" "Green"
     
+    # Add parameter hints
+    Write-Host "`nTIP: For even more detailed analysis, run with the -Verbose and -ShowRawHeaders parameters:" -ForegroundColor Gray
+    Write-Host "     .\email-header-report.ps1 -HeaderFilePath $HeaderFilePath -Verbose -ShowRawHeaders" -ForegroundColor DarkGray
 }
 catch {
     Write-Error "An error occurred during analysis: $($_.Exception.Message)"
