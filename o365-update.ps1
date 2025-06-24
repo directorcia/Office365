@@ -1162,11 +1162,11 @@ function Remove-ModuleWithProgress {
 function Remove-DeprecatedModules {
     [CmdletBinding()]
     param()
-    
-    if ($SkipDeprecatedCleanup -or $CheckOnly) {
+      if ($SkipDeprecatedCleanup -or $CheckOnly) {
         return
     }
     
+    Write-ColorOutput ""
     Write-ColorOutput "Checking for deprecated modules..." -Type System
     
     # First, collect all deprecated modules that are installed
@@ -1228,9 +1228,9 @@ function Remove-DeprecatedModules {
             }
         }
     }
-    
-    if ($modulesToRemove.Count -eq 0) {
+      if ($modulesToRemove.Count -eq 0) {
         Write-ColorOutput "    No deprecated modules found" -Type Process
+        Write-ColorOutput ""
         return
     }
     
@@ -2319,11 +2319,6 @@ try {
         Write-ColorOutput "• For manual cleanup: Delete module folders from PowerShell module paths" -Type Info
         Write-ColorOutput "• If connection fails: Check network connectivity and firewall settings" -Type Info
         Write-ColorOutput "• For more help, visit: https://docs.microsoft.com/powershell/module/powershellget/" -Type Info
-        Write-ColorOutput ""
-        
-        # Add a pause so user can read the information
-        Write-ColorOutput "Press any key to continue..." -Type System -NoNewline
-        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
         Write-ColorOutput ""
         
         # Clear the troubleshooting info and show final status
