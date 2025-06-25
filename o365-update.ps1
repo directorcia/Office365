@@ -696,7 +696,8 @@ function Get-ModuleSpecificParams {
         'Microsoft.Graph',
         'Microsoft.Graph.Authentication',
         'Az',
-        'Microsoft.WinGet.Client'
+        'Microsoft.WinGet.Client',
+        'MicrosoftTeams'
     )
     
     # Modules that don't support -AcceptLicense
@@ -705,7 +706,8 @@ function Get-ModuleSpecificParams {
         'Microsoft.PowerApps.PowerShell',
         'Microsoft.WinGet.Client',
         'Microsoft.Graph',
-        'Microsoft.Graph.Authentication'
+        'Microsoft.Graph.Authentication',
+        'MicrosoftTeams'
     )
     
     # Modules that don't support -SkipPublisherCheck
@@ -716,7 +718,8 @@ function Get-ModuleSpecificParams {
         'ExchangeOnlineManagement',
         'Microsoft.Graph',
         'Microsoft.Graph.Authentication',
-        'Az'
+        'Az',
+        'MicrosoftTeams'
     )
     
     # Start with base parameters
@@ -727,6 +730,7 @@ function Get-ModuleSpecificParams {
         # Remove AllowClobber if module doesn't support it
         if ($moduleParams.ContainsKey('AllowClobber')) {
             $moduleParams.Remove('AllowClobber')
+            Write-Verbose "Removed AllowClobber parameter for $ModuleName (not supported)"
         }
     } else {
         # Add AllowClobber if module supports it
@@ -738,6 +742,7 @@ function Get-ModuleSpecificParams {
         # Remove AcceptLicense if module doesn't support it
         if ($moduleParams.ContainsKey('AcceptLicense')) {
             $moduleParams.Remove('AcceptLicense')
+            Write-Verbose "Removed AcceptLicense parameter for $ModuleName (not supported)"
         }
     } else {
         # Add AcceptLicense if module supports it
@@ -749,6 +754,7 @@ function Get-ModuleSpecificParams {
         # Remove SkipPublisherCheck if module doesn't support it
         if ($moduleParams.ContainsKey('SkipPublisherCheck')) {
             $moduleParams.Remove('SkipPublisherCheck')
+            Write-Verbose "Removed SkipPublisherCheck parameter for $ModuleName (not supported)"
         }
     } else {
         # Add SkipPublisherCheck if module supports it
@@ -758,6 +764,9 @@ function Get-ModuleSpecificParams {
     # Add debugging info for troubleshooting
     if ($ModuleName -in $noAllowClobberModules -or $ModuleName -in $noAcceptLicenseModules -or $ModuleName -in $noSkipPublisherCheckModules) {
         Write-Verbose "Using module-specific parameters for $ModuleName (some standard parameters not supported)"
+        if ($ModuleName -eq 'MicrosoftTeams') {
+            Write-ColorOutput "    [Debug] MicrosoftTeams parameters after filtering: $($moduleParams.Keys -join ', ')" -Type Info
+        }
     }
     
     return $moduleParams
