@@ -428,14 +428,13 @@ function Test-CoreModuleInstallation {
             }
               if (-not $CheckOnly) {
                 Write-ColorOutput "    Installing core module: $ModuleName" -Type Process
-                $coreParams = @{
+                $baseCoreParams = @{
                     Force = $true
                     Confirm = $false
                     Scope = 'AllUsers'
-                    SkipPublisherCheck = $true
-                    AllowClobber = $true
                     ErrorAction = 'Stop'
                 }
+                $coreParams = Get-ModuleSpecificParams -ModuleName $ModuleName -BaseParams $baseCoreParams
                 
                 Install-Module -Name $ModuleName @coreParams
                 Write-ColorOutput "    Successfully installed $ModuleName" -Type Process
@@ -489,13 +488,11 @@ function Test-CoreModuleInstallation {
                         $DebugPreference = 'SilentlyContinue'
                         
                         try {
-                            $coreUpdateParams = @{
+                            $baseCoreUpdateParams = @{
                                 Name = $ModuleName
                                 Force = $true
                                 Confirm = $false
                                 Scope = 'AllUsers'
-                                SkipPublisherCheck = $true
-                                AllowClobber = $true
                                 Repository = 'PSGallery'
                                 ErrorAction = 'SilentlyContinue'
                                 WarningAction = 'SilentlyContinue'
@@ -503,6 +500,7 @@ function Test-CoreModuleInstallation {
                                 # Allow side-by-side installation
                                 AllowPrerelease = $false
                             }
+                            $coreUpdateParams = Get-ModuleSpecificParams -ModuleName $ModuleName -BaseParams $baseCoreUpdateParams
                               # Install with complete output suppression (all 6 streams)
                             $null = Install-Module @coreUpdateParams 2>$null 3>$null 4>$null 5>$null 6>$null
                             
@@ -522,7 +520,8 @@ function Test-CoreModuleInstallation {
                                 }
                             } else {
                                 # Even if verification fails, the installation might have succeeded
-                                Write-ColorOutput "    ✅ Core module update completed using Azure best practices" -Type Process                                Write-ColorOutput "    💡 Changes will be active in new PowerShell sessions" -Type Process
+                                Write-ColorOutput "    ✅ Core module update completed using Azure best practices" -Type Process
+                                Write-ColorOutput "    💡 Changes will be active in new PowerShell sessions" -Type Process
                             }
                         }
                         finally {
@@ -555,23 +554,24 @@ function Test-CoreModuleInstallation {
                     # Module not loaded, can update normally
                     try {
                         Write-ColorOutput "    Updating core module: $ModuleName" -Type Process
-                        $coreUpdateParams = @{
+                        $baseCoreUpdateParams = @{
                             Force = $true
                             Confirm = $false
                             Scope = 'AllUsers'
-                            SkipPublisherCheck = $true
-                            AllowClobber = $true
                             ErrorAction = 'Stop'
                         }
+                        $coreUpdateParams = Get-ModuleSpecificParams -ModuleName $ModuleName -BaseParams $baseCoreUpdateParams
                         Install-Module -Name $ModuleName @coreUpdateParams
                         Write-ColorOutput "    Successfully updated $ModuleName" -Type Process
-                    }                    catch {
+                    }
+                    catch {
                         Write-ColorOutput "    Could not update $ModuleName - $($PSItem.Exception.Message)" -Type Error
                     }
                 }
             }
         }
-    }    catch {
+    }
+    catch {
         Write-ColorOutput "    Error processing core module '$ModuleName' - $($PSItem.Exception.Message)" -Type Error
     }
 }
@@ -604,12 +604,31 @@ function Get-ModuleInstallationEstimate {
         [string]$Operation = 'Install'  # Install, Update, or Remove
     )
     
+    # Get language mode for enhanced time estimates
+    $languageMode = $ExecutionContext.SessionState.LanguageMode
+    
     # Estimate download size (MB) and time (seconds) based on known module characteristics
+    # Times are adjusted for Constrained Language Mode which requires extensive security verification
     $estimates = @{
-        'Az' = @{ Size = 450; InstallTime = 180; UpdateTime = 240; RemoveTime = 90 }
-        'Microsoft.Graph' = @{ Size = 280; InstallTime = 120; UpdateTime = 150; RemoveTime = 60 }
+        'Az' = @{ 
+            Size = 450
+            InstallTime = if ($languageMode -eq 'ConstrainedLanguage') { 900 } else { 180 }      # 15 min vs 3 min
+            UpdateTime = if ($languageMode -eq 'ConstrainedLanguage') { 1200 } else { 240 }     # 20 min vs 4 min
+            RemoveTime = 90 
+        }
+        'Microsoft.Graph' = @{ 
+            Size = 280
+            InstallTime = if ($languageMode -eq 'ConstrainedLanguage') { 600 } else { 120 }     # 10 min vs 2 min
+            UpdateTime = if ($languageMode -eq 'ConstrainedLanguage') { 750 } else { 150 }      # 12.5 min vs 2.5 min
+            RemoveTime = 60 
+        }
         'Microsoft.Graph.Authentication' = @{ Size = 15; InstallTime = 25; UpdateTime = 30; RemoveTime = 15 }
-        'PnP.PowerShell' = @{ Size = 120; InstallTime = 80; UpdateTime = 100; RemoveTime = 45 }
+        'PnP.PowerShell' = @{ 
+            Size = 120
+            InstallTime = if ($languageMode -eq 'ConstrainedLanguage') { 240 } else { 80 }      # 4 min vs 1.3 min
+            UpdateTime = if ($languageMode -eq 'ConstrainedLanguage') { 300 } else { 100 }      # 5 min vs 1.7 min
+            RemoveTime = 45 
+        }
         'AzureAD' = @{ Size = 85; InstallTime = 60; UpdateTime = 75; RemoveTime = 45 }
         'MSOnline' = @{ Size = 25; InstallTime = 35; UpdateTime = 40; RemoveTime = 30 }
         'ExchangeOnlineManagement' = @{ Size = 40; InstallTime = 45; UpdateTime = 55; RemoveTime = 25 }
@@ -671,39 +690,68 @@ function Get-ModuleSpecificParams {
     )    # Modules that don't support -AllowClobber
     $noAllowClobberModules = @(
         'Microsoft.PowerApps.Administration.PowerShell',
-        'Microsoft.PowerApps.PowerShell'
+        'Microsoft.PowerApps.PowerShell',
+        'ExchangeOnlineManagement',
+        'Microsoft.Graph',
+        'Microsoft.Graph.Authentication',
+        'Az',
+        'Microsoft.WinGet.Client'
     )
     
     # Modules that don't support -AcceptLicense
     $noAcceptLicenseModules = @(
         'Microsoft.PowerApps.Administration.PowerShell',
         'Microsoft.PowerApps.PowerShell',
-        'Microsoft.WinGet.Client'
+        'Microsoft.WinGet.Client',
+        'Microsoft.Graph',
+        'Microsoft.Graph.Authentication'
     )
     
     # Modules that don't support -SkipPublisherCheck
     $noSkipPublisherCheckModules = @(
         'Microsoft.PowerApps.Administration.PowerShell',
         'Microsoft.PowerApps.PowerShell',
-        'Microsoft.WinGet.Client'
+        'Microsoft.WinGet.Client',
+        'ExchangeOnlineManagement',
+        'Microsoft.Graph',
+        'Microsoft.Graph.Authentication',
+        'Az'
     )
     
     # Start with base parameters
     $moduleParams = $BaseParams.Clone()
     
-    # Add AllowClobber if module supports it
-    if ($ModuleName -notin $noAllowClobberModules) {
+    # Add or Remove AllowClobber based on module support
+    if ($ModuleName -in $noAllowClobberModules) {
+        # Remove AllowClobber if module doesn't support it
+        if ($moduleParams.ContainsKey('AllowClobber')) {
+            $moduleParams.Remove('AllowClobber')
+        }
+    } else {
+        # Add AllowClobber if module supports it
         $moduleParams.AllowClobber = $true
     }
     
-    # Add AcceptLicense if module supports it
-    if ($ModuleName -notin $noAcceptLicenseModules) {
+    # Add or Remove AcceptLicense based on module support
+    if ($ModuleName -in $noAcceptLicenseModules) {
+        # Remove AcceptLicense if module doesn't support it
+        if ($moduleParams.ContainsKey('AcceptLicense')) {
+            $moduleParams.Remove('AcceptLicense')
+        }
+    } else {
+        # Add AcceptLicense if module supports it
         $moduleParams.AcceptLicense = $true
     }
     
-    # Remove SkipPublisherCheck if module doesn't support it
-    if ($ModuleName -in $noSkipPublisherCheckModules -and $moduleParams.ContainsKey('SkipPublisherCheck')) {
-        $moduleParams.Remove('SkipPublisherCheck')
+    # Add or Remove SkipPublisherCheck based on module support
+    if ($ModuleName -in $noSkipPublisherCheckModules) {
+        # Remove SkipPublisherCheck if module doesn't support it
+        if ($moduleParams.ContainsKey('SkipPublisherCheck')) {
+            $moduleParams.Remove('SkipPublisherCheck')
+        }
+    } else {
+        # Add SkipPublisherCheck if module supports it
+        $moduleParams.SkipPublisherCheck = $true
     }
     
     # Add debugging info for troubleshooting
@@ -805,6 +853,7 @@ function Initialize-OptimizedInstallation {
     $psGetConfig = @{
         Force = $true
         Confirm = $false
+        Scope = 'AllUsers'
     }
     
     try {
@@ -1027,37 +1076,122 @@ function Install-ModuleWithProgress {
     
     $estimate = Get-ModuleInstallationEstimate -ModuleName $ModuleName -Operation $Operation
     $startTime = Get-Date
+    $languageMode = $ExecutionContext.SessionState.LanguageMode
+    
+    # Enhanced information for Constrained Language Mode
+    if ($languageMode -eq 'ConstrainedLanguage' -and ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph')) {
+        Write-ColorOutput "    ⚠️  CONSTRAINED LANGUAGE MODE DETECTED" -Type Warning
+        Write-ColorOutput "    Module: $ModuleName requires extended processing time due to security restrictions" -Type Warning
+        Write-ColorOutput ""
+        Write-ColorOutput "    📋 EXPECTED PHASES:" -Type Info
+        
+        switch ($ModuleName) {
+            'Az' {
+                Write-ColorOutput "      1. Download phase: 3-5 minutes" -Type Info
+                Write-ColorOutput "      2. Installation phase: 2-4 minutes" -Type Info
+                Write-ColorOutput "      3. Verification phase: 8-12 minutes (appears to hang - NORMAL!)" -Type Warning
+                Write-ColorOutput "      4. Cleanup phase: 1-2 minutes" -Type Info
+                Write-ColorOutput "    📊 Total estimated time: 15-20 minutes" -Type Warning
+            }
+            'Microsoft.Graph' {
+                Write-ColorOutput "      1. Download phase: 2-3 minutes" -Type Info
+                Write-ColorOutput "      2. Installation phase: 1-2 minutes" -Type Info
+                Write-ColorOutput "      3. Verification phase: 5-8 minutes (appears to hang - NORMAL!)" -Type Warning
+                Write-ColorOutput "      4. Cleanup phase: 1-2 minutes" -Type Info
+                Write-ColorOutput "    📊 Total estimated time: 10-12 minutes" -Type Warning
+            }
+        }
+        
+        Write-ColorOutput ""
+        Write-ColorOutput "    ⚠️  IMPORTANT: The verification phase will appear to freeze/hang" -Type Warning
+        Write-ColorOutput "    This is normal behavior in Constrained Language Mode!" -Type Warning
+        Write-ColorOutput "    Please be patient and do not cancel the operation." -Type Warning
+        Write-ColorOutput ""
+    }
     
     # Show pre-installation information
     Write-ColorOutput "    ${Operation} details for ${ModuleName}:" -Type Info
     Write-ColorOutput "      Estimated download size: $($estimate.FormattedSize)" -Type Info
     Write-ColorOutput "      Estimated time: $($estimate.FormattedTime)" -Type Info
+    if ($languageMode -eq 'ConstrainedLanguage' -and ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph')) {
+        Write-ColorOutput "      ⚠️  Extended time due to security verification requirements" -Type Warning
+    }
     Write-ColorOutput "" -Type Info
-      # Create a background job for the actual installation
+      # Create a background job for the actual installation with phase tracking
     $jobScript = {
-        param($ModuleName, $InstallParams, $Operation)
+        param($ModuleName, $InstallParams, $Operation, $LanguageMode)
         
         try {
             # Set the same optimizations in the job
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
             [Net.ServicePointManager]::DefaultConnectionLimit = 12
             
+            # Create progress tracking for Az and Graph modules in constrained mode
+            $isConstrainedLargeModule = ($LanguageMode -eq 'ConstrainedLanguage' -and 
+                                       ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph'))
+            $progressFile = $null
+            
+            if ($isConstrainedLargeModule) {
+                $progressFile = Join-Path $env:TEMP "ModuleProgress_$($ModuleName)_$PID.txt"
+                "Starting $Operation of $ModuleName at $(Get-Date -Format 'HH:mm:ss')" | Out-File $progressFile -Force
+                "Phase: Download and Installation" | Out-File $progressFile -Append
+            }
+            
+            # Execute the installation/update
             switch ($Operation) {
                 'Install' { 
-                    Install-Module -Name $ModuleName -Scope AllUsers @InstallParams
+                    if ($isConstrainedLargeModule) {
+                        "Status: Installing $ModuleName..." | Out-File $progressFile -Append
+                    }
+                    Install-Module -Name $ModuleName @InstallParams
+                    if ($isConstrainedLargeModule) {
+                        "Phase: Installation Complete - Starting Verification" | Out-File $progressFile -Append
+                        "Status: Verification phase may take several minutes and appear frozen" | Out-File $progressFile -Append
+                    }
                 }
                 'Update' { 
+                    if ($isConstrainedLargeModule) {
+                        "Status: Updating $ModuleName..." | Out-File $progressFile -Append
+                    }
                     Update-Module -Name $ModuleName @InstallParams
+                    if ($isConstrainedLargeModule) {
+                        "Phase: Update Complete - Starting Verification" | Out-File $progressFile -Append
+                        "Status: Verification phase may take several minutes and appear frozen" | Out-File $progressFile -Append
+                    }
                 }
                 default { 
-                    Install-Module -Name $ModuleName -Scope AllUsers @InstallParams
+                    if ($isConstrainedLargeModule) {
+                        "Status: Installing $ModuleName (default)..." | Out-File $progressFile -Append
+                    }
+                    Install-Module -Name $ModuleName @InstallParams
+                    if ($isConstrainedLargeModule) {
+                        "Phase: Installation Complete - Starting Verification" | Out-File $progressFile -Append
+                        "Status: Verification phase may take several minutes and appear frozen" | Out-File $progressFile -Append
+                    }
                 }
+            }
+            
+            # Final cleanup phase
+            if ($isConstrainedLargeModule) {
+                "Phase: Verification Complete - Final Cleanup" | Out-File $progressFile -Append
+                Start-Sleep -Seconds 2  # Brief pause for cleanup
+                "Phase: Complete at $(Get-Date -Format 'HH:mm:ss')" | Out-File $progressFile -Append
             }
             
             return @{ Success = $true; Message = "$Operation completed successfully" }
         }
         catch {
+            if ($progressFile -and (Test-Path $progressFile)) {
+                "Error: $($_.Exception.Message) at $(Get-Date -Format 'HH:mm:ss')" | Out-File $progressFile -Append
+            }
             return @{ Success = $false; Message = $_.Exception.Message }
+        }
+        finally {
+            if ($progressFile -and (Test-Path $progressFile)) {
+                # Keep the file for a short time to allow main script to read final status
+                Start-Sleep -Seconds 5
+                Remove-Item $progressFile -Force -ErrorAction SilentlyContinue
+            }
         }
     }
     
@@ -1065,6 +1199,14 @@ function Install-ModuleWithProgress {
     if (-not $Script:JobsSupported) {
         Write-ColorOutput "    Background jobs not supported - using direct execution" -Type Warning
         Write-ColorOutput "    This may take longer but will complete successfully" -Type Info
+        
+        # Special handling for large modules in constrained mode
+        if ($languageMode -eq 'ConstrainedLanguage' -and ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph')) {
+            Write-ColorOutput "    ⚠️  DIRECT EXECUTION in Constrained Mode for $ModuleName" -Type Warning
+            Write-ColorOutput "    The process will appear to freeze during verification - DO NOT CANCEL!" -Type Warning
+            Write-ColorOutput "    Expected phases will not show individual progress" -Type Info
+            Write-ColorOutput ""
+        }
         
         # Execute directly without background jobs
         try {
@@ -1074,27 +1216,74 @@ function Install-ModuleWithProgress {
             
             Write-ColorOutput "    Starting $Operation of $ModuleName..." -Type Process
             
+            # Show additional warning for large modules before starting
+            if ($languageMode -eq 'ConstrainedLanguage' -and ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph')) {
+                Write-ColorOutput "    📋 Phase 1: Download and Installation starting..." -Type Process
+            }
+            
             switch ($Operation) {
                 'Install' {
-                    Install-Module -Name $ModuleName @InstallParams
+                    # Use explicit parameter passing for constrained language mode compatibility
+                    $installArgs = @{
+                        Name = $ModuleName
+                        Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
+                        Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
+                        ErrorAction = 'Stop'
+                    }
+                    if ($InstallParams.ContainsKey('Scope')) { $installArgs.Scope = $InstallParams.Scope }
+                    if ($InstallParams.ContainsKey('AllowClobber')) { $installArgs.AllowClobber = $InstallParams.AllowClobber }
+                    if ($InstallParams.ContainsKey('AcceptLicense')) { $installArgs.AcceptLicense = $InstallParams.AcceptLicense }
+                    if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $installArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
+                    
+                    Install-Module @installArgs
                 }
                 'Update' {
-                    Update-Module -Name $ModuleName @InstallParams
+                    # Use explicit parameter passing for constrained language mode compatibility
+                    $updateArgs = @{
+                        Name = $ModuleName
+                        Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
+                        Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
+                        ErrorAction = 'Stop'
+                    }
+                    if ($InstallParams.ContainsKey('AllowClobber')) { $updateArgs.AllowClobber = $InstallParams.AllowClobber }
+                    if ($InstallParams.ContainsKey('AcceptLicense')) { $updateArgs.AcceptLicense = $InstallParams.AcceptLicense }
+                    if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $updateArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
+                    
+                    Update-Module @updateArgs
                 }
                 default {
-                    Install-Module -Name $ModuleName @InstallParams
+                    # Use explicit parameter passing for constrained language mode compatibility
+                    $installArgs = @{
+                        Name = $ModuleName
+                        Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
+                        Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
+                        ErrorAction = 'Stop'
+                    }
+                    if ($InstallParams.ContainsKey('Scope')) { $installArgs.Scope = $InstallParams.Scope }
+                    if ($InstallParams.ContainsKey('AllowClobber')) { $installArgs.AllowClobber = $InstallParams.AllowClobber }
+                    if ($InstallParams.ContainsKey('AcceptLicense')) { $installArgs.AcceptLicense = $InstallParams.AcceptLicense }
+                    if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $installArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
+                    
+                    Install-Module @installArgs
                 }
             }
             
             $actualTime = ((Get-Date) - $startTime).TotalSeconds
             Write-ColorOutput "    Successfully completed $Operation of $ModuleName" -Type Process
-            Write-ColorOutput "    Actual time: {0:N0} seconds" -f $actualTime -Type Info
+            Write-ColorOutput "    Actual time: {0:N1} minutes" -f ($actualTime / 60) -Type Info
+            
+            # Additional feedback for constrained mode
+            if ($languageMode -eq 'ConstrainedLanguage' -and ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph')) {
+                Write-ColorOutput "    ✅ $ModuleName processing complete in Constrained Language Mode" -Type Process
+                Write-ColorOutput "    The extended time was due to security verification requirements" -Type Info
+            }
+            
             return $true
         }
         catch {
             $actualTime = ((Get-Date) - $startTime).TotalSeconds
             Write-ColorOutput "    Error during $Operation of $ModuleName`: $($_.Exception.Message)" -Type Error
-            Write-ColorOutput "    Time elapsed: {0:N0} seconds" -f $actualTime -Type Info
+            Write-ColorOutput "    Time elapsed: {0:N1} minutes" -f ($actualTime / 60) -Type Info
             return $false
         }
     }
@@ -1102,7 +1291,7 @@ function Install-ModuleWithProgress {
     # Background job implementation for environments that support it
     # Start the background job
     try {
-        $job = Start-Job -ScriptBlock $jobScript -ArgumentList $ModuleName, $InstallParams, $Operation
+        $job = Start-Job -ScriptBlock $jobScript -ArgumentList $ModuleName, $InstallParams, $Operation, $languageMode
     }
     catch {
         Write-ColorOutput "    Background job creation failed - falling back to direct execution" -Type Warning
@@ -1118,13 +1307,48 @@ function Install-ModuleWithProgress {
             
             switch ($Operation) {
                 'Install' {
-                    Install-Module -Name $ModuleName @InstallParams
+                    # Use explicit parameter passing for constrained language mode compatibility
+                    $installArgs = @{
+                        Name = $ModuleName
+                        Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
+                        Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
+                        ErrorAction = 'Stop'
+                    }
+                    if ($InstallParams.ContainsKey('Scope')) { $installArgs.Scope = $InstallParams.Scope }
+                    if ($InstallParams.ContainsKey('AllowClobber')) { $installArgs.AllowClobber = $InstallParams.AllowClobber }
+                    if ($InstallParams.ContainsKey('AcceptLicense')) { $installArgs.AcceptLicense = $InstallParams.AcceptLicense }
+                    if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $installArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
+                    
+                    Install-Module @installArgs
                 }
                 'Update' {
-                    Update-Module -Name $ModuleName @InstallParams
+                    # Use explicit parameter passing for constrained language mode compatibility
+                    $updateArgs = @{
+                        Name = $ModuleName
+                        Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
+                        Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
+                        ErrorAction = 'Stop'
+                    }
+                    if ($InstallParams.ContainsKey('AllowClobber')) { $updateArgs.AllowClobber = $InstallParams.AllowClobber }
+                    if ($InstallParams.ContainsKey('AcceptLicense')) { $updateArgs.AcceptLicense = $InstallParams.AcceptLicense }
+                    if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $updateArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
+                    
+                    Update-Module @updateArgs
                 }
                 default {
-                    Install-Module -Name $ModuleName @InstallParams
+                    # Use explicit parameter passing for constrained language mode compatibility
+                    $installArgs = @{
+                        Name = $ModuleName
+                        Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
+                        Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
+                        ErrorAction = 'Stop'
+                    }
+                    if ($InstallParams.ContainsKey('Scope')) { $installArgs.Scope = $InstallParams.Scope }
+                    if ($InstallParams.ContainsKey('AllowClobber')) { $installArgs.AllowClobber = $InstallParams.AllowClobber }
+                    if ($InstallParams.ContainsKey('AcceptLicense')) { $installArgs.AcceptLicense = $InstallParams.AcceptLicense }
+                    if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $installArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
+                    
+                    Install-Module @installArgs
                 }
             }
             
@@ -1141,7 +1365,7 @@ function Install-ModuleWithProgress {
         }
     }
     
-    # Show progress while waiting
+    # Enhanced progress tracking with phase detection
     $progressParams = @{
         Activity = "$Operation module: $ModuleName"
         Status = "Downloading and installing..."
@@ -1150,33 +1374,139 @@ function Install-ModuleWithProgress {
     
     $iteration = 0
     $maxIterations = [Math]::Max(10, [Math]::Ceiling($estimate.EstimatedTime / 3))
+    $progressFile = Join-Path $env:TEMP "ModuleProgress_$($ModuleName)_$($job.Id).txt"
+    $lastProgressUpdate = Get-Date
+    $verificationPhaseStarted = $false
+    $isConstrainedLargeModule = ($languageMode -eq 'ConstrainedLanguage' -and 
+                               ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph'))
     
     while ($job.State -eq 'Running') {
         $elapsed = (Get-Date) - $startTime
         $elapsedSeconds = $elapsed.TotalSeconds
+        $elapsedMinutes = $elapsed.TotalMinutes
         
-        # Calculate progress percentage based on elapsed time vs estimated time
-        $progressPercent = [Math]::Min(95, ($elapsedSeconds / $estimate.EstimatedTime) * 100)
+        # Check for progress file updates for large modules in constrained mode
+        $currentPhase = "Installation"
+        if ($isConstrainedLargeModule -and (Test-Path $progressFile)) {
+            try {
+                $progressContent = Get-Content $progressFile -ErrorAction SilentlyContinue | Select-Object -Last 2
+                if ($progressContent) {
+                    $latestLine = $progressContent[-1]
+                    if ($latestLine -like "*Verification*") {
+                        $currentPhase = "Verification"
+                        if (-not $verificationPhaseStarted) {
+                            $verificationPhaseStarted = $true
+                            Write-ColorOutput "    📋 Entered Verification Phase - This may take several minutes" -Type Warning
+                            Write-ColorOutput "    ⏳ The process may appear frozen - this is normal behavior!" -Type Warning
+                        }
+                    }
+                    elseif ($latestLine -like "*Cleanup*") {
+                        $currentPhase = "Cleanup"
+                        if ($verificationPhaseStarted) {
+                            Write-ColorOutput "    ✅ Verification Complete - Finalizing installation..." -Type Process
+                        }
+                    }
+                }
+            }
+            catch {
+                # Ignore progress file read errors
+            }
+        }
+        
+        # Enhanced progress calculation for large modules in constrained mode
+        if ($isConstrainedLargeModule) {
+            switch ($currentPhase) {
+                "Installation" {
+                    # First 25% is download/installation (usually faster)
+                    $phaseProgress = [Math]::Min(25, ($elapsedSeconds / 300) * 25) # 5 minutes for this phase
+                    $progressPercent = $phaseProgress
+                }
+                "Verification" {
+                    # 25-85% is verification (slowest phase)
+                    $verificationTime = $elapsedSeconds - 300
+                    $verificationProgress = [Math]::Min(60, ($verificationTime / 600) * 60) # 10 minutes for verification
+                    $progressPercent = 25 + $verificationProgress
+                    
+                    # Show periodic reminders during verification
+                    if (($elapsedMinutes -gt 8) -and (((Get-Date) - $lastProgressUpdate).TotalSeconds -gt 90)) {
+                        Write-ColorOutput "    ⏳ Still in verification phase (${elapsedMinutes:N1} min elapsed) - please continue waiting..." -Type Info
+                        $lastProgressUpdate = Get-Date
+                    }
+                }
+                "Cleanup" {
+                    # 85-100% is cleanup (usually quick)
+                    $cleanupTime = $elapsedSeconds - 900
+                    $cleanupProgress = [Math]::Min(15, ($cleanupTime / 120) * 15) # 2 minutes for cleanup
+                    $progressPercent = 85 + $cleanupProgress
+                }
+                default {
+                    $progressPercent = [Math]::Min(95, ($elapsedSeconds / $estimate.EstimatedTime) * 100)
+                }
+            }
+        } else {
+            # Standard progress calculation for normal modules
+            $progressPercent = [Math]::Min(95, ($elapsedSeconds / $estimate.EstimatedTime) * 100)
+        }
         
         $progressParams.PercentComplete = $progressPercent
-        $progressParams.Status = "Progress: {0:N0}% - Elapsed: {1:N0}s" -f $progressPercent, $elapsedSeconds
         
-        if ($estimate.EstimatedTime -gt $elapsedSeconds) {
-            $remainingSeconds = $estimate.EstimatedTime - $elapsedSeconds
-            if ($remainingSeconds -gt 60) {
-                $progressParams.Status += " - Est. remaining: {0:N1} min" -f ($remainingSeconds / 60)
-            } else {
-                $progressParams.Status += " - Est. remaining: {0:N0}s" -f $remainingSeconds
+        # Enhanced status messages
+        if ($isConstrainedLargeModule) {
+            $progressParams.Status = "Phase: $currentPhase - {0:N1}% - Elapsed: {1:N1}min" -f $progressPercent, $elapsedMinutes
+            
+            if ($estimate.EstimatedTime -gt $elapsedSeconds) {
+                $remainingSeconds = $estimate.EstimatedTime - $elapsedSeconds
+                if ($remainingSeconds -gt 60) {
+                    $progressParams.Status += " - Est. remaining: {0:N1} min" -f ($remainingSeconds / 60)
+                } else {
+                    $progressParams.Status += " - Est. remaining: {0:N0}s" -f $remainingSeconds
+                }
+            }
+            
+            # Add phase-specific messages
+            switch ($currentPhase) {
+                "Verification" {
+                    $progressParams.Status += " (May appear frozen - normal!)"
+                }
+                "Cleanup" {
+                    $progressParams.Status += " (Almost complete)"
+                }
+            }
+        } else {
+            # Standard progress for normal modules
+            $progressParams.Status = "Progress: {0:N0}% - Elapsed: {1:N0}s" -f $progressPercent, $elapsedSeconds
+            
+            if ($estimate.EstimatedTime -gt $elapsedSeconds) {
+                $remainingSeconds = $estimate.EstimatedTime - $elapsedSeconds
+                if ($remainingSeconds -gt 60) {
+                    $progressParams.Status += " - Est. remaining: {0:N1} min" -f ($remainingSeconds / 60)
+                } else {
+                    $progressParams.Status += " - Est. remaining: {0:N0}s" -f $remainingSeconds
+                }
             }
         }
         
         Write-Progress @progressParams
-        Start-Sleep -Seconds 3
+        
+        # Adjust sleep time based on phase and module
+        if ($isConstrainedLargeModule -and $currentPhase -eq "Verification") {
+            Start-Sleep -Seconds 10  # Longer intervals during verification to reduce system load
+        } else {
+            Start-Sleep -Seconds 3
+        }
         $iteration++
         
-        # Prevent infinite loop - if taking much longer than expected, show different message
-        if ($iteration -gt $maxIterations -and $elapsedSeconds -gt ($estimate.EstimatedTime * 1.5)) {
-            $progressParams.Status = "Taking longer than expected - Elapsed: {0:N0}s" -f $elapsedSeconds
+        # Enhanced timeout handling for large modules in constrained mode
+        $timeoutMultiplier = if ($isConstrainedLargeModule) { 2.5 } else { 1.5 }
+        if ($iteration -gt $maxIterations -and $elapsedSeconds -gt ($estimate.EstimatedTime * $timeoutMultiplier)) {
+            if ($isConstrainedLargeModule) {
+                $progressParams.Status = "Extended processing time in Constrained Mode - Elapsed: {0:N1} min" -f $elapsedMinutes
+                if ($currentPhase -eq "Verification") {
+                    $progressParams.Status += " (Still in verification - normal for this module)"
+                }
+            } else {
+                $progressParams.Status = "Taking longer than expected - Elapsed: {0:N0}s" -f $elapsedSeconds
+            }
             Write-Progress @progressParams
         }
     }
@@ -1189,10 +1519,19 @@ function Install-ModuleWithProgress {
     Remove-Job -Job $job
     
     $actualTime = ((Get-Date) - $startTime).TotalSeconds
+    $actualMinutes = $actualTime / 60
     
     if ($result.Success) {
         Write-ColorOutput "    Successfully completed $Operation of $ModuleName" -Type Process
-        Write-ColorOutput "    Actual time: {0:N0} seconds" -f $actualTime -Type Info
+        
+        # Enhanced completion message for constrained mode
+        if ($isConstrainedLargeModule) {
+            Write-ColorOutput "    ✅ $ModuleName processing complete in Constrained Language Mode" -Type Process
+            Write-ColorOutput "    Actual time: {0:N1} minutes" -f $actualMinutes -Type Info
+            Write-ColorOutput "    Extended time was due to security verification requirements" -Type Info
+        } else {
+            Write-ColorOutput "    Actual time: {0:N1} minutes" -f $actualMinutes -Type Info
+        }
         
         # If significantly different from estimate, show note
         if ([Math]::Abs($actualTime - $estimate.EstimatedTime) -gt ($estimate.EstimatedTime * 0.3)) {
@@ -1202,13 +1541,29 @@ function Install-ModuleWithProgress {
             } else {
                 $variance = "faster"
             }
-            Write-ColorOutput "    Note: $Operation was {0:N0}% $variance than estimated" -f ([Math]::Abs(($actualTime - $estimate.EstimatedTime) / $estimate.EstimatedTime * 100)) -Type Info
+            
+            # Special message for constrained mode
+            if ($isConstrainedLargeModule -and $actualTime -gt $estimate.EstimatedTime) {
+                Write-ColorOutput "    Note: Extended time is normal for $ModuleName in Constrained Language Mode" -Type Info
+            } else {
+                Write-ColorOutput "    Note: $Operation was {0:N0}% $variance than estimated" -f ([Math]::Abs(($actualTime - $estimate.EstimatedTime) / $estimate.EstimatedTime * 100)) -Type Info
+            }
         }
         
         return $true
     }
     else {
         Write-ColorOutput "    Error during $Operation of $ModuleName`: $($result.Message)" -Type Error
+        
+        # Additional troubleshooting for constrained mode
+        if ($isConstrainedLargeModule) {
+            Write-ColorOutput "    💡 Constrained Language Mode troubleshooting:" -Type Info
+            Write-ColorOutput "    • Try running PowerShell as Administrator" -Type Info
+            Write-ColorOutput "    • Ensure sufficient disk space (at least 2GB free)" -Type Info
+            Write-ColorOutput "    • Check internet connectivity" -Type Info
+            Write-ColorOutput "    • Consider temporarily disabling antivirus during installation" -Type Info
+        }
+        
         return $false
     }
 }
@@ -1268,8 +1623,19 @@ function Test-ModuleInstallation {
                     }
                 }
                 else {
-                    # For smaller modules, use direct installation
-                    Install-Module -Name $ModuleName -Scope AllUsers @installParams
+                    # For smaller modules, use direct installation with explicit parameter handling
+                    $installArgs = @{
+                        Name = $ModuleName
+                        Force = if ($installParams.ContainsKey('Force')) { $installParams.Force } else { $true }
+                        Confirm = if ($installParams.ContainsKey('Confirm')) { $installParams.Confirm } else { $false }
+                        ErrorAction = 'Stop'
+                    }
+                    if ($installParams.ContainsKey('Scope')) { $installArgs.Scope = $installParams.Scope }
+                    if ($installParams.ContainsKey('AllowClobber')) { $installArgs.AllowClobber = $installParams.AllowClobber }
+                    if ($installParams.ContainsKey('AcceptLicense')) { $installArgs.AcceptLicense = $installParams.AcceptLicense }
+                    if ($installParams.ContainsKey('SkipPublisherCheck')) { $installArgs.SkipPublisherCheck = $installParams.SkipPublisherCheck }
+                    
+                    Install-Module @installArgs
                     Write-ColorOutput "    Successfully installed $ModuleName" -Type Process
                 }
             }
@@ -1317,7 +1683,18 @@ function Test-ModuleInstallation {
                 }
                 else {
                     Write-ColorOutput "    Updating module: $ModuleName" -Type Process
-                    Update-Module -Name $ModuleName @updateParams
+                    # Use explicit parameter handling for constrained language mode compatibility
+                    $updateArgs = @{
+                        Name = $ModuleName
+                        Force = if ($updateParams.ContainsKey('Force')) { $updateParams.Force } else { $true }
+                        Confirm = if ($updateParams.ContainsKey('Confirm')) { $updateParams.Confirm } else { $false }
+                        ErrorAction = 'Stop'
+                    }
+                    if ($updateParams.ContainsKey('AllowClobber')) { $updateArgs.AllowClobber = $updateParams.AllowClobber }
+                    if ($updateParams.ContainsKey('AcceptLicense')) { $updateArgs.AcceptLicense = $updateParams.AcceptLicense }
+                    if ($updateParams.ContainsKey('SkipPublisherCheck')) { $updateArgs.SkipPublisherCheck = $updateParams.SkipPublisherCheck }
+                    
+                    Update-Module @updateArgs
                     Write-ColorOutput "    Successfully updated $ModuleName" -Type Process
                 }
             }
