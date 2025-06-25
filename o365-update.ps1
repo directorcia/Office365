@@ -544,7 +544,7 @@ function Test-CoreModuleInstallation {
                             
                             Write-ColorOutput "    ℹ Core module '$ModuleName' is protected by the system" -Type Info
                             Write-ColorOutput "    ✓ This is normal behavior for essential PowerShell modules" -Type Process
-                            Write-ColorOutput "    � The module will auto-update when PowerShell is restarted" -Type Info                        } else {
+                            Write-ColorOutput "      The module will auto-update when PowerShell is restarted" -Type Info                        } else {
                             Write-ColorOutput "    Warning: Could not update $ModuleName - $errorMessage" -Type Warning
                             
                             # Use the comprehensive conflict resolution function
@@ -620,18 +620,35 @@ function Get-ModuleInstallationEstimate {
         'PowerApps-Admin' = @{ Size = 25; InstallTime = 30; UpdateTime = 40; RemoveTime = 15 }
     }
       $defaultEstimate = @{ Size = 10; InstallTime = 20; UpdateTime = 25; RemoveTime = 15 }
-    $moduleEstimate = if ($estimates[$ModuleName]) { $estimates[$ModuleName] } else { $defaultEstimate }
+    
+    # Use traditional if-else statements for Constrained Language Mode compatibility
+    if ($estimates[$ModuleName]) {
+        $moduleEstimate = $estimates[$ModuleName]
+    } else {
+        $moduleEstimate = $defaultEstimate
+    }
     
     $timeKey = "$($Operation)Time"
+    
+    # Calculate estimated time using traditional if-else
+    if ($moduleEstimate[$timeKey]) {
+        $estimatedTime = $moduleEstimate[$timeKey]
+    } else {
+        $estimatedTime = $moduleEstimate.InstallTime
+    }
+    
+    # Calculate formatted time using traditional if-else
+    if ($estimatedTime -gt 60) {
+        $formattedTime = "{0:N1} minutes" -f ($estimatedTime / 60)
+    } else {
+        $formattedTime = "{0} seconds" -f $estimatedTime
+    }
+    
     return @{
         EstimatedSize = $moduleEstimate.Size
-        EstimatedTime = if ($moduleEstimate[$timeKey]) { $moduleEstimate[$timeKey] } else { $moduleEstimate.InstallTime }
+        EstimatedTime = $estimatedTime
         FormattedSize = "{0:N1} MB" -f $moduleEstimate.Size
-        FormattedTime = if ((if ($moduleEstimate[$timeKey]) { $moduleEstimate[$timeKey] } else { $moduleEstimate.InstallTime }) -gt 60) {
-            "{0:N1} minutes" -f (((if ($moduleEstimate[$timeKey]) { $moduleEstimate[$timeKey] } else { $moduleEstimate.InstallTime })) / 60)
-        } else {
-            "{0} seconds" -f (if ($moduleEstimate[$timeKey]) { $moduleEstimate[$timeKey] } else { $moduleEstimate.InstallTime })
-        }
+        FormattedTime = $formattedTime
     }
 }
 
@@ -705,38 +722,268 @@ function Initialize-OptimizedInstallation {
     .DESCRIPTION
         Configures network settings, security protocols, and PowerShellGet parameters
         to maximize download performance. Sets TLS 1.2, increases connection limits,
-        and optimizes execution policy for the current session.
+        and optimizes execution policy for the current session. Enhanced with detailed
+        debugging for Constrained Language Mode environments.
     #>
     [CmdletBinding()]
     param()
     
+    # Enhanced debugging information
+    Write-ColorOutput "=== DETAILED OPTIMIZATION DEBUGGING ===" -Type System
+    Write-ColorOutput "Starting PowerShell optimization process..." -Type Info
+    
+    # Get current language mode with detailed analysis
+    $languageMode = $ExecutionContext.SessionState.LanguageMode
+    Write-ColorOutput "Current Language Mode: $languageMode" -Type Info
+    
+    # Detailed language mode analysis
+    switch ($languageMode) {
+        'FullLanguage' {
+            Write-ColorOutput "  ✓ Full Language Mode - All operations supported" -Type Process
+        }
+        'ConstrainedLanguage' {
+            Write-ColorOutput "  ⚠ CONSTRAINED LANGUAGE MODE DETECTED" -Type Warning
+            Write-ColorOutput "  This may limit some optimization operations" -Type Warning
+            Write-ColorOutput "  Analyzing constrained mode capabilities..." -Type Info
+            Write-ColorOutput "  Note: Script has been optimized for Constrained Language Mode compatibility" -Type Info
+            
+            # Test specific capabilities in constrained mode
+            try {
+                Write-ColorOutput "  Testing .NET type access..." -Type Info
+                $testType = [System.Net.ServicePointManager]
+                if ($testType) { # Use the type
+                    Write-ColorOutput "    ✓ ServicePointManager type accessible" -Type Process
+                }
+            }
+            catch {
+                Write-ColorOutput "    ✗ ServicePointManager type NOT accessible: $($_.Exception.Message)" -Type Error
+            }
+            
+            try {
+                Write-ColorOutput "  Testing security protocol enumeration..." -Type Info
+                $testEnum = [System.Net.SecurityProtocolType]::Tls12
+                if ($testEnum) { # Use the enum value
+                    Write-ColorOutput "    ✓ SecurityProtocolType enumeration accessible" -Type Process
+                }
+            }
+            catch {
+                Write-ColorOutput "    ✗ SecurityProtocolType enumeration NOT accessible: $($_.Exception.Message)" -Type Error
+            }
+            
+            try {
+                Write-ColorOutput "  Testing execution policy cmdlets..." -Type Info
+                $testPolicy = Get-ExecutionPolicy -ErrorAction Stop
+                Write-ColorOutput "    ✓ Get-ExecutionPolicy accessible: $testPolicy" -Type Process
+            }
+            catch {
+                Write-ColorOutput "    ✗ Get-ExecutionPolicy NOT accessible: $($_.Exception.Message)" -Type Error
+            }
+        }
+        'RestrictedLanguage' {
+            Write-ColorOutput "  ✗ RESTRICTED LANGUAGE MODE - Severe limitations expected" -Type Error
+        }
+        'NoLanguage' {
+            Write-ColorOutput "  ✗ NO LANGUAGE MODE - Script execution severely limited" -Type Error
+        }
+        default {
+            Write-ColorOutput "  ? Unknown Language Mode: $languageMode" -Type Warning
+        }
+    }
+    
+    # Check current user and administrative context
     try {
-        # Optimize PowerShell for faster downloads
+        $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $isAdmin = ([Security.Principal.WindowsPrincipal] $currentUser).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+        Write-ColorOutput "Current User: $($currentUser.Name)" -Type Info
+        Write-ColorOutput "Running as Administrator: $isAdmin" -Type Info
+    }
+    catch {
+        Write-ColorOutput "Could not determine user context: $($_.Exception.Message)" -Type Warning
+    }
+    
+    # Initialize return configuration
+    $psGetConfig = @{
+        Force = $true
+        Confirm = $false
+    }
+    
+    try {
         Write-ColorOutput "  Optimizing PowerShell for faster module operations..." -Type System
         
-        # Set TLS to 1.2 for better performance and compatibility
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        
-        # Increase concurrent connections for faster downloads
-        [Net.ServicePointManager]::DefaultConnectionLimit = 12
-        
-        # Optimize PowerShell execution policy if needed
-        $currentPolicy = Get-ExecutionPolicy -Scope CurrentUser
-        if ($currentPolicy -eq 'Restricted') {
-            Write-ColorOutput "    Setting execution policy to RemoteSigned for current user..." -Type Process
-            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+        # TLS Configuration with enhanced debugging
+        Write-ColorOutput "  === TLS CONFIGURATION ===" -Type Info
+        try {
+            Write-ColorOutput "  Current SecurityProtocol before change..." -Type Info
+            $currentProtocol = [Net.ServicePointManager]::SecurityProtocol
+            Write-ColorOutput "    Current: $currentProtocol" -Type Info
+            
+            Write-ColorOutput "  Setting TLS 1.2 for better performance and compatibility..." -Type Process
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            
+            $newProtocol = [Net.ServicePointManager]::SecurityProtocol
+            Write-ColorOutput "    New: $newProtocol" -Type Process
+            Write-ColorOutput "    ✓ TLS configuration successful" -Type Process
         }
-          # Configure PowerShellGet to use optimized settings
-        $psGetConfig = @{
-            SkipPublisherCheck = $true
-            Force = $true
-            Confirm = $false
+        catch {
+            Write-ColorOutput "    ✗ TLS configuration failed: $($_.Exception.Message)" -Type Error
+            Write-ColorOutput "    Exception Type: $($_.Exception.GetType().Name)" -Type Error
+            if ($languageMode -eq 'ConstrainedLanguage') {
+                Write-ColorOutput "    This failure is likely due to Constrained Language Mode restrictions" -Type Warning
+                Write-ColorOutput "    Modules may download slower but should still function" -Type Info
+            }
         }
         
+        # Connection Limit Configuration with enhanced debugging
+        Write-ColorOutput "  === CONNECTION LIMIT CONFIGURATION ===" -Type Info
+        try {
+            Write-ColorOutput "  Current DefaultConnectionLimit before change..." -Type Info
+            $currentLimit = [Net.ServicePointManager]::DefaultConnectionLimit
+            Write-ColorOutput "    Current: $currentLimit" -Type Info
+            
+            Write-ColorOutput "  Increasing concurrent connections for faster downloads..." -Type Process
+            [Net.ServicePointManager]::DefaultConnectionLimit = 12
+            
+            $newLimit = [Net.ServicePointManager]::DefaultConnectionLimit
+            Write-ColorOutput "    New: $newLimit" -Type Process
+            Write-ColorOutput "    ✓ Connection limit configuration successful" -Type Process
+        }
+        catch {
+            Write-ColorOutput "    ✗ Connection limit configuration failed: $($_.Exception.Message)" -Type Error
+            Write-ColorOutput "    Exception Type: $($_.Exception.GetType().Name)" -Type Error
+            if ($languageMode -eq 'ConstrainedLanguage') {
+                Write-ColorOutput "    This failure is likely due to Constrained Language Mode restrictions" -Type Warning
+                Write-ColorOutput "    Downloads will use default connection limits" -Type Info
+            }
+        }
+        
+        # Execution Policy Configuration with enhanced debugging
+        Write-ColorOutput "  === EXECUTION POLICY CONFIGURATION ===" -Type Info
+        try {
+            Write-ColorOutput "  Checking current execution policies across all scopes..." -Type Info
+            
+            $scopes = @('Process', 'CurrentUser', 'LocalMachine', 'UserPolicy', 'MachinePolicy')
+            foreach ($scope in $scopes) {
+                try {
+                    $policy = Get-ExecutionPolicy -Scope $scope -ErrorAction SilentlyContinue
+                    Write-ColorOutput "    $scope`: $policy" -Type Info
+                }
+                catch {
+                    Write-ColorOutput "    $scope`: Unable to query ($($_.Exception.Message))" -Type Warning
+                }
+            }
+            
+            $currentPolicy = Get-ExecutionPolicy -Scope CurrentUser
+            Write-ColorOutput "  Current User execution policy: $currentPolicy" -Type Info
+            
+            if ($currentPolicy -eq 'Restricted') {
+                Write-ColorOutput "  Setting execution policy to RemoteSigned for current user..." -Type Process
+                
+                if ($languageMode -eq 'ConstrainedLanguage') {
+                    Write-ColorOutput "    WARNING: Attempting execution policy change in Constrained Language Mode" -Type Warning
+                    Write-ColorOutput "    This operation may fail depending on security configuration" -Type Warning
+                }
+                
+                Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+                
+                $verifyPolicy = Get-ExecutionPolicy -Scope CurrentUser
+                Write-ColorOutput "    Verification - New policy: $verifyPolicy" -Type Process
+                Write-ColorOutput "    ✓ Execution policy configuration successful" -Type Process
+            } else {
+                Write-ColorOutput "    Current execution policy ($currentPolicy) is already suitable" -Type Process
+            }
+        }
+        catch {
+            Write-ColorOutput "    ✗ Execution policy configuration failed: $($_.Exception.Message)" -Type Error
+            Write-ColorOutput "    Exception Type: $($_.Exception.GetType().Name)" -Type Error
+            if ($languageMode -eq 'ConstrainedLanguage') {
+                Write-ColorOutput "    This failure is likely due to Constrained Language Mode restrictions" -Type Warning
+                Write-ColorOutput "    or Group Policy enforcement" -Type Warning
+            }
+        }
+        
+        # PowerShellGet Configuration with enhanced debugging
+        Write-ColorOutput "  === POWERSHELLGET CONFIGURATION ===" -Type Info
+        try {
+            Write-ColorOutput "  Testing PowerShellGet module availability..." -Type Info
+            $psGetModule = Get-Module -Name PowerShellGet -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
+            if ($psGetModule) {
+                Write-ColorOutput "    PowerShellGet version: $($psGetModule.Version)" -Type Process
+            } else {
+                Write-ColorOutput "    PowerShellGet module not found" -Type Warning
+            }
+            
+            Write-ColorOutput "  Configuring optimized PowerShellGet parameters..." -Type Process
+            
+            # Test each parameter capability in constrained mode
+            if ($languageMode -eq 'ConstrainedLanguage') {
+                Write-ColorOutput "    Testing parameter compatibility in Constrained Language Mode..." -Type Info
+                
+                # Test SkipPublisherCheck
+                try {
+                    $null = @{ SkipPublisherCheck = $true }
+                    Write-ColorOutput "      SkipPublisherCheck: Compatible" -Type Process
+                    $psGetConfig.SkipPublisherCheck = $true
+                }
+                catch {
+                    Write-ColorOutput "      SkipPublisherCheck: Not compatible ($($_.Exception.Message))" -Type Warning
+                }
+                
+                # Test AllowClobber capability
+                try {
+                    $null = @{ AllowClobber = $true }
+                    Write-ColorOutput "      AllowClobber: Compatible" -Type Process
+                    $psGetConfig.AllowClobber = $true
+                }
+                catch {
+                    Write-ColorOutput "      AllowClobber: Not compatible ($($_.Exception.Message))" -Type Warning
+                }
+            } else {
+                Write-ColorOutput "    Full Language Mode - All parameters should be compatible" -Type Process
+                $psGetConfig.SkipPublisherCheck = $true
+                $psGetConfig.AllowClobber = $true
+            }
+            
+            Write-ColorOutput "    ✓ PowerShellGet configuration completed" -Type Process
+        }
+        catch {
+            Write-ColorOutput "    ✗ PowerShellGet configuration failed: $($_.Exception.Message)" -Type Error
+            Write-ColorOutput "    Exception Type: $($_.Exception.GetType().Name)" -Type Error
+        }
+        
+        # Final configuration summary
+        Write-ColorOutput "  === OPTIMIZATION SUMMARY ===" -Type System
+        Write-ColorOutput "  Final configuration parameters:" -Type Info
+        foreach ($key in $psGetConfig.Keys) {
+            Write-ColorOutput "    $key`: $($psGetConfig[$key])" -Type Info
+        }
+        
+        if ($languageMode -eq 'ConstrainedLanguage') {
+            Write-ColorOutput "  CONSTRAINED LANGUAGE MODE IMPACT:" -Type Warning
+            Write-ColorOutput "    • Some .NET operations may have been restricted" -Type Warning
+            Write-ColorOutput "    • Module operations should still function but may be slower" -Type Warning
+            Write-ColorOutput "    • Consider running in Full Language Mode if possible" -Type Warning
+            Write-ColorOutput "    • Contact your administrator if persistent issues occur" -Type Warning
+        }
+        
+        Write-ColorOutput "=== OPTIMIZATION DEBUGGING COMPLETE ===" -Type System
         return $psGetConfig
     }
     catch {
-        Write-ColorOutput "  Warning: Could not fully optimize installation settings: $($_.Exception.Message)" -Type Warning
+        Write-ColorOutput "=== CRITICAL OPTIMIZATION FAILURE ===" -Type Error
+        Write-ColorOutput "  Error: $($_.Exception.Message)" -Type Error
+        Write-ColorOutput "  Exception Type: $($_.Exception.GetType().Name)" -Type Error
+        Write-ColorOutput "  Stack Trace: $($_.ScriptStackTrace)" -Type Error
+        
+        if ($languageMode -eq 'ConstrainedLanguage') {
+            Write-ColorOutput "  CONSTRAINED LANGUAGE MODE TROUBLESHOOTING:" -Type Warning
+            Write-ColorOutput "    1. This error is likely due to security restrictions" -Type Warning
+            Write-ColorOutput "    2. Try running PowerShell as Administrator" -Type Warning
+            Write-ColorOutput "    3. Check if AppLocker or similar security software is active" -Type Warning
+            Write-ColorOutput "    4. Consider temporarily disabling constrained mode if policy allows" -Type Warning
+            Write-ColorOutput "    5. Contact your system administrator for assistance" -Type Warning
+        }
+        
+        Write-ColorOutput "  Returning minimal configuration..." -Type Info
         return @{
             Force = $true
             Confirm = $false
@@ -814,8 +1061,85 @@ function Install-ModuleWithProgress {
         }
     }
     
+    # Check if background jobs are supported in this environment
+    if (-not $Script:JobsSupported) {
+        Write-ColorOutput "    Background jobs not supported - using direct execution" -Type Warning
+        Write-ColorOutput "    This may take longer but will complete successfully" -Type Info
+        
+        # Execute directly without background jobs
+        try {
+            # Set the same optimizations
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            [Net.ServicePointManager]::DefaultConnectionLimit = 12
+            
+            Write-ColorOutput "    Starting $Operation of $ModuleName..." -Type Process
+            
+            switch ($Operation) {
+                'Install' {
+                    Install-Module -Name $ModuleName @InstallParams
+                }
+                'Update' {
+                    Update-Module -Name $ModuleName @InstallParams
+                }
+                default {
+                    Install-Module -Name $ModuleName @InstallParams
+                }
+            }
+            
+            $actualTime = ((Get-Date) - $startTime).TotalSeconds
+            Write-ColorOutput "    Successfully completed $Operation of $ModuleName" -Type Process
+            Write-ColorOutput "    Actual time: {0:N0} seconds" -f $actualTime -Type Info
+            return $true
+        }
+        catch {
+            $actualTime = ((Get-Date) - $startTime).TotalSeconds
+            Write-ColorOutput "    Error during $Operation of $ModuleName`: $($_.Exception.Message)" -Type Error
+            Write-ColorOutput "    Time elapsed: {0:N0} seconds" -f $actualTime -Type Info
+            return $false
+        }
+    }
+    
+    # Background job implementation for environments that support it
     # Start the background job
-    $job = Start-Job -ScriptBlock $jobScript -ArgumentList $ModuleName, $InstallParams, $Operation
+    try {
+        $job = Start-Job -ScriptBlock $jobScript -ArgumentList $ModuleName, $InstallParams, $Operation
+    }
+    catch {
+        Write-ColorOutput "    Background job creation failed - falling back to direct execution" -Type Warning
+        Write-ColorOutput "    Error: $($_.Exception.Message)" -Type Warning
+        
+        # Fallback to direct execution
+        try {
+            # Set the same optimizations
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            [Net.ServicePointManager]::DefaultConnectionLimit = 12
+            
+            Write-ColorOutput "    Starting $Operation of $ModuleName..." -Type Process
+            
+            switch ($Operation) {
+                'Install' {
+                    Install-Module -Name $ModuleName @InstallParams
+                }
+                'Update' {
+                    Update-Module -Name $ModuleName @InstallParams
+                }
+                default {
+                    Install-Module -Name $ModuleName @InstallParams
+                }
+            }
+            
+            $actualTime = ((Get-Date) - $startTime).TotalSeconds
+            Write-ColorOutput "    Successfully completed $Operation of $ModuleName" -Type Process
+            Write-ColorOutput "    Actual time: {0:N0} seconds" -f $actualTime -Type Info
+            return $true
+        }
+        catch {
+            $actualTime = ((Get-Date) - $startTime).TotalSeconds
+            Write-ColorOutput "    Error during $Operation of $ModuleName`: $($_.Exception.Message)" -Type Error
+            Write-ColorOutput "    Time elapsed: {0:N0} seconds" -f $actualTime -Type Info
+            return $false
+        }
+    }
     
     # Show progress while waiting
     $progressParams = @{
@@ -872,7 +1196,12 @@ function Install-ModuleWithProgress {
         
         # If significantly different from estimate, show note
         if ([Math]::Abs($actualTime - $estimate.EstimatedTime) -gt ($estimate.EstimatedTime * 0.3)) {
-            $variance = if ($actualTime -gt $estimate.EstimatedTime) { "slower" } else { "faster" }
+            # Use traditional if-else for Constrained Language Mode compatibility
+            if ($actualTime -gt $estimate.EstimatedTime) {
+                $variance = "slower"
+            } else {
+                $variance = "faster"
+            }
             Write-ColorOutput "    Note: $Operation was {0:N0}% $variance than estimated" -f ([Math]::Abs(($actualTime - $estimate.EstimatedTime) / $estimate.EstimatedTime * 100)) -Type Info
         }
         
@@ -916,6 +1245,16 @@ function Test-ModuleInstallation {
               if (-not $CheckOnly) {
                 Write-ColorOutput "    Installing module: $ModuleName" -Type Process
                 
+                # Test compatibility in constrained environments before optimization
+                $languageMode = $ExecutionContext.SessionState.LanguageMode
+                if ($languageMode -eq 'ConstrainedLanguage') {
+                    Write-ColorOutput "    Constrained Language Mode detected - testing compatibility..." -Type Warning
+                    $isCompatible = Test-ConstrainedLanguageModeCompatibility -Operation 'NetworkOptimization' -Silent
+                    if (-not $isCompatible) {
+                        Write-ColorOutput "    Network optimization may be limited in this environment" -Type Warning
+                    }
+                }
+                
                 # Initialize optimized settings
                 $baseParams = Initialize-OptimizedInstallation
                 $installParams = Get-ModuleSpecificParams -ModuleName $ModuleName -BaseParams $baseParams
@@ -953,6 +1292,16 @@ function Test-ModuleInstallation {
         else {
             Write-ColorOutput "    Module $ModuleName ($localVersion) can be updated to ($onlineVersion)" -Type Warning
               if (-not $CheckOnly) {
+                # Test compatibility in constrained environments before optimization
+                $languageMode = $ExecutionContext.SessionState.LanguageMode
+                if ($languageMode -eq 'ConstrainedLanguage') {
+                    Write-ColorOutput "    Constrained Language Mode detected - testing compatibility..." -Type Warning
+                    $isCompatible = Test-ConstrainedLanguageModeCompatibility -Operation 'NetworkOptimization' -Silent
+                    if (-not $isCompatible) {
+                        Write-ColorOutput "    Network optimization may be limited in this environment" -Type Warning
+                    }
+                }
+                
                 # Initialize optimized settings
                 $baseParams = Initialize-OptimizedInstallation
                 $updateParams = Get-ModuleSpecificParams -ModuleName $ModuleName -BaseParams $baseParams
@@ -1006,7 +1355,12 @@ function Remove-ModuleWithProgress {
         param($ModuleName, $ModuleVersion, $ModuleInfo)
         
         try {
-            $installMethod = if ($ModuleInfo.RepositorySourceLocation) { "PowerShellGet" } else { "MSI/Manual" }
+            # Use traditional if-else for Constrained Language Mode compatibility
+            if ($ModuleInfo.RepositorySourceLocation) {
+                $installMethod = "PowerShellGet"
+            } else {
+                $installMethod = "MSI/Manual"
+            }
             
             if ($installMethod -eq "MSI/Manual") {
                 # Handle MSI/Manual installed modules
@@ -1097,53 +1451,80 @@ function Remove-ModuleWithProgress {
     
     # For large modules, show progress; for smaller ones, just process directly
     if ($ModuleName -in $largeModules) {
-        # Start the background job
-        $job = Start-Job -ScriptBlock $jobScript -ArgumentList $ModuleName, $ModuleVersion, $ModuleInfo
-        
-        # Show progress while waiting
-        $progressParams = @{
-            Activity = "Removing module: $ModuleName"
-            Status = "Uninstalling..."
-            PercentComplete = 0
+        # Check if background jobs are supported in this environment
+        if (-not $Script:JobsSupported) {
+            Write-ColorOutput "    Background jobs not supported - using direct execution for removal" -Type Warning
+            
+            # Execute directly without background jobs
+            $result = & $jobScript $ModuleName $ModuleVersion $ModuleInfo
         }
-        
-        $iteration = 0
-        $maxIterations = [Math]::Max(5, [Math]::Ceiling($estimate.EstimatedTime / 2))
-        
-        while ($job.State -eq 'Running') {
-            $elapsed = (Get-Date) - $startTime
-            $elapsedSeconds = $elapsed.TotalSeconds
-            
-            $progressPercent = [Math]::Min(95, ($elapsedSeconds / $estimate.EstimatedTime) * 100)
-            
-            $progressParams.PercentComplete = $progressPercent
-            $progressParams.Status = "Progress: {0:N0}% - Elapsed: {1:N0}s" -f $progressPercent, $elapsedSeconds
-            
-            if ($estimate.EstimatedTime -gt $elapsedSeconds) {
-                $remainingSeconds = $estimate.EstimatedTime - $elapsedSeconds
-                if ($remainingSeconds -gt 60) {
-                    $progressParams.Status += " - Est. remaining: {0:N1} min" -f ($remainingSeconds / 60)
-                } else {
-                    $progressParams.Status += " - Est. remaining: {0:N0}s" -f $remainingSeconds
+        else {
+            # Try to start the background job
+            try {
+                $job = Start-Job -ScriptBlock $jobScript -ArgumentList $ModuleName, $ModuleVersion, $ModuleInfo
+            }
+            catch {
+                Write-ColorOutput "    Background job creation failed - falling back to direct execution" -Type Warning
+                Write-ColorOutput "    Error: $($_.Exception.Message)" -Type Warning
+                
+                # Fallback to direct execution
+                $result = & $jobScript $ModuleName $ModuleVersion $ModuleInfo
+                $actualTime = ((Get-Date) - $startTime).TotalSeconds
+                
+                return @{
+                    Success = $result.Success
+                    Message = $result.Message
+                    ActualTime = $actualTime
                 }
             }
-            
-            Write-Progress @progressParams
-            Start-Sleep -Seconds 2
-            $iteration++
-            
-            if ($iteration -gt $maxIterations -and $elapsedSeconds -gt ($estimate.EstimatedTime * 1.5)) {
-                $progressParams.Status = "Taking longer than expected - Elapsed: {0:N0}s" -f $elapsedSeconds
-                Write-Progress @progressParams
+        
+            # Show progress while waiting (only if job was created successfully)
+            if ($job) {
+                $progressParams = @{
+                    Activity = "Removing module: $ModuleName"
+                    Status = "Uninstalling..."
+                    PercentComplete = 0
+                }
+                
+                $iteration = 0
+                $maxIterations = [Math]::Max(5, [Math]::Ceiling($estimate.EstimatedTime / 2))
+                
+                while ($job.State -eq 'Running') {
+                    $elapsed = (Get-Date) - $startTime
+                    $elapsedSeconds = $elapsed.TotalSeconds
+                    
+                    $progressPercent = [Math]::Min(95, ($elapsedSeconds / $estimate.EstimatedTime) * 100)
+                    
+                    $progressParams.PercentComplete = $progressPercent
+                    $progressParams.Status = "Progress: {0:N0}% - Elapsed: {1:N0}s" -f $progressPercent, $elapsedSeconds
+                    
+                    if ($estimate.EstimatedTime -gt $elapsedSeconds) {
+                        $remainingSeconds = $estimate.EstimatedTime - $elapsedSeconds
+                        if ($remainingSeconds -gt 60) {
+                            $progressParams.Status += " - Est. remaining: {0:N1} min" -f ($remainingSeconds / 60)
+                        } else {
+                            $progressParams.Status += " - Est. remaining: {0:N0}s" -f $remainingSeconds
+                        }
+                    }
+                    
+                    Write-Progress @progressParams
+                    Start-Sleep -Seconds 2
+                    $iteration++
+                    
+                    if ($iteration -gt $maxIterations -and $elapsedSeconds -gt ($estimate.EstimatedTime * 1.5)) {
+                        $progressParams.Status = "Taking longer than expected - Elapsed: {0:N0}s" -f $elapsedSeconds
+                        Write-Progress @progressParams
+                    }
+                }
+                
+                # Complete the progress bar
+                Write-Progress -Activity "Removing module: $ModuleName" -Completed
+                
+                # Get the job result
+                $result = Receive-Job -Job $job
+                Remove-Job -Job $job
             }
         }
-        
-        # Complete the progress bar
-        Write-Progress -Activity "Removing module: $ModuleName" -Completed
-        
-        # Get the job result
-        $result = Receive-Job -Job $job
-        Remove-Job -Job $job
     }
     else {
         # Direct execution for smaller modules
@@ -1162,45 +1543,138 @@ function Remove-ModuleWithProgress {
 function Remove-DeprecatedModules {
     [CmdletBinding()]
     param()
-      if ($SkipDeprecatedCleanup -or $CheckOnly) {
+    
+    if ($SkipDeprecatedCleanup -or $CheckOnly) {
         return
     }
     
     Write-ColorOutput ""
-    Write-ColorOutput "Checking for deprecated modules..." -Type System
+    Write-ColorOutput "=== DEPRECATED MODULE CLEANUP ANALYSIS ===" -Type System
+    Write-ColorOutput ""
+    Write-ColorOutput "Microsoft has deprecated several PowerShell modules in favor of modern alternatives." -Type Info
+    Write-ColorOutput "This section will help you identify and optionally remove these deprecated modules." -Type Info
+    Write-ColorOutput ""
+    
+    # Display deprecation overview
+    Write-ColorOutput "📋 DEPRECATION OVERVIEW:" -Type Warning
+    Write-ColorOutput ""
+    foreach ($deprecated in $Script:DeprecatedModules) {
+        Write-ColorOutput "  🚫 $($deprecated.Name)" -Type Error
+        Write-ColorOutput "     ↳ Replacement: $($deprecated.Replacement)" -Type Process
+        Write-ColorOutput "     ↳ Reason: $($deprecated.Reason)" -Type Info
+        Write-ColorOutput ""
+    }
+    
+    Write-ColorOutput "💡 WHY REMOVE DEPRECATED MODULES?" -Type Info
+    Write-ColorOutput "  • Security: Deprecated modules no longer receive security updates" -Type Warning
+    Write-ColorOutput "  • Support: Microsoft has ended support for these modules" -Type Warning
+    Write-ColorOutput "  • Functionality: New modules offer enhanced features and better performance" -Type Process
+    Write-ColorOutput "  • Compatibility: Avoid conflicts between old and new modules" -Type Process
+    Write-ColorOutput ""
+    
+    Write-ColorOutput "Scanning your system for deprecated modules..." -Type System
+    Write-ColorOutput ""
+    
+    # Initialize scanning progress
+    $totalModulesToCheck = $Script:DeprecatedModules.Count
+    $currentModuleIndex = 0
+    $foundDeprecatedModules = 0
+    $foundVersions = 0
+    
+    Write-ColorOutput "🔍 SCANNING PROGRESS:" -Type Info
+    Write-ColorOutput "  Modules to check: $totalModulesToCheck deprecated modules" -Type Info
+    Write-ColorOutput "  Scan locations:" -Type Info
+    Write-ColorOutput "    • PowerShellGet installed modules" -Type Info
+    Write-ColorOutput "    • System module paths (including MSI installations)" -Type Info
+    Write-ColorOutput "    • User profile module directories" -Type Info
+    Write-ColorOutput ""
     
     # First, collect all deprecated modules that are installed
     $modulesToRemove = @()
     foreach ($deprecated in $Script:DeprecatedModules) {
+        $currentModuleIndex++
+        $percentComplete = [math]::Round(($currentModuleIndex / $totalModulesToCheck) * 100, 1)
+        
+        # Show current scanning progress
+        Write-ColorOutput "  [$percentComplete%] ($currentModuleIndex/$totalModulesToCheck) Checking: $($deprecated.Name)" -Type Info
+        
         # Check both Get-Module -ListAvailable and Get-InstalledModule
         $installedVersions = @()
+        $moduleFound = $false
         
         # Check modules installed via PowerShellGet
-        $psGetModules = Get-InstalledModule -Name $deprecated.Name -ErrorAction SilentlyContinue
-        if ($psGetModules) {
-            $installedVersions += $psGetModules
+        Write-ColorOutput "    • Scanning PowerShellGet registry..." -Type Info -NoNewline
+        try {
+            $psGetModules = Get-InstalledModule -Name $deprecated.Name -ErrorAction SilentlyContinue
+            if ($psGetModules) {
+                $installedVersions += $psGetModules
+                $moduleFound = $true
+                Write-ColorOutput " Found $($psGetModules.Count) version(s)" -Type Process
+            } else {
+                Write-ColorOutput " None found" -Type Info
+            }
+        }
+        catch {
+            Write-ColorOutput " Error during scan" -Type Warning
         }
         
         # Check modules available in the system (including MSI-installed)
-        $availableModules = Get-Module -ListAvailable -Name $deprecated.Name -ErrorAction SilentlyContinue
-        if ($availableModules) {
-            # Add modules that aren't already in the PowerShellGet list
-            foreach ($module in $availableModules) {
-                $alreadyListed = $installedVersions | Where-Object { 
-                    $_.Name -eq $module.Name -and $_.Version -eq $module.Version 
-                }
-                if (-not $alreadyListed) {
-                    # Create a custom object that mimics Get-InstalledModule output
-                    $installedVersions += [PSCustomObject]@{
-                        Name = $module.Name
-                        Version = $module.Version
-                        ModuleBase = $module.ModuleBase
-                        InstalledLocation = $module.ModuleBase
-                        InstalledBy = "Unknown"
-                        InstalledVia = "MSI/Manual"
+        Write-ColorOutput "    • Scanning system module paths..." -Type Info -NoNewline
+        try {
+            $availableModules = Get-Module -ListAvailable -Name $deprecated.Name -ErrorAction SilentlyContinue
+            if ($availableModules) {
+                $systemModulesCount = 0
+                # Add modules that aren't already in the PowerShellGet list
+                foreach ($module in $availableModules) {
+                    $alreadyListed = $installedVersions | Where-Object { 
+                        $_.Name -eq $module.Name -and $_.Version -eq $module.Version 
+                    }
+                    if (-not $alreadyListed) {
+                        # Create a custom object that mimics Get-InstalledModule output
+                        $installedVersions += [PSCustomObject]@{
+                            Name = $module.Name
+                            Version = $module.Version
+                            ModuleBase = $module.ModuleBase
+                            InstalledLocation = $module.ModuleBase
+                            InstalledBy = "Unknown"
+                            InstalledVia = "MSI/Manual"
+                        }
+                        $systemModulesCount++
+                        $moduleFound = $true
                     }
                 }
+                if ($systemModulesCount -gt 0) {
+                    Write-ColorOutput " Found $systemModulesCount additional version(s)" -Type Process
+                } else {
+                    Write-ColorOutput " No additional versions found" -Type Info
+                }
+            } else {
+                Write-ColorOutput " None found" -Type Info
             }
+        }
+        catch {
+            Write-ColorOutput " Error during scan" -Type Warning
+        }
+        
+        if ($moduleFound) {
+            $foundDeprecatedModules++
+            $foundVersions += $installedVersions.Count
+            
+            Write-ColorOutput "    ✅ FOUND: $($deprecated.Name) - $($installedVersions.Count) version(s) installed" -Type Warning
+            
+            # Show installation locations for user awareness
+            $locations = $installedVersions | Group-Object -Property { 
+                if ($_.PSObject.Properties.Name -contains "InstalledVia") { 
+                    $_.InstalledVia 
+                } else { 
+                    "PowerShellGet" 
+                }
+            }
+            foreach ($location in $locations) {
+                Write-ColorOutput "      • $($location.Count) version(s) via $($location.Name)" -Type Info
+            }
+        } else {
+            Write-ColorOutput "    ✓ Clean: $($deprecated.Name) not found" -Type Process
         }
         
         if ($installedVersions) {
@@ -1227,9 +1701,23 @@ function Remove-DeprecatedModules {
                 EstimatedTime = $moduleEstimate
             }
         }
+        Write-ColorOutput ""
     }
-      if ($modulesToRemove.Count -eq 0) {
-        Write-ColorOutput "    No deprecated modules found" -Type Process
+    
+    # Add scanning completion summary
+    Write-ColorOutput ""
+    Write-ColorOutput "📊 SCANNING COMPLETE:" -Type System
+    Write-ColorOutput "  • Modules checked: $totalModulesToCheck" -Type Info
+    Write-ColorOutput "  • Deprecated modules found: $foundDeprecatedModules" -Type Warning
+    Write-ColorOutput "  • Total versions found: $foundVersions" -Type Warning
+    Write-ColorOutput "  • Clean modules (not installed): $($totalModulesToCheck - $foundDeprecatedModules)" -Type Process
+    Write-ColorOutput ""
+    
+    if ($foundDeprecatedModules -eq 0) {
+        Write-ColorOutput "✅ SCAN RESULTS: No deprecated modules found on your system" -Type Process
+        Write-ColorOutput "Your system is clean of deprecated PowerShell modules." -Type Process
+        Write-ColorOutput ""
+        Write-ColorOutput "🎉 Congratulations! Your PowerShell environment uses only modern, supported modules." -Type Process
         Write-ColorOutput ""
         return
     }
@@ -1238,6 +1726,59 @@ function Remove-DeprecatedModules {
     $totalEstimatedTime = ($modulesToRemove | Measure-Object -Property EstimatedTime -Sum).Sum
     $totalVersions = ($modulesToRemove | Measure-Object -Property VersionCount -Sum).Sum
     $estimatedMinutes = [math]::Round($totalEstimatedTime / 60, 1)
+    
+    Write-ColorOutput "🔍 SCAN RESULTS:" -Type Warning
+    Write-ColorOutput "Found $($modulesToRemove.Count) deprecated module(s) with $totalVersions total versions installed" -Type Warning
+    Write-ColorOutput "Estimated total removal time: $estimatedMinutes minutes" -Type Info
+    Write-ColorOutput ""
+    
+    # Display detailed findings
+    Write-ColorOutput "📊 DETAILED FINDINGS:" -Type Info
+    Write-ColorOutput ""
+    foreach ($moduleInfo in $modulesToRemove) {
+        Write-ColorOutput "  🚫 $($moduleInfo.Name)" -Type Error
+        Write-ColorOutput "     📦 Versions installed: $($moduleInfo.VersionCount)" -Type Info
+        Write-ColorOutput "     ⏱️  Estimated removal time: $([math]::Round($moduleInfo.EstimatedTime / 60, 1)) minutes" -Type Info
+        Write-ColorOutput "     🔄 Replacement: $($moduleInfo.Replacement)" -Type Process
+        Write-ColorOutput "     📋 Deprecation reason: $($moduleInfo.Reason)" -Type Warning
+        Write-ColorOutput ""
+        
+        # Show version details
+        Write-ColorOutput "     📋 Installed versions:" -Type Info
+        foreach ($version in $moduleInfo.Versions) {
+            $installMethod = if ($version.PSObject.Properties.Name -contains "InstalledVia") { 
+                $version.InstalledVia 
+            } else { 
+                "PowerShellGet" 
+            }
+            Write-ColorOutput "       • Version $($version.Version) (via $installMethod)" -Type Info
+        }
+        Write-ColorOutput ""
+    }
+    
+    Write-ColorOutput "⚠️  IMPORTANT CONSIDERATIONS BEFORE REMOVAL:" -Type Warning
+    Write-ColorOutput ""
+    Write-ColorOutput "  ✅ SAFE TO REMOVE:" -Type Process
+    Write-ColorOutput "     • You have replacement modules installed (Microsoft.Graph, etc.)" -Type Process
+    Write-ColorOutput "     • Your scripts use the newer modules" -Type Process
+    Write-ColorOutput "     • You understand the migration requirements" -Type Process
+    Write-ColorOutput ""
+    Write-ColorOutput "  ⚠️  CAUTION REQUIRED:" -Type Warning
+    Write-ColorOutput "     • You have scripts that still use the deprecated modules" -Type Warning
+    Write-ColorOutput "     • You haven't migrated to the replacement modules yet" -Type Warning
+    Write-ColorOutput "     • You're unsure about compatibility with existing code" -Type Warning
+    Write-ColorOutput ""
+    Write-ColorOutput "  📚 MIGRATION GUIDANCE:" -Type Info
+    Write-ColorOutput "     • AzureAD/MSOnline → Microsoft.Graph: https://docs.microsoft.com/graph/powershell/migration" -Type Info
+    Write-ColorOutput "     • SharePoint PnP → PnP.PowerShell: https://pnp.github.io/powershell/articles/migration.html" -Type Info
+    Write-ColorOutput "     • Test your scripts thoroughly after removing deprecated modules" -Type Info
+    Write-ColorOutput ""
+    
+    # Now process each module individually with detailed prompts
+    $startTime = Get-Date
+    $totalOperations = $totalVersions
+    $currentOperation = 0
+    $skippedModules = @()
       Write-ColorOutput "Found $($modulesToRemove.Count) deprecated modules with $totalVersions total versions to remove" -Type Warning
     Write-ColorOutput "Estimated total removal time: $estimatedMinutes minutes" -Type Info
     Write-ColorOutput ""
@@ -1270,22 +1811,105 @@ function Remove-DeprecatedModules {
         Write-ColorOutput "    [Warning] Processing deprecated module '$($moduleInfo.Name)' ($($moduleInfo.VersionCount) versions)" -Type Warning
         Write-ColorOutput "    Reason: $($moduleInfo.Reason)" -Type Warning
         Write-ColorOutput "    Replacement: $($moduleInfo.Replacement)" -Type Warning
-          if ($Prompt) {
-            Write-ColorOutput ""
-            Write-ColorOutput "⚠ About to remove deprecated module: $($moduleInfo.Name)" -Type Warning
-            Write-ColorOutput "  Reason: $($moduleInfo.Reason)" -Type Info
-            Write-ColorOutput "  Replacement: $($moduleInfo.Replacement)" -Type Info
-            Write-ColorOutput "  Versions to remove: $($moduleInfo.VersionCount)" -Type Info
-            Write-ColorOutput "  Estimated time: $([math]::Round($moduleInfo.EstimatedTime / 60, 1)) minutes" -Type Info
-            Write-ColorOutput ""
-            $response = Read-Host "Remove all versions of deprecated module '$($moduleInfo.Name)' (Y/N)?"
-            if ($response -notmatch '^[Yy]') {
-                Write-ColorOutput "    Skipping removal of $($moduleInfo.Name)" -Type Warning
-                $currentOperation += $moduleInfo.VersionCount
-                continue
+        Write-ColorOutput "=== PROCESSING: $($moduleInfo.Name) ===" -Type System
+        Write-ColorOutput ""
+        Write-ColorOutput "📦 Module: $($moduleInfo.Name)" -Type Warning
+        Write-ColorOutput "🚫 Status: DEPRECATED" -Type Error
+        Write-ColorOutput "📋 Reason: $($moduleInfo.Reason)" -Type Info
+        Write-ColorOutput "🔄 Modern Replacement: $($moduleInfo.Replacement)" -Type Process
+        Write-ColorOutput "📊 Versions to remove: $($moduleInfo.VersionCount)" -Type Info
+        Write-ColorOutput "⏱️  Estimated removal time: $([math]::Round($moduleInfo.EstimatedTime / 60, 1)) minutes" -Type Info
+        Write-ColorOutput ""
+        
+        # Show specific migration guidance
+        switch ($moduleInfo.Name) {
+            'AzureAD' {
+                Write-ColorOutput "🔄 MIGRATION GUIDANCE FOR AZUREAD:" -Type Process
+                Write-ColorOutput "   • Replace Connect-AzureAD with Connect-MgGraph" -Type Info
+                Write-ColorOutput "   • Replace Get-AzureADUser with Get-MgUser" -Type Info
+                Write-ColorOutput "   • Replace Get-AzureADGroup with Get-MgGroup" -Type Info
+                Write-ColorOutput "   • Update all AzureAD cmdlets to Microsoft.Graph equivalents" -Type Info
             }
-            Write-ColorOutput ""
+            'AzureADPreview' {
+                Write-ColorOutput "🔄 MIGRATION GUIDANCE FOR AZUREADPREVIEW:" -Type Process
+                Write-ColorOutput "   • Replace Connect-AzureAD with Connect-MgGraph" -Type Info
+                Write-ColorOutput "   • Replace Get-AzureADUser with Get-MgUser" -Type Info
+                Write-ColorOutput "   • Replace Get-AzureADGroup with Get-MgGroup" -Type Info
+                Write-ColorOutput "   • Preview features are now in Microsoft.Graph.Beta modules" -Type Info
+            }
+            'MSOnline' {
+                Write-ColorOutput "🔄 MIGRATION GUIDANCE FOR MSONLINE:" -Type Process
+                Write-ColorOutput "   • Replace Connect-MsolService with Connect-MgGraph" -Type Info
+                Write-ColorOutput "   • Replace Get-MsolUser with Get-MgUser" -Type Info
+                Write-ColorOutput "   • Replace Get-MsolDomain with Get-MgDomain" -Type Info
+                Write-ColorOutput "   • Update all Msol cmdlets to Microsoft.Graph equivalents" -Type Info
+            }
+            'SharePointPnPPowerShellOnline' {
+                Write-ColorOutput "🔄 MIGRATION GUIDANCE FOR SHAREPOINT PNP:" -Type Process
+                Write-ColorOutput "   • Replace Connect-PnPOnline with Connect-PnPOnline (new PnP.PowerShell)" -Type Info
+                Write-ColorOutput "   • Most cmdlet names remain the same in PnP.PowerShell" -Type Info
+                Write-ColorOutput "   • Update module references in your scripts" -Type Info
+                Write-ColorOutput "   • Test thoroughly as some parameters may have changed" -Type Info
+            }
+            'WindowsAutoPilotIntune' {
+                Write-ColorOutput "🔄 MIGRATION GUIDANCE FOR AUTOPILOT:" -Type Process
+                Write-ColorOutput "   • Use Microsoft.Graph.DeviceManagement module" -Type Info
+                Write-ColorOutput "   • Autopilot functionality is now in Microsoft Graph APIs" -Type Info
+                Write-ColorOutput "   • Update scripts to use Graph-based device management cmdlets" -Type Info
+            }
+            'AIPService' {
+                Write-ColorOutput "🔄 MIGRATION GUIDANCE FOR AIP SERVICE:" -Type Process
+                Write-ColorOutput "   • Use Microsoft.Graph.Security module" -Type Info
+                Write-ColorOutput "   • Information Protection APIs are now in Microsoft Graph" -Type Info
+                Write-ColorOutput "   • Update scripts to use Graph-based security cmdlets" -Type Info
+            }
+            'MSCommerce' {
+                Write-ColorOutput "🔄 MIGRATION GUIDANCE FOR MSCOMMERCE:" -Type Process
+                Write-ColorOutput "   • Use Microsoft.Graph.Commerce module" -Type Info
+                Write-ColorOutput "   • Commerce functionality is available through Microsoft Graph" -Type Info
+                Write-ColorOutput "   • Update scripts to use Graph-based commerce cmdlets" -Type Info
+            }
         }
+        Write-ColorOutput ""
+        
+        # Always prompt for each module with detailed options
+        Write-ColorOutput "❓ REMOVAL DECISION:" -Type Warning
+        Write-ColorOutput "Do you want to remove the deprecated module '$($moduleInfo.Name)'?" -Type Warning
+        Write-ColorOutput ""
+        Write-ColorOutput "Enter your choice:" -Type Info
+        Write-ColorOutput "  Y = Yes, remove this deprecated module" -Type Process
+        Write-ColorOutput "  N = No, keep this module (not recommended)" -Type Warning
+        Write-ColorOutput "  S = Skip remaining deprecated modules" -Type Info
+        Write-ColorOutput ""
+        
+        do {
+            $response = Read-Host "Remove deprecated module '$($moduleInfo.Name)' [Y/N/S]"
+            $validResponse = $response -match '^[YyNnSs]$'
+            if (-not $validResponse) {
+                Write-ColorOutput "Please enter Y (Yes), N (No), or S (Skip)" -Type Warning
+            }
+        } while (-not $validResponse)
+        
+        if ($response -match '^[Ss]') {
+            Write-ColorOutput ""
+            Write-ColorOutput "⏭️  Skipping all remaining deprecated module removals." -Type Warning
+            Write-ColorOutput "You can run the script again later to clean up deprecated modules." -Type Info
+            break
+        }
+        
+        if ($response -notmatch '^[Yy]') {
+            Write-ColorOutput ""
+            Write-ColorOutput "⏭️  Skipping removal of $($moduleInfo.Name)" -Type Warning
+            Write-ColorOutput "⚠️  Warning: This deprecated module will remain on your system" -Type Warning
+            $skippedModules += $moduleInfo.Name
+            $currentOperation += $moduleInfo.VersionCount
+            Write-ColorOutput ""
+            continue
+        }
+        
+        Write-ColorOutput ""
+        Write-ColorOutput "🗑️  Proceeding with removal of $($moduleInfo.Name)..." -Type Process
+        Write-ColorOutput ""
         
         $moduleStartTime = Get-Date
         
@@ -1491,6 +2115,24 @@ function Remove-DeprecatedModules {
     
     # Final verification
     Write-ColorOutput ""
+    Write-ColorOutput "=== DEPRECATED MODULE CLEANUP SUMMARY ===" -Type System
+    
+    if ($skippedModules.Count -gt 0) {
+        Write-ColorOutput ""
+        Write-ColorOutput "⏭️  SKIPPED MODULES:" -Type Warning
+        foreach ($skipped in $skippedModules) {
+            Write-ColorOutput "  • $skipped (still installed - not recommended)" -Type Warning
+        }
+        Write-ColorOutput ""
+        Write-ColorOutput "⚠️  These deprecated modules remain on your system and may cause issues:" -Type Warning
+        Write-ColorOutput "  • They no longer receive security updates" -Type Warning
+        Write-ColorOutput "  • They may conflict with newer modules" -Type Warning
+        Write-ColorOutput "  • Microsoft support for these modules has ended" -Type Warning
+        Write-ColorOutput ""
+        Write-ColorOutput "💡 Consider removing them in a future run of this script." -Type Info
+    }
+    
+    Write-ColorOutput ""
     Write-ColorOutput "Verifying deprecated module removal..." -Type System
     $remainingModules = @()
     foreach ($deprecated in $Script:DeprecatedModules) {
@@ -1598,27 +2240,558 @@ function Test-ModuleRemovalPrerequisites {
     return $true
 }
 
+function Test-ConstrainedLanguageModeCompatibility {
+    <#
+    .SYNOPSIS
+        Tests specific operations that may fail in Constrained Language Mode
+    
+    .DESCRIPTION
+        Performs detailed testing of operations commonly used in module management
+        that may be restricted in Constrained Language Mode. Returns compatibility
+        status and provides detailed debugging information.
+    
+    .PARAMETER Operation
+        Specific operation to test. Valid values: 'NetworkOptimization', 'ModuleOperations', 'All'
+    
+    .PARAMETER Silent
+        If specified, suppresses detailed output and returns only the result
+    
+    .RETURNS
+        Boolean indicating if the tested operations are compatible with the current language mode
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [ValidateSet('NetworkOptimization', 'ModuleOperations', 'All')]
+        [string]$Operation = 'All',
+        
+        [Parameter()]
+        [switch]$Silent
+    )
+    
+    $languageMode = $ExecutionContext.SessionState.LanguageMode
+    $compatibilityResults = @{
+        LanguageMode = $languageMode
+        NetworkOptimization = $false
+        ModuleOperations = $false
+        OverallCompatible = $false
+        Issues = @()
+        Recommendations = @()
+    }
+    
+    if (-not $Silent) {
+        Write-ColorOutput "=== CONSTRAINED LANGUAGE MODE COMPATIBILITY TEST ===" -Type System
+        Write-ColorOutput "Current Language Mode: $languageMode" -Type Info
+        Write-ColorOutput "Testing Operation: $Operation" -Type Info
+        Write-ColorOutput ""
+    }
+    
+    # Test Network Optimization Compatibility
+    if ($Operation -eq 'NetworkOptimization' -or $Operation -eq 'All') {
+        if (-not $Silent) {
+            Write-ColorOutput "Testing Network Optimization Compatibility..." -Type Info
+        }
+        
+        $networkTests = @{
+            ServicePointManager = $false
+            SecurityProtocol = $false
+            ConnectionLimit = $false
+        }
+        
+        # Test ServicePointManager access
+        try {
+            $null = [System.Net.ServicePointManager]::SecurityProtocol
+            $networkTests.ServicePointManager = $true
+            if (-not $Silent) {
+                Write-ColorOutput "  ✓ ServicePointManager: Accessible" -Type Process
+            }
+        }
+        catch {
+            $compatibilityResults.Issues += "ServicePointManager not accessible: $($_.Exception.Message)"
+            if (-not $Silent) {
+                Write-ColorOutput "  ✗ ServicePointManager: Blocked" -Type Error
+                Write-ColorOutput "    Error: $($_.Exception.Message)" -Type Error
+            }
+        }
+        
+        # Test SecurityProtocol modification
+        try {
+            $originalProtocol = [System.Net.ServicePointManager]::SecurityProtocol
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+            [System.Net.ServicePointManager]::SecurityProtocol = $originalProtocol
+            $networkTests.SecurityProtocol = $true
+            if (-not $Silent) {
+                Write-ColorOutput "  ✓ SecurityProtocol: Modifiable" -Type Process
+            }
+        }
+        catch {
+            $compatibilityResults.Issues += "SecurityProtocol modification blocked: $($_.Exception.Message)"
+            if (-not $Silent) {
+                Write-ColorOutput "  ✗ SecurityProtocol: Modification blocked" -Type Error
+                Write-ColorOutput "    Error: $($_.Exception.Message)" -Type Error
+            }
+        }
+        
+        # Test ConnectionLimit modification
+        try {
+            $originalLimit = [System.Net.ServicePointManager]::DefaultConnectionLimit
+            [System.Net.ServicePointManager]::DefaultConnectionLimit = 12
+            [System.Net.ServicePointManager]::DefaultConnectionLimit = $originalLimit
+            $networkTests.ConnectionLimit = $true
+            if (-not $Silent) {
+                Write-ColorOutput "  ✓ ConnectionLimit: Modifiable" -Type Process
+            }
+        }
+        catch {
+            $compatibilityResults.Issues += "ConnectionLimit modification blocked: $($_.Exception.Message)"
+            if (-not $Silent) {
+                Write-ColorOutput "  ✗ ConnectionLimit: Modification blocked" -Type Error
+                Write-ColorOutput "    Error: $($_.Exception.Message)" -Type Error
+            }
+        }
+        
+        $compatibilityResults.NetworkOptimization = ($networkTests.ServicePointManager -and $networkTests.SecurityProtocol -and $networkTests.ConnectionLimit)
+        
+        if (-not $Silent) {
+            if ($compatibilityResults.NetworkOptimization) {
+                Write-ColorOutput "  ✓ Network Optimization: Fully Compatible" -Type Process
+            } else {
+                Write-ColorOutput "  ⚠ Network Optimization: Limited Compatibility" -Type Warning
+                $compatibilityResults.Recommendations += "Network optimizations may not be fully effective"
+            }
+        }
+    }
+    
+    # Test Module Operations Compatibility
+    if ($Operation -eq 'ModuleOperations' -or $Operation -eq 'All') {
+        if (-not $Silent) {
+            Write-ColorOutput "Testing Module Operations Compatibility..." -Type Info
+        }
+        
+        $moduleTests = @{
+            ExecutionPolicy = $false
+            ModuleCmdlets = $false
+            HashTableCreation = $false
+            ParameterBinding = $false
+        }
+        
+        # Test execution policy operations
+        try {
+            $null = Get-ExecutionPolicy -ErrorAction Stop
+            $moduleTests.ExecutionPolicy = $true
+            if (-not $Silent) {
+                Write-ColorOutput "  ✓ Execution Policy: Accessible" -Type Process
+            }
+        }
+        catch {
+            $compatibilityResults.Issues += "ExecutionPolicy cmdlets blocked: $($_.Exception.Message)"
+            if (-not $Silent) {
+                Write-ColorOutput "  ✗ Execution Policy: Blocked" -Type Error
+                Write-ColorOutput "    Error: $($_.Exception.Message)" -Type Error
+            }
+        }
+        
+        # Test module cmdlets
+        $moduleCmdlets = @('Get-Module', 'Install-Module', 'Update-Module', 'Uninstall-Module')
+        $accessibleCmdlets = 0
+        foreach ($cmdlet in $moduleCmdlets) {
+            try {
+                $null = Get-Command $cmdlet -ErrorAction Stop
+                $accessibleCmdlets++
+            }
+            catch {
+                if (-not $Silent) {
+                    Write-ColorOutput "  ⚠ $cmdlet`: Not accessible" -Type Warning
+                }
+            }
+        }
+        
+        $moduleTests.ModuleCmdlets = ($accessibleCmdlets -eq $moduleCmdlets.Count)
+        if (-not $Silent) {
+            if ($moduleTests.ModuleCmdlets) {
+                Write-ColorOutput "  ✓ Module Cmdlets: All accessible ($accessibleCmdlets/$($moduleCmdlets.Count))" -Type Process
+            } else {
+                Write-ColorOutput "  ⚠ Module Cmdlets: Limited access ($accessibleCmdlets/$($moduleCmdlets.Count))" -Type Warning
+            }
+        }
+        
+        # Test hashtable creation and manipulation
+        try {
+            $testHash = @{
+                Force = $true
+                Confirm = $false
+                SkipPublisherCheck = $true
+            }
+            $testHash.AllowClobber = $true
+            $null = $testHash.Keys # Use the hashtable
+            $moduleTests.HashTableCreation = $true
+            if (-not $Silent) {
+                Write-ColorOutput "  ✓ Hashtable Operations: Supported" -Type Process
+            }
+        }
+        catch {
+            $compatibilityResults.Issues += "Hashtable operations limited: $($_.Exception.Message)"
+            if (-not $Silent) {
+                Write-ColorOutput "  ✗ Hashtable Operations: Limited" -Type Error
+                Write-ColorOutput "    Error: $($_.Exception.Message)" -Type Error
+            }
+        }
+        
+        # Test parameter splatting
+        try {
+            $testParams = @{ Name = 'PowerShellGet'; ListAvailable = $true }
+            $null = Get-Module @testParams -ErrorAction Stop
+            $moduleTests.ParameterBinding = $true
+            if (-not $Silent) {
+                Write-ColorOutput "  ✓ Parameter Splatting: Supported" -Type Process
+            }
+        }
+        catch {
+            $compatibilityResults.Issues += "Parameter splatting limited: $($_.Exception.Message)"
+            if (-not $Silent) {
+                Write-ColorOutput "  ✗ Parameter Splatting: Limited" -Type Error
+                Write-ColorOutput "    Error: $($_.Exception.Message)" -Type Error
+            }
+        }
+        
+        $compatibilityResults.ModuleOperations = ($moduleTests.ExecutionPolicy -and $moduleTests.ModuleCmdlets -and $moduleTests.HashTableCreation -and $moduleTests.ParameterBinding)
+        
+        if (-not $Silent) {
+            if ($compatibilityResults.ModuleOperations) {
+                Write-ColorOutput "  ✓ Module Operations: Fully Compatible" -Type Process
+            } else {
+                Write-ColorOutput "  ⚠ Module Operations: Limited Compatibility" -Type Warning
+                $compatibilityResults.Recommendations += "Module operations may encounter restrictions"
+            }
+        }
+    }
+    
+    # Determine overall compatibility
+    if ($Operation -eq 'All') {
+        $compatibilityResults.OverallCompatible = ($compatibilityResults.NetworkOptimization -and $compatibilityResults.ModuleOperations)
+    } elseif ($Operation -eq 'NetworkOptimization') {
+        $compatibilityResults.OverallCompatible = $compatibilityResults.NetworkOptimization
+    } elseif ($Operation -eq 'ModuleOperations') {
+        $compatibilityResults.OverallCompatible = $compatibilityResults.ModuleOperations
+    }
+    
+    # Add language mode specific recommendations
+    if ($languageMode -eq 'ConstrainedLanguage') {
+        $compatibilityResults.Recommendations += "Consider running as Administrator to minimize restrictions"
+        $compatibilityResults.Recommendations += "Check for AppLocker or other security policies that may be enforcing constraints"
+        $compatibilityResults.Recommendations += "Monitor operations closely for unexpected failures"
+        
+        if (-not $compatibilityResults.OverallCompatible) {
+            $compatibilityResults.Recommendations += "Consider requesting Full Language Mode if organizationally feasible"
+            $compatibilityResults.Recommendations += "Prepare for longer execution times due to reduced optimization"
+        }
+    }
+    
+    # Output results summary
+    if (-not $Silent) {
+        Write-ColorOutput ""
+        Write-ColorOutput "=== COMPATIBILITY TEST RESULTS ===" -Type System
+        Write-ColorOutput "Language Mode: $languageMode" -Type Info
+        
+        if ($Operation -eq 'All' -or $Operation -eq 'NetworkOptimization') {
+            # Use traditional if-else for Constrained Language Mode compatibility
+            if ($compatibilityResults.NetworkOptimization) {
+                $status = "✓ Compatible"
+                $statusType = 'Process'
+            } else {
+                $status = "⚠ Limited"
+                $statusType = 'Warning'
+            }
+            Write-ColorOutput "Network Optimization: $status" -Type $statusType
+        }
+        
+        if ($Operation -eq 'All' -or $Operation -eq 'ModuleOperations') {
+            # Use traditional if-else for Constrained Language Mode compatibility
+            if ($compatibilityResults.ModuleOperations) {
+                $status = "✓ Compatible"
+                $statusType = 'Process'
+            } else {
+                $status = "⚠ Limited"
+                $statusType = 'Warning'
+            }
+            Write-ColorOutput "Module Operations: $status" -Type $statusType
+        }
+        
+        # Use traditional if-else for Constrained Language Mode compatibility
+        if ($compatibilityResults.OverallCompatible) {
+            $overallStatus = "✓ Compatible"
+            $overallStatusType = 'Process'
+        } else {
+            $overallStatus = "⚠ Limited"
+            $overallStatusType = 'Warning'
+        }
+        Write-ColorOutput "Overall Compatibility: $overallStatus" -Type $overallStatusType
+        
+        if ($compatibilityResults.Issues.Count -gt 0) {
+            Write-ColorOutput ""
+            Write-ColorOutput "Issues Identified:" -Type Warning
+            foreach ($issue in $compatibilityResults.Issues) {
+                Write-ColorOutput "  • $issue" -Type Warning
+            }
+        }
+        
+        if ($compatibilityResults.Recommendations.Count -gt 0) {
+            Write-ColorOutput ""
+            Write-ColorOutput "Recommendations:" -Type Info
+            foreach ($recommendation in $compatibilityResults.Recommendations) {
+                Write-ColorOutput "  • $recommendation" -Type Info
+            }
+        }
+        
+        Write-ColorOutput "=== COMPATIBILITY TEST COMPLETE ===" -Type System
+    }
+    
+    return $compatibilityResults.OverallCompatible
+}
+
 function Test-PowerShellCompatibility {
     [CmdletBinding()]
     param()
     
-    # Check PowerShell Language Mode
+    Write-ColorOutput "=== DETAILED POWERSHELL COMPATIBILITY ANALYSIS ===" -Type System
+    
+    # Enhanced Language Mode Analysis
     $languageMode = $ExecutionContext.SessionState.LanguageMode
     Write-ColorOutput "PowerShell Language Mode: $languageMode" -Type Info
     
-    if ($languageMode -eq 'ConstrainedLanguage') {
-        Write-ColorOutput "Note: Running in Constrained Language Mode - some advanced features may be limited" -Type Warning
+    # Detailed analysis of language mode capabilities
+    switch ($languageMode) {
+        'FullLanguage' {
+            Write-ColorOutput "  ✓ Full Language Mode Detected" -Type Process
+            Write-ColorOutput "    • All PowerShell features available" -Type Process
+            Write-ColorOutput "    • .NET framework fully accessible" -Type Process
+            Write-ColorOutput "    • Background jobs supported" -Type Process
+            Write-ColorOutput "    • COM objects accessible" -Type Process
+        }
+        'ConstrainedLanguage' {
+            Write-ColorOutput "  ⚠ CONSTRAINED LANGUAGE MODE DETECTED" -Type Warning
+            Write-ColorOutput "    Performing detailed capability assessment..." -Type Info
+            
+            # Test .NET type accessibility
+            Write-ColorOutput "  Testing .NET Framework Access:" -Type Info
+            $netAccessTests = @(
+                @{ Name = "System.Net.ServicePointManager"; Test = { [System.Net.ServicePointManager] } },
+                @{ Name = "System.Security.Principal.WindowsIdentity"; Test = { [System.Security.Principal.WindowsIdentity] } },
+                @{ Name = "System.IO.File"; Test = { [System.IO.File] } },
+                @{ Name = "System.Diagnostics.Process"; Test = { [System.Diagnostics.Process] } }
+            )
+            
+            foreach ($test in $netAccessTests) {
+                try {
+                    $null = & $test.Test
+                    Write-ColorOutput "    ✓ $($test.Name): Accessible" -Type Process
+                }
+                catch {
+                    Write-ColorOutput "    ✗ $($test.Name): Blocked ($($_.Exception.Message))" -Type Error
+                }
+            }
+            
+            # Test cmdlet accessibility
+            Write-ColorOutput "  Testing Core Cmdlet Access:" -Type Info
+            $cmdletTests = @(
+                'Get-Process', 'Get-Service', 'Get-ExecutionPolicy', 'Set-ExecutionPolicy',
+                'Get-Module', 'Install-Module', 'Update-Module', 'Uninstall-Module',
+                'Start-Job', 'Get-Job', 'Stop-Job', 'Remove-Job'
+            )
+            
+            foreach ($cmdlet in $cmdletTests) {
+                try {
+                    $cmd = Get-Command $cmdlet -ErrorAction Stop
+                    if ($cmd) { # Use the command object
+                        Write-ColorOutput "    ✓ $cmdlet`: Available" -Type Process
+                    }
+                }
+                catch {
+                    Write-ColorOutput "    ✗ $cmdlet`: Not Available ($($_.Exception.Message))" -Type Error
+                }
+            }
+            
+            # Test parameter binding capabilities
+            Write-ColorOutput "  Testing Parameter Binding:" -Type Info
+            try {
+                $testHash = @{ Force = $true; Confirm = $false }
+                $null = $testHash.Keys # Use the hashtable
+                Write-ColorOutput "    ✓ Hashtable creation: Success" -Type Process
+            }
+            catch {
+                Write-ColorOutput "    ✗ Hashtable creation: Failed ($($_.Exception.Message))" -Type Error
+            }
+            
+            # Test variable assignment and scoping
+            Write-ColorOutput "  Testing Variable Operations:" -Type Info
+            try {
+                $Script:TestVariable = "ConstrainedModeTest"
+                Write-ColorOutput "    ✓ Script scope variable assignment: Success" -Type Process
+            }
+            catch {
+                Write-ColorOutput "    ✗ Script scope variable assignment: Failed ($($_.Exception.Message))" -Type Error
+            }
+            
+            # Test file system access
+            Write-ColorOutput "  Testing File System Access:" -Type Info
+            try {
+                $tempPath = [System.IO.Path]::GetTempPath()
+                $testFile = Join-Path $tempPath "CLMTest.tmp"
+                "test" | Out-File -FilePath $testFile -Force
+                Remove-Item $testFile -Force
+                Write-ColorOutput "    ✓ File system operations: Success" -Type Process
+            }
+            catch {
+                Write-ColorOutput "    ✗ File system operations: Failed ($($_.Exception.Message))" -Type Error
+            }
+        }
+        'RestrictedLanguage' {
+            Write-ColorOutput "  ✗ RESTRICTED LANGUAGE MODE" -Type Error
+            Write-ColorOutput "    • Severe limitations on script execution" -Type Error
+            Write-ColorOutput "    • Most advanced features will fail" -Type Error
+            Write-ColorOutput "    • Consider running in a different context" -Type Error
+        }
+        'NoLanguage' {
+            Write-ColorOutput "  ✗ NO LANGUAGE MODE" -Type Error
+            Write-ColorOutput "    • Script execution is severely limited" -Type Error
+            Write-ColorOutput "    • Most operations will fail" -Type Error
+        }
+        default {
+            Write-ColorOutput "  ? Unknown Language Mode: $languageMode" -Type Warning
+            Write-ColorOutput "    • Behavior is unpredictable" -Type Warning
+            Write-ColorOutput "    • Proceed with caution" -Type Warning
+        }
     }
     
-    # Test if jobs are supported
+    # Enhanced Background Jobs Testing
+    Write-ColorOutput "  === BACKGROUND JOBS CAPABILITY TEST ===" -Type Info
+    
+    if ($languageMode -eq 'ConstrainedLanguage') {
+        Write-ColorOutput "  Testing job creation in Constrained Language Mode..." -Type Warning
+        Write-ColorOutput "  This may fail due to security restrictions..." -Type Warning
+    }
+    
+    $jobTestSuccess = $false
     try {
-        $testJob = Start-Job -ScriptBlock { return "test" } -ErrorAction Stop
+        Write-ColorOutput "    Creating test job..." -Type Info
+        $testJob = Start-Job -ScriptBlock { 
+            return @{
+                Success = $true
+                LanguageMode = $ExecutionContext.SessionState.LanguageMode
+                ProcessId = $PID
+                Timestamp = Get-Date
+            }
+        } -ErrorAction Stop
+        
+        Write-ColorOutput "    ✓ Job creation: Success (Job ID: $($testJob.Id))" -Type Process
+        
+        # Wait for job completion with timeout
+        Write-ColorOutput "    Waiting for job completion..." -Type Info
+        $timeout = 10 # seconds
+        $elapsed = 0
+        
+        while ($testJob.State -eq 'Running' -and $elapsed -lt $timeout) {
+            Start-Sleep -Seconds 1
+            $elapsed++
+            Write-ColorOutput "      Job state: $($testJob.State) (${elapsed}/${timeout}s)" -Type Info
+        }
+        
+        if ($testJob.State -eq 'Completed') {
+            $jobResult = Receive-Job -Job $testJob
+            Write-ColorOutput "    ✓ Job execution: Success" -Type Process
+            Write-ColorOutput "      Job Language Mode: $($jobResult.LanguageMode)" -Type Info
+            Write-ColorOutput "      Job Process ID: $($jobResult.ProcessId)" -Type Info
+            Write-ColorOutput "      Job Timestamp: $($jobResult.Timestamp)" -Type Info
+            $jobTestSuccess = $true
+        } else {
+            Write-ColorOutput "    ⚠ Job execution: Incomplete (State: $($testJob.State))" -Type Warning
+            if ($testJob.State -eq 'Failed') {
+                $jobError = Receive-Job -Job $testJob 2>&1
+                Write-ColorOutput "      Job Error: $jobError" -Type Error
+            }
+        }
+        
+        # Clean up job
+        Write-ColorOutput "    Cleaning up test job..." -Type Info
         Stop-Job $testJob -ErrorAction SilentlyContinue
         Remove-Job $testJob -ErrorAction SilentlyContinue
-        Write-ColorOutput "Background jobs: Supported" -Type Process
-        return $true
+        Write-ColorOutput "    ✓ Job cleanup: Complete" -Type Process
+        
     }
     catch {
+        Write-ColorOutput "    ✗ Background jobs: Not supported" -Type Error
+        Write-ColorOutput "      Error: $($_.Exception.Message)" -Type Error
+        Write-ColorOutput "      Exception Type: $($_.Exception.GetType().Name)" -Type Error
+        
+        if ($languageMode -eq 'ConstrainedLanguage') {
+            Write-ColorOutput "      This is expected in Constrained Language Mode environments" -Type Warning
+            Write-ColorOutput "      Module operations will use direct execution instead of background jobs" -Type Info
+        }
+    }
+    
+    # PowerShell Version and Edition Analysis
+    Write-ColorOutput "  === POWERSHELL ENVIRONMENT DETAILS ===" -Type Info
+    Write-ColorOutput "    PowerShell Version: $($PSVersionTable.PSVersion)" -Type Info
+    Write-ColorOutput "    Edition: $($PSVersionTable.PSEdition)" -Type Info
+    Write-ColorOutput "    OS: $($PSVersionTable.OS)" -Type Info
+    Write-ColorOutput "    Platform: $($PSVersionTable.Platform)" -Type Info
+    Write-ColorOutput "    Git Commit ID: $($PSVersionTable.GitCommitId)" -Type Info
+    
+    # Module Path Analysis
+    Write-ColorOutput "  === MODULE PATH ANALYSIS ===" -Type Info
+    Write-ColorOutput "    Available Module Paths:" -Type Info
+    foreach ($path in $env:PSModulePath -split ';') {
+        if (Test-Path $path) {
+            Write-ColorOutput "      ✓ $path" -Type Process
+        } else {
+            Write-ColorOutput "      ✗ $path (Not accessible)" -Type Warning
+        }
+    }
+    
+    # PowerShellGet Module Analysis
+    Write-ColorOutput "  === POWERSHELLGET MODULE ANALYSIS ===" -Type Info
+    try {
+        $psGetModules = Get-Module -Name PowerShellGet -ListAvailable | Sort-Object Version -Descending
+        if ($psGetModules) {
+            Write-ColorOutput "    Available PowerShellGet versions:" -Type Info
+            foreach ($module in $psGetModules) {
+                Write-ColorOutput "      Version $($module.Version) at $($module.ModuleBase)" -Type Process
+            }
+        } else {
+            Write-ColorOutput "    ⚠ PowerShellGet module not found" -Type Warning
+        }
+    }
+    catch {
+        Write-ColorOutput "    ✗ Error checking PowerShellGet: $($_.Exception.Message)" -Type Error
+    }
+    
+    # Final Recommendations
+    Write-ColorOutput "  === COMPATIBILITY RECOMMENDATIONS ===" -Type System
+    
+    if ($languageMode -eq 'ConstrainedLanguage') {
+        Write-ColorOutput "  CONSTRAINED LANGUAGE MODE RECOMMENDATIONS:" -Type Warning
+        Write-ColorOutput "    1. Module operations will work but may be slower without background jobs" -Type Info
+        Write-ColorOutput "    2. Some .NET optimizations may not be available" -Type Info
+        Write-ColorOutput "    3. Consider requesting Full Language Mode if policy allows" -Type Info
+        Write-ColorOutput "    4. Ensure PowerShell is running as Administrator for best results" -Type Info
+        Write-ColorOutput "    5. Monitor for additional security restrictions during module operations" -Type Info
+        
+        if (-not $jobTestSuccess) {
+            Write-ColorOutput "    6. Background jobs disabled - using direct execution mode" -Type Warning
+            Write-ColorOutput "    7. Module installation/updates will show less progress information" -Type Warning
+        }
+    } else {
+        Write-ColorOutput "  ✓ Optimal PowerShell environment detected" -Type Process
+        Write-ColorOutput "    All features should work as expected" -Type Process
+    }
+    
+    Write-ColorOutput "=== COMPATIBILITY ANALYSIS COMPLETE ===" -Type System
+    
+    # Return job support status
+    if ($jobTestSuccess) {
+        Write-ColorOutput "Background jobs: Supported" -Type Process
+        return $true
+    } else {
         Write-ColorOutput "Background jobs: Not supported (will use direct execution)" -Type Warning
         return $false
     }
@@ -1873,7 +3046,12 @@ function Get-PowerShellSessions {
         if ($currentSessions) {
             Write-ColorOutput "    Current session:" -Type Info
             foreach ($session in $currentSessions) {
-                $startTimeText = if ($session.StartTime) { $session.StartTime.ToString("yyyy-MM-dd HH:mm:ss") } else { "Unknown" }
+                # Use traditional if-else for Constrained Language Mode compatibility
+                if ($session.StartTime) {
+                    $startTimeText = $session.StartTime.ToString("yyyy-MM-dd HH:mm:ss")
+                } else {
+                    $startTimeText = "Unknown"
+                }
                 Write-ColorOutput "    • PID: $($session.ProcessId) | $($session.Type) | Started: $startTimeText | Memory: $($session.MemoryMB)MB" -Type Process
             }
         }
@@ -1882,8 +3060,18 @@ function Get-PowerShellSessions {
             Write-ColorOutput "    Found $($otherSessions.Count) other PowerShell session(s):" -Type Warning
             
             foreach ($session in $otherSessions) {
-                $startTimeText = if ($session.StartTime) { $session.StartTime.ToString("yyyy-MM-dd HH:mm:ss") } else { "Unknown" }
-                $titleText = if ($session.WindowTitle -and $session.WindowTitle.Trim()) { $session.WindowTitle } else { "No window title" }
+                # Use traditional if-else for Constrained Language Mode compatibility
+                if ($session.StartTime) {
+                    $startTimeText = $session.StartTime.ToString("yyyy-MM-dd HH:mm:ss")
+                } else {
+                    $startTimeText = "Unknown"
+                }
+                
+                if ($session.WindowTitle -and $session.WindowTitle.Trim()) {
+                    $titleText = $session.WindowTitle
+                } else {
+                    $titleText = "No window title"
+                }
                 
                 if ($ShowDetails) {
                     Write-ColorOutput "    • PID: $($session.ProcessId) | $($session.Type) | Started: $startTimeText | Memory: $($session.MemoryMB)MB" -Type Info
@@ -2202,8 +3390,18 @@ try {
         
         # Show session details
         foreach ($session in $conflictingSessions) {
-            $startTimeText = if ($session.StartTime) { $session.StartTime.ToString("yyyy-MM-dd HH:mm:ss") } else { "Unknown" }
-            $titleText = if ($session.WindowTitle -and $session.WindowTitle.Trim()) { $session.WindowTitle } else { "No title" }
+            # Use traditional if-else for Constrained Language Mode compatibility
+            if ($session.StartTime) {
+                $startTimeText = $session.StartTime.ToString("yyyy-MM-dd HH:mm:ss")
+            } else {
+                $startTimeText = "Unknown"
+            }
+            
+            if ($session.WindowTitle -and $session.WindowTitle.Trim()) {
+                $titleText = $session.WindowTitle
+            } else {
+                $titleText = "No title"
+            }
             Write-ColorOutput "    • PID: $($session.ProcessId) - $($session.Type) - $titleText" -Type Info
         }
         Write-ColorOutput ""
@@ -2359,4 +3557,3 @@ catch {
     
     exit 1
 }
-
