@@ -464,7 +464,8 @@ function Test-CoreModuleInstallation {
                 # Always use side-by-side installation for core modules to avoid conflicts
                 $coreModuleInUse = ($loadedModule -or ($ModuleName -in @('PackageManagement', 'PowerShellGet')))
                 
-                if ($coreModuleInUse) {                    Write-ColorOutput "    [Info] Core module '$ModuleName' detected as active/critical system module" -Type Info
+                if ($coreModuleInUse) {
+                    Write-ColorOutput "    [Info] Core module '$ModuleName' detected as active/critical system module" -Type Info
                     Write-ColorOutput "    Azure Best Practice: Using comprehensive conflict-free installation method" -Type Info
                     
                     try {
@@ -487,51 +488,50 @@ function Test-CoreModuleInstallation {
                         $ProgressPreference = 'SilentlyContinue'
                         $DebugPreference = 'SilentlyContinue'
                         
-                        try {
-                            $baseCoreUpdateParams = @{
-                                Name = $ModuleName
-                                Force = $true
-                                Confirm = $false
-                                Scope = 'AllUsers'
-                                Repository = 'PSGallery'
-                                ErrorAction = 'SilentlyContinue'
-                                WarningAction = 'SilentlyContinue'
-                                InformationAction = 'SilentlyContinue'
-                                # Allow side-by-side installation
-                                AllowPrerelease = $false
-                            }
-                            $coreUpdateParams = Get-ModuleSpecificParams -ModuleName $ModuleName -BaseParams $baseCoreUpdateParams
-                              # Install with complete output suppression (all 6 streams)
-                            $null = Install-Module @coreUpdateParams 2>$null 3>$null 4>$null 5>$null 6>$null
+                        $baseCoreUpdateParams = @{
+                            Name = $ModuleName
+                            Force = $true
+                            Confirm = $false
+                            Scope = 'AllUsers'
+                            Repository = 'PSGallery'
+                            ErrorAction = 'SilentlyContinue'
+                            WarningAction = 'SilentlyContinue'
+                            InformationAction = 'SilentlyContinue'
+                            AllowPrerelease = $false
+                        }
+                        $coreUpdateParams = Get-ModuleSpecificParams -ModuleName $ModuleName -BaseParams $baseCoreUpdateParams
+                        
+                        # Install with complete output suppression (all 6 streams)
+                        $installResult = Install-Module @coreUpdateParams 2>$null 3>$null 4>$null 5>$null 6>$null
+                        
+                        # Verify installation succeeded with enhanced checking
+                        Start-Sleep -Milliseconds 750  # Brief pause for file system operations
+                        $newVersion = Get-InstalledModule -Name $ModuleName -ErrorAction SilentlyContinue | 
+                                     Sort-Object Version -Descending | Select-Object -First 1
+                        
+                        if ($newVersion -and [version]$newVersion.Version -ge [version]$onlineVersion) {
+                            Write-ColorOutput "    ✅ Successfully installed $ModuleName version $($newVersion.Version)" -Type Process
+                            Write-ColorOutput "    💡 Azure Best Practice: New version ready for next PowerShell session" -Type Process
                             
-                            # Verify installation succeeded with enhanced checking
-                            Start-Sleep -Milliseconds 750  # Brief pause for file system operations
-                            $newVersion = Get-InstalledModule -Name $ModuleName -ErrorAction SilentlyContinue | 
-                                         Sort-Object Version -Descending | Select-Object -First 1
-                            
-                            if ($newVersion -and [version]$newVersion.Version -ge [version]$onlineVersion) {
-                                Write-ColorOutput "    ✅ Successfully installed $ModuleName version $($newVersion.Version)" -Type Process
-                                Write-ColorOutput "    💡 Azure Best Practice: New version ready for next PowerShell session" -Type Process
-                                
-                                # Show multiple versions confirmation
-                                $allVersions = Get-InstalledModule -Name $ModuleName -AllVersions -ErrorAction SilentlyContinue
-                                if ($allVersions -and $allVersions.Count -gt 1) {
-                                    Write-ColorOutput "    ℹ️ Multiple versions now installed (this is expected and correct)" -Type Info
-                                }
-                            } else {
-                                # Even if verification fails, the installation might have succeeded
-                                Write-ColorOutput "    ✅ Core module update completed using Azure best practices" -Type Process
-                                Write-ColorOutput "    💡 Changes will be active in new PowerShell sessions" -Type Process
+                            # Show multiple versions confirmation
+                            $allVersions = Get-InstalledModule -Name $ModuleName -AllVersions -ErrorAction SilentlyContinue
+                            if ($allVersions -and $allVersions.Count -gt 1) {
+                                Write-ColorOutput "    ℹ️ Multiple versions now installed (this is expected and correct)" -Type Info
                             }
                         }
-                        finally {
-                            # Always restore original preference settings
-                            $WarningPreference = $originalPreferences.Warning
-                            $VerbosePreference = $originalPreferences.Verbose
-                            $InformationPreference = $originalPreferences.Information
-                            $ProgressPreference = $originalPreferences.Progress
-                            $DebugPreference = $originalPreferences.Debug
+                        
+                        if (-not $newVersion -or [version]$newVersion.Version -lt [version]$onlineVersion) {
+                            # Even if verification fails, the installation might have succeeded
+                            Write-ColorOutput "    ✅ Core module update completed using Azure best practices" -Type Process
+                            Write-ColorOutput "    💡 Changes will be active in new PowerShell sessions" -Type Process
                         }
+                        
+                        # Always restore original preference settings
+                        $WarningPreference = $originalPreferences.Warning
+                        $VerbosePreference = $originalPreferences.Verbose
+                        $InformationPreference = $originalPreferences.Information
+                        $ProgressPreference = $originalPreferences.Progress
+                        $DebugPreference = $originalPreferences.Debug
                     }
                     catch {
                         $errorMessage = $_.Exception.Message
@@ -550,8 +550,17 @@ function Test-CoreModuleInstallation {
                             # Use the comprehensive conflict resolution function
                             Resolve-ModuleInUseConflict -ModuleName $ModuleName -ErrorMessage $errorMessage -OnlineVersion $onlineVersion
                         }
+                        
+                        # Always restore original preference settings even on error
+                        $WarningPreference = $originalPreferences.Warning
+                        $VerbosePreference = $originalPreferences.Verbose
+                        $InformationPreference = $originalPreferences.Information
+                        $ProgressPreference = $originalPreferences.Progress
+                        $DebugPreference = $originalPreferences.Debug
                     }
-                } else {
+                }
+                
+                if (-not $coreModuleInUse) {
                     # Module not loaded, can update normally
                     try {
                         Write-ColorOutput "    Updating core module: $ModuleName" -Type Process
@@ -697,7 +706,9 @@ function Get-ModuleSpecificParams {
         'Microsoft.Graph.Authentication',
         'Az',
         'Microsoft.WinGet.Client',
-        'MicrosoftTeams'
+        'MicrosoftTeams',
+        'PnP.PowerShell',
+        'Microsoft.Online.SharePoint.PowerShell'
     )
     
     # Modules that don't support -AcceptLicense
@@ -707,7 +718,9 @@ function Get-ModuleSpecificParams {
         'Microsoft.WinGet.Client',
         'Microsoft.Graph',
         'Microsoft.Graph.Authentication',
-        'MicrosoftTeams'
+        'MicrosoftTeams',
+        'PnP.PowerShell',
+        'Microsoft.Online.SharePoint.PowerShell'
     )
     
     # Modules that don't support -SkipPublisherCheck
@@ -719,7 +732,9 @@ function Get-ModuleSpecificParams {
         'Microsoft.Graph',
         'Microsoft.Graph.Authentication',
         'Az',
-        'MicrosoftTeams'
+        'MicrosoftTeams',
+        'PnP.PowerShell',
+        'Microsoft.Online.SharePoint.PowerShell'
     )
     
     # Start with base parameters
@@ -1280,7 +1295,7 @@ function Install-ModuleWithProgress {
             
             $actualTime = ((Get-Date) - $startTime).TotalSeconds
             Write-ColorOutput "    Successfully completed $Operation of $ModuleName" -Type Process
-            Write-ColorOutput "    Actual time: {0:N1} minutes" -f ($actualTime / 60) -Type Info
+            Write-ColorOutput ("    Actual time: {0:N1} minutes" -f ($actualTime / 60)) -Type Info
             
             # Additional feedback for constrained mode
             if ($languageMode -eq 'ConstrainedLanguage' -and ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph')) {
@@ -1293,7 +1308,7 @@ function Install-ModuleWithProgress {
         catch {
             $actualTime = ((Get-Date) - $startTime).TotalSeconds
             Write-ColorOutput "    Error during $Operation of $ModuleName`: $($_.Exception.Message)" -Type Error
-            Write-ColorOutput "    Time elapsed: {0:N1} minutes" -f ($actualTime / 60) -Type Info
+            Write-ColorOutput ("    Time elapsed: {0:N1} minutes" -f ($actualTime / 60)) -Type Info
             return $false
         }
     }
@@ -1364,13 +1379,13 @@ function Install-ModuleWithProgress {
             
             $actualTime = ((Get-Date) - $startTime).TotalSeconds
             Write-ColorOutput "    Successfully completed $Operation of $ModuleName" -Type Process
-            Write-ColorOutput "    Actual time: {0:N0} seconds" -f $actualTime -Type Info
+            Write-ColorOutput ("    Actual time: {0:N0} seconds" -f $actualTime) -Type Info
             return $true
         }
         catch {
             $actualTime = ((Get-Date) - $startTime).TotalSeconds
             Write-ColorOutput "    Error during $Operation of $ModuleName`: $($_.Exception.Message)" -Type Error
-            Write-ColorOutput "    Time elapsed: {0:N0} seconds" -f $actualTime -Type Info
+            Write-ColorOutput ("    Time elapsed: {0:N0} seconds" -f $actualTime) -Type Info
             return $false
         }
     }
@@ -1537,10 +1552,10 @@ function Install-ModuleWithProgress {
         # Enhanced completion message for constrained mode
         if ($isConstrainedLargeModule) {
             Write-ColorOutput "    ✅ $ModuleName processing complete in Constrained Language Mode" -Type Process
-            Write-ColorOutput "    Actual time: {0:N1} minutes" -f $actualMinutes -Type Info
+            Write-ColorOutput ("    Actual time: {0:N1} minutes" -f $actualMinutes) -Type Info
             Write-ColorOutput "    Extended time was due to security verification requirements" -Type Info
         } else {
-            Write-ColorOutput "    Actual time: {0:N1} minutes" -f $actualMinutes -Type Info
+            Write-ColorOutput ("    Actual time: {0:N1} minutes" -f $actualMinutes) -Type Info
         }
         
         # If significantly different from estimate, show note
@@ -1556,7 +1571,7 @@ function Install-ModuleWithProgress {
             if ($isConstrainedLargeModule -and $actualTime -gt $estimate.EstimatedTime) {
                 Write-ColorOutput "    Note: Extended time is normal for $ModuleName in Constrained Language Mode" -Type Info
             } else {
-                Write-ColorOutput "    Note: $Operation was {0:N0}% $variance than estimated" -f ([Math]::Abs(($actualTime - $estimate.EstimatedTime) / $estimate.EstimatedTime * 100)) -Type Info
+                Write-ColorOutput ("    Note: $Operation was {0:N0}% $variance than estimated" -f ([Math]::Abs(($actualTime - $estimate.EstimatedTime) / $estimate.EstimatedTime * 100))) -Type Info
             }
         }
         
