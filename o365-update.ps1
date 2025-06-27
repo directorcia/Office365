@@ -842,9 +842,9 @@ function Get-ModuleSpecificParams {
     .SYNOPSIS
         Gets module-specific installation parameters
       .DESCRIPTION
-        Returns appropriate parameters for Install-Module based on the specific module,
+        Returns appropriate parameters for Install-Module or Update-Module based on the specific module,
         as some modules don't support certain parameters like -AllowClobber, -AcceptLicense,
-        or -SkipPublisherCheck
+        or -SkipPublisherCheck. Note: Update-Module only supports a subset of Install-Module parameters.
     #>
     [CmdletBinding()]
     param(
@@ -852,11 +852,13 @@ function Get-ModuleSpecificParams {
         [string]$ModuleName,
         
         [Parameter()]
-        [hashtable]$BaseParams = @{}
+        [hashtable]$BaseParams = @{},
+        
+        [Parameter()]
+        [ValidateSet('Install', 'Update')]
+        [string]$Operation = 'Install'
     )    # Modules that don't support -AllowClobber
     $noAllowClobberModules = @(
-        'Microsoft.PowerApps.Administration.PowerShell',
-        'Microsoft.PowerApps.PowerShell',
         'ExchangeOnlineManagement',
         'Microsoft.Graph',
         'Microsoft.Graph.Authentication',
@@ -869,8 +871,6 @@ function Get-ModuleSpecificParams {
     
     # Modules that don't support -AcceptLicense
     $noAcceptLicenseModules = @(
-        'Microsoft.PowerApps.Administration.PowerShell',
-        'Microsoft.PowerApps.PowerShell',
         'Microsoft.WinGet.Client',
         'Microsoft.Graph',
         'Microsoft.Graph.Authentication',
@@ -881,8 +881,6 @@ function Get-ModuleSpecificParams {
     
     # Modules that don't support -SkipPublisherCheck
     $noSkipPublisherCheckModules = @(
-        'Microsoft.PowerApps.Administration.PowerShell',
-        'Microsoft.PowerApps.PowerShell',
         'Microsoft.WinGet.Client',
         'ExchangeOnlineManagement',
         'Microsoft.Graph',
@@ -893,8 +891,26 @@ function Get-ModuleSpecificParams {
         'Microsoft.Online.SharePoint.PowerShell'
     )
     
+    # Note: Microsoft.PowerApps modules were removed from the exclusion lists above
+    # because they actually REQUIRE -AllowClobber, -AcceptLicense, and -SkipPublisherCheck
+    # to install properly due to command name conflicts
+    
     # Start with base parameters
     $moduleParams = $BaseParams.Clone()
+    
+    # Remove Install-only parameters for Update-Module operations
+    # Update-Module doesn't support: AllowClobber, AcceptLicense, SkipPublisherCheck
+    if ($Operation -eq 'Update') {
+        $installOnlyParams = @('AllowClobber', 'AcceptLicense', 'SkipPublisherCheck')
+        foreach ($param in $installOnlyParams) {
+            if ($moduleParams.ContainsKey($param)) {
+                $moduleParams.Remove($param)
+                Write-Verbose "Removed $param parameter for Update-Module operation (not supported)"
+            }
+        }
+        Write-Verbose "Using Update-Module compatible parameters for $ModuleName"
+        return $moduleParams
+    }
     
     # Add or Remove AllowClobber based on module support
     if ($ModuleName -in $noAllowClobberModules) {
@@ -1332,7 +1348,15 @@ function Install-ModuleWithProgress {
                     if ($isConstrainedLargeModule) {
                         "Status: Updating $ModuleName... | Phase: Update Starting" | Out-File $progressFile -Append
                     }
-                    Update-Module -Name $ModuleName @InstallParams
+                    # Create update-specific parameters (remove install-only parameters)
+                    $updateParams = $InstallParams.Clone()
+                    $installOnlyParams = @('AllowClobber', 'AcceptLicense', 'SkipPublisherCheck')
+                    foreach ($param in $installOnlyParams) {
+                        if ($updateParams.ContainsKey($param)) {
+                            $updateParams.Remove($param)
+                        }
+                    }
+                    Update-Module -Name $ModuleName @updateParams
                     if ($isConstrainedLargeModule) {
                         "Phase: Update Complete - Starting Verification | Status: Verification may take several minutes" | Out-File $progressFile -Append
                     }
@@ -1429,15 +1453,15 @@ function Install-ModuleWithProgress {
                 }
                 'Update' {
                     # Use explicit parameter passing for constrained language mode compatibility
+                    # Note: Update-Module doesn't support AllowClobber, AcceptLicense, or SkipPublisherCheck
                     $updateArgs = @{
                         Name = $ModuleName
                         Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
                         Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
                         ErrorAction = 'Stop'
                     }
-                    if ($InstallParams.ContainsKey('AllowClobber')) { $updateArgs.AllowClobber = $InstallParams.AllowClobber }
-                    if ($InstallParams.ContainsKey('AcceptLicense')) { $updateArgs.AcceptLicense = $InstallParams.AcceptLicense }
-                    if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $updateArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
+                    # Only add Scope if present (Update-Module supports this)
+                    if ($InstallParams.ContainsKey('Scope')) { $updateArgs.Scope = $InstallParams.Scope }
                     
                     Update-Module @updateArgs
                 }
@@ -1523,15 +1547,15 @@ function Install-ModuleWithProgress {
                 }
                 'Update' {
                     # Use explicit parameter passing for constrained language mode compatibility
+                    # Note: Update-Module doesn't support AllowClobber, AcceptLicense, or SkipPublisherCheck
                     $updateArgs = @{
                         Name = $ModuleName
                         Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
                         Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
                         ErrorAction = 'Stop'
                     }
-                    if ($InstallParams.ContainsKey('AllowClobber')) { $updateArgs.AllowClobber = $InstallParams.AllowClobber }
-                    if ($InstallParams.ContainsKey('AcceptLicense')) { $updateArgs.AcceptLicense = $InstallParams.AcceptLicense }
-                    if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $updateArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
+                    # Only add Scope if present (Update-Module supports this)
+                    if ($InstallParams.ContainsKey('Scope')) { $updateArgs.Scope = $InstallParams.Scope }
                     
                     Update-Module @updateArgs
                 }
