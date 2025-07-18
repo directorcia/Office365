@@ -376,6 +376,7 @@ $Script:SkipCleanupPrompts = $false
 # Configuration variables
 $Script:MaxParallelOperations = 4
 $Script:TimeoutMinutes = 30
+$Script:JobsSupported = $false  # Force direct execution for better error handling
 
 function Write-ColorOutput {
     [CmdletBinding()]
@@ -1398,6 +1399,45 @@ function Install-ModuleWithProgress {
             if ($progressFile -and (Test-Path $progressFile)) {
                 "Error: $($_.Exception.Message) at $(Get-Date -Format 'HH:mm:ss')" | Out-File $progressFile -Append
             }
+            
+            # Enhanced error handling for AllowClobber conflicts in background jobs
+            $errorMessage = $_.Exception.Message
+            if ($errorMessage -like "*already available*" -or 
+                $errorMessage -like "*AllowClobber*" -or 
+                $errorMessage -like "*may override the existing commands*") {
+                
+                if ($progressFile -and (Test-Path $progressFile)) {
+                    "Retry: Command conflict detected - retrying with AllowClobber at $(Get-Date -Format 'HH:mm:ss')" | Out-File $progressFile -Append
+                }
+                
+                # Force AllowClobber for conflict resolution
+                try {
+                    if ($Operation -eq 'Install') {
+                        $retryParams = $InstallParams.Clone()
+                        $retryParams.AllowClobber = $true
+                        Install-Module -Name $ModuleName @retryParams
+                        
+                        if ($progressFile -and (Test-Path $progressFile)) {
+                            "Retry: Success with AllowClobber at $(Get-Date -Format 'HH:mm:ss')" | Out-File $progressFile -Append
+                        }
+                        
+                        return @{ Success = $true; Message = "$Operation completed successfully after retry" }
+                    } else {
+                        # Update-Module doesn't support AllowClobber
+                        if ($progressFile -and (Test-Path $progressFile)) {
+                            "Retry: Update-Module doesn't support AllowClobber - cannot retry" | Out-File $progressFile -Append
+                        }
+                        return @{ Success = $false; Message = "Update-Module conflict cannot be resolved - try uninstalling and reinstalling" }
+                    }
+                }
+                catch {
+                    if ($progressFile -and (Test-Path $progressFile)) {
+                        "Retry: Failed with error: $($_.Exception.Message)" | Out-File $progressFile -Append
+                    }
+                    return @{ Success = $false; Message = $_.Exception.Message }
+                }
+            }
+            
             return @{ Success = $false; Message = $_.Exception.Message }
         }
         finally {
@@ -1509,7 +1549,9 @@ function Install-ModuleWithProgress {
             $errorMessage = $_.Exception.Message
             
             # Enhanced error handling for AllowClobber conflicts
-            if ($errorMessage -like "*already available*" -and $errorMessage -like "*AllowClobber*") {
+            if ($errorMessage -like "*already available*" -or 
+                $errorMessage -like "*AllowClobber*" -or 
+                $errorMessage -like "*may override the existing commands*") {
                 Write-ColorOutput "    ⚠️ Command conflict detected for $ModuleName" -Type Warning
                 Write-ColorOutput "    💡 Retrying with enhanced conflict resolution..." -Type Info
                 
