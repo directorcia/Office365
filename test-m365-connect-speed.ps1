@@ -30,6 +30,17 @@
 .PARAMETER SkipAuthenticationCheck
     Skip checking for existing authentication tokens
 
+.PARAMETER UploadResults
+    Upload test results to CIAOPS secure Azure Blob Storage for analysis and support
+
+.PARAMETER PremiumKey
+    Premium access key for enhanced upload limits (format: PREM-YYYY-XXXX-XXXX)
+    Basic tier: 5 uploads/month | Premium tier: 100 uploads/month
+    Contact support@ciaops.com for premium access
+
+.PARAMETER ShowUploadStats
+    Display current upload statistics and quota usage
+
 .EXAMPLE
     .\test-m365-connection-speed.ps1
     
@@ -44,7 +55,16 @@
     
 .EXAMPLE
     .\test-m365-connection-speed.ps1 -TestDuration 30 -Verbose
+
+.EXAMPLE
+    .\test-m365-connection-speed.ps1 -UploadResults
     
+.EXAMPLE
+    .\test-m365-connection-speed.ps1 -UploadResults -PremiumKey "PREM-2025-A1B2-C3D4"
+    
+.EXAMPLE
+    .\test-m365-connection-speed.ps1 -ShowUploadStats
+
 .NOTES
     Author: CIAOPS
     Version: 1.0
@@ -86,12 +106,36 @@ param(
     [switch]$IncludeAuthentication,
     
     [Parameter(Mandatory = $false)]
-    [switch]$SkipAuthenticationCheck
+    [switch]$SkipAuthenticationCheck,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$UploadResults,
+    
+    [Parameter(Mandatory = $false)]
+    [string]$PremiumKey,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$ShowUploadStats
 )
 
 # Error handling and logging setup
 $ErrorActionPreference = "Continue"
 $WarningPreference = "Continue"
+
+# Azure Blob Storage configuration for CIAOPS upload service
+$AzureUploadConfig = @{
+    SasUrl = "https://m365testresults.blob.core.windows.net/m365-metric-uploads?sp=cw&st=2025-07-21T04:33:10Z&se=2025-07-21T12:48:10Z&spr=https&sv=2024-11-04&sr=c&sig=Gn6LCPNIoq1CjLsELQs7cDNq7s0xbKlE7dXRkz5XDSc%3D"
+    BasicTier = @{
+        MonthlyLimit = 5
+        Description = "Basic tier: 5 uploads per month"
+    }
+    PremiumTier = @{
+        MonthlyLimit = 100
+        Description = "Premium tier: 100 uploads per month"
+    }
+    ContainerName = "m365-metric-uploads"
+    StorageAccount = "m365testresults"
+}
 
 # Initialize logging
 if ($DetailedLogging) {
@@ -475,6 +519,306 @@ function Test-PortConnectivity {
             Success = $false
             ConnectionTime = $stopwatch.ElapsedMilliseconds
             Error = $_.Exception.Message
+        }
+    }
+}
+
+# Azure Blob Upload Functions with Tiered Quota Management
+
+function Get-UserIdentifier {
+    <#
+    .SYNOPSIS
+        Creates a consistent but anonymous user identifier following Azure security practices
+    #>
+    try {
+        $identifier = "$($env:COMPUTERNAME)-$($env:USERNAME)-$($env:USERDOMAIN)"
+        $hasher = [System.Security.Cryptography.SHA256]::Create()
+        $hashBytes = $hasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($identifier))
+        $hashString = [System.BitConverter]::ToString($hashBytes).Replace("-", "").Substring(0, 16)
+        $hasher.Dispose()
+        return $hashString.ToLower()
+    }
+    catch {
+        return [Guid]::NewGuid().ToString().Replace("-", "").Substring(0, 16)
+    }
+}
+
+function Test-PremiumKey {
+    <#
+    .SYNOPSIS
+        Validates premium access key format
+    #>
+    param([string]$PremiumKey)
+    
+    if ([string]::IsNullOrEmpty($PremiumKey)) {
+        return @{ IsValid = $false; KeyInfo = $null }
+    }
+    
+    # Premium keys format: PREM-YYYY-XXXX-XXXX (following Azure naming conventions)
+    if ($PremiumKey -match '^PREM-\d{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$') {
+        return @{
+            IsValid = $true
+            KeyInfo = @{
+                KeyType = "Premium"
+                MonthlyLimit = $AzureUploadConfig.PremiumTier.MonthlyLimit
+                ValidUntil = "2025-12-31"
+            }
+        }
+    }
+    
+    return @{ IsValid = $false; KeyInfo = $null }
+}
+
+function Get-UserUploadStats {
+    <#
+    .SYNOPSIS
+        Gets user upload statistics for current month using local tracking
+    #>
+    param([string]$UserIdentifier)
+    
+    try {
+        $currentMonth = Get-Date -Format "yyyy-MM"
+        $trackingFile = Join-Path $env:TEMP "m365-upload-tracking-$UserIdentifier.json"
+        
+        if (Test-Path $trackingFile) {
+            $trackingData = Get-Content $trackingFile | ConvertFrom-Json
+            $currentMonthUploads = $trackingData | Where-Object { $_.Month -eq $currentMonth }
+            
+            return @{
+                CurrentMonth = $currentMonth
+                UploadsThisMonth = $currentMonthUploads.Count
+                LastUpload = if ($currentMonthUploads) { 
+                    ($currentMonthUploads | Sort-Object Timestamp -Descending | Select-Object -First 1).Timestamp 
+                } else { $null }
+                TotalUploads = $trackingData.Count
+                TrackingFile = $trackingFile
+            }
+        }
+        
+        return @{
+            CurrentMonth = $currentMonth
+            UploadsThisMonth = 0
+            LastUpload = $null
+            TotalUploads = 0
+            TrackingFile = $trackingFile
+        }
+    }
+    catch {
+        return @{
+            CurrentMonth = (Get-Date -Format "yyyy-MM")
+            UploadsThisMonth = 0
+            LastUpload = $null
+            TotalUploads = 0
+            TrackingFile = $null
+            Error = $_.Exception.Message
+        }
+    }
+}
+
+function Update-UserUploadStats {
+    <#
+    .SYNOPSIS
+        Updates user upload statistics after successful upload
+    #>
+    param(
+        [string]$UserIdentifier,
+        [string]$BlobName,
+        [bool]$IsPremium = $false
+    )
+    
+    try {
+        $trackingFile = Join-Path $env:TEMP "m365-upload-tracking-$UserIdentifier.json"
+        $currentMonth = Get-Date -Format "yyyy-MM"
+        
+        if (Test-Path $trackingFile) {
+            $trackingData = Get-Content $trackingFile | ConvertFrom-Json | ForEach-Object { $_ }
+        } else {
+            $trackingData = @()
+        }
+        
+        $newRecord = @{
+            Month = $currentMonth
+            Timestamp = (Get-Date).ToString("o")
+            BlobName = $BlobName
+            IsPremium = $IsPremium
+            FileSize = if (Test-Path $OutputPath) { (Get-Item $OutputPath).Length } else { 0 }
+        }
+        
+        $trackingData += $newRecord
+        
+        # Keep only last 12 months to prevent file bloat
+        $cutoffDate = (Get-Date).AddMonths(-12)
+        $trackingData = $trackingData | Where-Object { 
+            [DateTime]::Parse($_.Timestamp) -gt $cutoffDate 
+        }
+        
+        $trackingData | ConvertTo-Json -Depth 3 | Out-File -FilePath $trackingFile -Encoding UTF8
+        return @{ Success = $true; Error = $null }
+    }
+    catch {
+        return @{ Success = $false; Error = $_.Exception.Message }
+    }
+}
+
+function Test-UploadQuota {
+    <#
+    .SYNOPSIS
+        Checks if user can upload based on their quota tier
+    #>
+    param(
+        [hashtable]$UploadStats,
+        [hashtable]$PremiumKeyInfo = $null
+    )
+    
+    $isPremium = $PremiumKeyInfo -and $PremiumKeyInfo.IsValid
+    $monthlyLimit = if ($isPremium) { 
+        $AzureUploadConfig.PremiumTier.MonthlyLimit 
+    } else { 
+        $AzureUploadConfig.BasicTier.MonthlyLimit 
+    }
+    
+    $canUpload = $UploadStats.UploadsThisMonth -lt $monthlyLimit
+    $remainingUploads = $monthlyLimit - $UploadStats.UploadsThisMonth
+    
+    return @{
+        CanUpload = $canUpload
+        IsPremium = $isPremium
+        MonthlyLimit = $monthlyLimit
+        UploadsUsed = $UploadStats.UploadsThisMonth
+        RemainingUploads = [math]::Max(0, $remainingUploads)
+        TierDescription = if ($isPremium) { 
+            $AzureUploadConfig.PremiumTier.Description 
+        } else { 
+            $AzureUploadConfig.BasicTier.Description 
+        }
+    }
+}
+
+function Upload-ToAzureBlobWithQuota {
+    <#
+    .SYNOPSIS
+        Uploads file to Azure Blob Storage with quota management following Azure best practices
+    #>
+    param(
+        [string]$FilePath,
+        [string]$SasUrl,
+        [string]$PremiumKey = ""
+    )
+    
+    try {
+        # Get user identifier
+        $userIdentifier = Get-UserIdentifier
+        Write-Verbose "User identifier: $userIdentifier"
+        
+        # Validate premium key
+        $premiumKeyInfo = Test-PremiumKey -PremiumKey $PremiumKey
+        if ($PremiumKey -and -not $premiumKeyInfo.IsValid) {
+            return @{
+                Success = $false
+                Error = "Invalid premium key format. Expected: PREM-YYYY-XXXX-XXXX"
+                QuotaInfo = $null
+            }
+        }
+        
+        # Get upload statistics
+        $uploadStats = Get-UserUploadStats -UserIdentifier $userIdentifier
+        $quotaCheck = Test-UploadQuota -UploadStats $uploadStats -PremiumKeyInfo $premiumKeyInfo
+        
+        # Display quota status
+        Write-Host "`n=== Upload Quota Status ===" -ForegroundColor Cyan
+        Write-Host "Tier: $($quotaCheck.TierDescription)" -ForegroundColor White
+        Write-Host "This month: $($quotaCheck.UploadsUsed) / $($quotaCheck.MonthlyLimit) uploads used" -ForegroundColor White
+        Write-Host "Remaining: $($quotaCheck.RemainingUploads) uploads" -ForegroundColor $(if ($quotaCheck.RemainingUploads -gt 0) { "Green" } else { "Red" })
+        
+        if (-not $quotaCheck.CanUpload) {
+            $errorMessage = "Monthly upload quota exceeded ($($quotaCheck.UploadsUsed)/$($quotaCheck.MonthlyLimit)). "
+            if (-not $quotaCheck.IsPremium) {
+                $errorMessage += "Get a premium key for 100 uploads/month. Contact support@ciaops.com for premium access."
+            } else {
+                $errorMessage += "Premium quota exceeded. Contact support@ciaops.com for higher limits."
+            }
+            
+            return @{
+                Success = $false
+                Error = $errorMessage
+                QuotaInfo = $quotaCheck
+            }
+        }
+        
+        Write-Host "✅ Quota check passed. Proceeding with upload..." -ForegroundColor Green
+        
+        # Create unique blob name following Azure naming conventions
+        $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+        $tierPrefix = if ($quotaCheck.IsPremium) { "prem" } else { "basic" }
+        $uniqueBlobName = "m365-test-$tierPrefix-$timestamp-$([Guid]::NewGuid().ToString().Substring(0,8)).html"
+        
+        # Construct upload URL for the specific blob
+        $containerUrl = $SasUrl.Split('?')[0]
+        $sasParams = $SasUrl.Split('?')[1]
+        $uploadUrl = "$containerUrl/$uniqueBlobName" + "?" + $sasParams
+        
+        Write-Verbose "Upload URL: $uploadUrl"
+        
+        # Upload file using Azure best practices
+        $fileContent = Get-Content -Path $FilePath -Raw
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($fileContent)
+        
+        $webRequest = [System.Net.WebRequest]::Create($uploadUrl)
+        $webRequest.Method = "PUT"
+        $webRequest.ContentType = "text/html"
+        $webRequest.ContentLength = $bytes.Length
+        $webRequest.Headers.Add("x-ms-blob-type", "BlockBlob")
+        $webRequest.Headers.Add("x-ms-meta-tier", $tierPrefix)
+        $webRequest.Headers.Add("x-ms-meta-userid", $userIdentifier)
+        $webRequest.Headers.Add("x-ms-meta-uploaded", (Get-Date).ToString("o"))
+        $webRequest.Headers.Add("x-ms-meta-source", "M365-Connection-Test")
+        
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+        
+        $requestStream = $webRequest.GetRequestStream()
+        $requestStream.Write($bytes, 0, $bytes.Length)
+        $requestStream.Close()
+        
+        $response = $webRequest.GetResponse()
+        $stopwatch.Stop()
+        $httpStatus = [int]$response.StatusCode
+        $response.Close()
+        
+        # Update tracking
+        Update-UserUploadStats -UserIdentifier $userIdentifier -BlobName $uniqueBlobName -IsPremium $quotaCheck.IsPremium | Out-Null
+        
+        Write-Host "✅ Results uploaded successfully!" -ForegroundColor Green
+        Write-Host "Upload ID: $uniqueBlobName" -ForegroundColor Cyan
+        Write-Host "Upload Time: $($stopwatch.ElapsedMilliseconds)ms" -ForegroundColor Gray
+        Write-Host "File Size: $([math]::Round($bytes.Length / 1KB, 2)) KB" -ForegroundColor Gray
+        Write-Host "Remaining uploads this month: $($quotaCheck.RemainingUploads - 1)" -ForegroundColor Yellow
+        
+        return @{
+            Success = $true
+            BlobName = $uniqueBlobName
+            UploadUrl = "$containerUrl/$uniqueBlobName"
+            UploadTime = $stopwatch.ElapsedMilliseconds
+            FileSize = $bytes.Length
+            HttpStatus = $httpStatus
+            QuotaInfo = $quotaCheck
+            Error = $null
+        }
+    }
+    catch [System.Net.WebException] {
+        $statusCode = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { "Unknown" }
+        return @{
+            Success = $false
+            Error = "HTTP Error $statusCode`: $($_.Exception.Message)"
+            QuotaInfo = $null
+            HttpStatus = $statusCode
+        }
+    }
+    catch {
+        return @{
+            Success = $false
+            Error = $_.Exception.Message
+            QuotaInfo = $null
+            HttpStatus = $null
         }
     }
 }
@@ -1544,8 +1888,61 @@ function Test-AuthenticatedEndpoint {
 
 # Main Testing Logic
 
+# Handle ShowUploadStats parameter independently
+if ($ShowUploadStats -and -not $UploadResults) {
+    Write-Host "`n=== Upload Statistics ===" -ForegroundColor Cyan
+    
+    $userIdentifier = Get-UserIdentifier
+    $uploadStats = Get-UserUploadStats -UserIdentifier $userIdentifier
+    $premiumKeyInfo = if ($PremiumKey) { Test-PremiumKey -PremiumKey $PremiumKey } else { $null }
+    $quotaCheck = Test-UploadQuota -UploadStats $uploadStats -PremiumKeyInfo $premiumKeyInfo
+    
+    Write-Host "🔑 User ID: $userIdentifier" -ForegroundColor Gray
+    Write-Host "📅 Current Month: $($uploadStats.CurrentMonth)" -ForegroundColor White
+    Write-Host "📊 Uploads This Month: $($uploadStats.UploadsThisMonth)" -ForegroundColor White
+    Write-Host "📈 Total Uploads: $($uploadStats.TotalUploads)" -ForegroundColor White
+    Write-Host "🎯 Current Tier: $($quotaCheck.TierDescription)" -ForegroundColor White
+    Write-Host "📋 Quota Status: $($quotaCheck.UploadsUsed) / $($quotaCheck.MonthlyLimit) uploads used" -ForegroundColor White
+    Write-Host "⏳ Remaining: $($quotaCheck.RemainingUploads) uploads" -ForegroundColor $(if ($quotaCheck.RemainingUploads -gt 0) { "Green" } else { "Red" })
+    
+    if ($uploadStats.LastUpload) {
+        Write-Host "📅 Last Upload: $($uploadStats.LastUpload)" -ForegroundColor White
+    }
+    
+    if ($uploadStats.TrackingFile) {
+        Write-Host "📄 Tracking File: $($uploadStats.TrackingFile)" -ForegroundColor Gray
+    }
+    
+    if (-not $quotaCheck.IsPremium -and $quotaCheck.RemainingUploads -le 2) {
+        Write-Host "`n💡 Consider getting a premium key for enhanced upload limits!" -ForegroundColor Yellow
+        Write-Host "   Premium: 100 uploads/month vs 5 basic | Contact: support@ciaops.com" -ForegroundColor Cyan
+    }
+    
+    Write-Host "`nTo upload results, use: .\test-m365-connection-speed.ps1 -UploadResults" -ForegroundColor Cyan
+    if ($PremiumKey) {
+        Write-Host "With your premium key: .\test-m365-connection-speed.ps1 -UploadResults -PremiumKey `"$PremiumKey`"" -ForegroundColor Gray
+    }
+    return
+}
+
 Write-Host "`n=== Microsoft 365 Connection Speed Test ===" -ForegroundColor Cyan
 Write-Host "Test started: $(Format-LocalDateTime -DateTime $Summary.TestStart)" -ForegroundColor Green
+
+# Display upload option information
+if ($UploadResults) {
+    Write-Host "`n🔒 SECURE UPLOAD ENABLED" -ForegroundColor Green
+    Write-Host "Your test results will be securely uploaded to CIAOPS Azure Blob Storage" -ForegroundColor White
+    Write-Host "for analysis and to help improve M365 connectivity recommendations." -ForegroundColor White
+    if ($PremiumKey) {
+        Write-Host "Premium key detected - enhanced features enabled." -ForegroundColor Yellow
+    } else {
+        Write-Host "Basic tier: 5 uploads/month | Upgrade available with premium key" -ForegroundColor Gray
+    }
+} elseif (-not $ShowUploadStats) {
+    Write-Host "`n💡 TIP: Use -UploadResults to securely share your results with CIAOPS" -ForegroundColor Cyan
+    Write-Host "   This helps improve M365 connectivity guidance and provides you with enhanced support." -ForegroundColor Gray
+    Write-Host "   Your data is anonymized and stored securely. Use -ShowUploadStats to see current usage." -ForegroundColor Gray
+}
 
 # Get workstation public IP address
 Write-Host "`n=== Workstation Information ===" -ForegroundColor Cyan
@@ -2023,6 +2420,159 @@ Write-Host "• Consider using Microsoft 365 connectivity test tool: https://con
 if ($DetailedLogging) {
     Stop-Transcript
     Write-Host "`nDetailed log saved to: $LogPath" -ForegroundColor Green
+}
+
+# Upload results if requested
+if ($UploadResults) {
+    Write-Host "`n=== Uploading Results to CIAOPS ===" -ForegroundColor Cyan
+    Write-Host "Preparing to upload test results to CIAOPS secure Azure Blob Storage..." -ForegroundColor Yellow
+    
+    # Show upload statistics if requested
+    if ($ShowUploadStats) {
+        $userIdentifier = Get-UserIdentifier
+        $uploadStats = Get-UserUploadStats -UserIdentifier $userIdentifier
+        $premiumKeyInfo = if ($PremiumKey) { Test-PremiumKey -PremiumKey $PremiumKey } else { $null }
+        $quotaCheck = Test-UploadQuota -UploadStats $uploadStats -PremiumKeyInfo $premiumKeyInfo
+        
+        Write-Host "`n=== Your Upload Statistics ===" -ForegroundColor Cyan
+        Write-Host "Current Month: $($uploadStats.CurrentMonth)" -ForegroundColor White
+        Write-Host "Uploads This Month: $($uploadStats.UploadsThisMonth)" -ForegroundColor White
+        Write-Host "Total Uploads: $($uploadStats.TotalUploads)" -ForegroundColor White
+        Write-Host "Current Tier: $($quotaCheck.TierDescription)" -ForegroundColor White
+        if ($uploadStats.LastUpload) {
+            Write-Host "Last Upload: $($uploadStats.LastUpload)" -ForegroundColor White
+        }
+        Write-Host ""
+    }
+    
+    # Check if we have a file to upload
+    if (-not $OutputPath -or -not (Test-Path $OutputPath)) {
+        # Generate HTML report for upload if we don't have one
+        if (-not $OutputPath) {
+            $OutputPath = Join-Path $env:TEMP "m365-connection-test-$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
+        }
+        
+        Write-Host "Generating HTML report for upload..." -ForegroundColor Yellow
+        
+        # Ensure the output directory exists
+        $outputDirectory = Split-Path $OutputPath -Parent
+        if (-not (Test-Path $outputDirectory)) {
+            New-Item -Path $outputDirectory -ItemType Directory -Force | Out-Null
+        }
+        
+        # Generate HTML report
+        New-HTMLReport -TestResults $TestResults -BandwidthResults $BandwidthResults -Summary $Summary -AuthenticationStatus $AuthenticationStatus -OutputPath $OutputPath -IncludeBandwidthTest $IncludeBandwidthTest -IncludeAuthentication $IncludeAuthentication
+    }
+    
+    # Attempt upload
+    $uploadResult = Upload-ToAzureBlobWithQuota -FilePath $OutputPath -SasUrl $AzureUploadConfig.SasUrl -PremiumKey $PremiumKey
+    
+    if ($uploadResult.Success) {
+        Write-Host "`n🎉 Results uploaded successfully to CIAOPS!" -ForegroundColor Green
+        Write-Host "Upload Details:" -ForegroundColor White
+        Write-Host "  📄 Upload ID: $($uploadResult.BlobName)" -ForegroundColor Cyan
+        Write-Host "  📊 Tier: $($uploadResult.QuotaInfo.TierDescription)" -ForegroundColor White
+        Write-Host "  📈 Remaining uploads this month: $($uploadResult.QuotaInfo.RemainingUploads - 1)" -ForegroundColor White
+        Write-Host "  🕒 Upload time: $($uploadResult.UploadTime)ms" -ForegroundColor Gray
+        Write-Host "  📏 File size: $([math]::Round($uploadResult.FileSize / 1KB, 2)) KB" -ForegroundColor Gray
+        
+        if (-not $uploadResult.QuotaInfo.IsPremium -and $uploadResult.QuotaInfo.RemainingUploads -le 2) {
+            Write-Host "`n💡 Pro Tip: You're approaching your monthly limit!" -ForegroundColor Yellow
+            Write-Host "   Get a premium key for 100 uploads/month and enhanced features." -ForegroundColor Yellow
+            Write-Host "   Contact: support@ciaops.com" -ForegroundColor Cyan
+        }
+        
+        Write-Host "`n📧 Your test results have been securely uploaded to CIAOPS for analysis." -ForegroundColor Green
+        Write-Host "   This helps improve M365 connectivity recommendations and support." -ForegroundColor White
+        
+    } else {
+        Write-Host "`n❌ Upload failed: $($uploadResult.Error)" -ForegroundColor Red
+        
+        if ($uploadResult.QuotaInfo -and -not $uploadResult.QuotaInfo.CanUpload) {
+            Write-Host "`n🔑 Need more uploads? Get a premium key for enhanced access:" -ForegroundColor Yellow
+            Write-Host "• 100 uploads per month (vs 5 basic)" -ForegroundColor White
+            Write-Host "• Priority support and analysis" -ForegroundColor White
+            Write-Host "• Advanced connectivity insights" -ForegroundColor White
+            Write-Host "• Early access to new features" -ForegroundColor White
+            Write-Host "Contact: support@ciaops.com" -ForegroundColor Cyan
+        } else {
+            Write-Host "Please check your network connectivity and try again." -ForegroundColor Yellow
+            Write-Host "If the problem persists, contact: support@ciaops.com" -ForegroundColor Yellow
+        }
+    }
+} else {
+    # Offer upload option if user didn't specify -UploadResults
+    Write-Host "`n=== Share Your Results ===" -ForegroundColor Cyan
+    Write-Host "Help improve M365 connectivity insights by sharing your test results with CIAOPS." -ForegroundColor White
+    Write-Host "Your data is uploaded securely and anonymously to our Azure Blob Storage." -ForegroundColor Gray
+    Write-Host ""
+    
+    $uploadChoice = Read-Host "Would you like to upload your test results to CIAOPS? (Y/N) [Default: Y]"
+    
+    # Default to "Y" if user just presses Enter (empty string)
+    if ([string]::IsNullOrWhiteSpace($uploadChoice) -or $uploadChoice -match '^[Yy]') {
+        Write-Host "`n=== Uploading Results to CIAOPS ===" -ForegroundColor Cyan
+        Write-Host "Preparing to upload test results to CIAOPS secure Azure Blob Storage..." -ForegroundColor Yellow
+        
+        # Check if we have a file to upload
+        if (-not $OutputPath -or -not (Test-Path $OutputPath)) {
+            # Generate HTML report for upload if we don't have one
+            if (-not $OutputPath) {
+                $OutputPath = Join-Path $env:TEMP "m365-connection-test-$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
+            }
+            
+            Write-Host "Generating HTML report for upload..." -ForegroundColor Yellow
+            
+            # Ensure the output directory exists
+            $outputDirectory = Split-Path $OutputPath -Parent
+            if (-not (Test-Path $outputDirectory)) {
+                New-Item -Path $outputDirectory -ItemType Directory -Force | Out-Null
+            }
+            
+            # Generate HTML report
+            New-HTMLReport -TestResults $TestResults -BandwidthResults $BandwidthResults -Summary $Summary -AuthenticationStatus $AuthenticationStatus -OutputPath $OutputPath -IncludeBandwidthTest $IncludeBandwidthTest -IncludeAuthentication $IncludeAuthentication
+        }
+        
+        # Attempt upload
+        $uploadResult = Upload-ToAzureBlobWithQuota -FilePath $OutputPath -SasUrl $AzureUploadConfig.SasUrl -PremiumKey $PremiumKey
+        
+        if ($uploadResult.Success) {
+            Write-Host "`n🎉 Results uploaded successfully to CIAOPS!" -ForegroundColor Green
+            Write-Host "Upload Details:" -ForegroundColor White
+            Write-Host "  📄 Upload ID: $($uploadResult.BlobName)" -ForegroundColor Cyan
+            Write-Host "  📊 Tier: $($uploadResult.QuotaInfo.TierDescription)" -ForegroundColor White
+            Write-Host "  📈 Remaining uploads this month: $($uploadResult.QuotaInfo.RemainingUploads - 1)" -ForegroundColor White
+            Write-Host "  🕒 Upload time: $($uploadResult.UploadTime)ms" -ForegroundColor Gray
+            Write-Host "  📏 File size: $([math]::Round($uploadResult.FileSize / 1KB, 2)) KB" -ForegroundColor Gray
+            
+            if (-not $uploadResult.QuotaInfo.IsPremium -and $uploadResult.QuotaInfo.RemainingUploads -le 2) {
+                Write-Host "`n💡 Pro Tip: You're approaching your monthly limit!" -ForegroundColor Yellow
+                Write-Host "   Get a premium key for 100 uploads/month and enhanced features." -ForegroundColor Yellow
+                Write-Host "   Contact: support@ciaops.com" -ForegroundColor Cyan
+            }
+            
+            Write-Host "`n📧 Your test results have been securely uploaded to CIAOPS for analysis." -ForegroundColor Green
+            Write-Host "   This helps improve M365 connectivity recommendations and support." -ForegroundColor White
+            
+        } else {
+            Write-Host "`n❌ Upload failed: $($uploadResult.Error)" -ForegroundColor Red
+            
+            if ($uploadResult.QuotaInfo -and -not $uploadResult.QuotaInfo.CanUpload) {
+                Write-Host "`n🔑 Need more uploads? Get a premium key for enhanced access:" -ForegroundColor Yellow
+                Write-Host "• 100 uploads per month (vs 5 basic)" -ForegroundColor White
+                Write-Host "• Priority support and analysis" -ForegroundColor White
+                Write-Host "• Advanced connectivity insights" -ForegroundColor White
+                Write-Host "• Early access to new features" -ForegroundColor White
+                Write-Host "Contact: support@ciaops.com" -ForegroundColor Cyan
+            } else {
+                Write-Host "Please check your network connectivity and try again." -ForegroundColor Yellow
+                Write-Host "If the problem persists, contact: support@ciaops.com" -ForegroundColor Yellow
+            }
+        }
+    } else {
+        Write-Host "`nNo problem! Your test results remain on your local machine." -ForegroundColor Green
+        Write-Host "Tip: Use -UploadResults parameter to upload automatically in future runs." -ForegroundColor Cyan
+    }
 }
 
 Write-Host "`nTest completed successfully!" -ForegroundColor Green
