@@ -113,7 +113,7 @@ $WarningPreference = "Continue"
 
 # Azure Blob Storage configuration for CIAOPS upload service
 $AzureUploadConfig = @{
-    SasUrl = "https://m365testresults.blob.core.windows.net/m365-metric-uploads?sp=cw&st=2025-07-21T04:33:10Z&se=2025-07-21T12:48:10Z&spr=https&sv=2024-11-04&sr=c&sig=Gn6LCPNIoq1CjLsELQs7cDNq7s0xbKlE7dXRkz5XDSc%3D"
+    SasUrl = "https://m365testresults.blob.core.windows.net/m365-metric-uploads?sp=cw&st=2025-07-21T22:44:29Z&se=2027-03-01T05:59:29Z&spr=https&sv=2024-11-04&sr=c&sig=VW2DQRwcublyIkByKae7xgcgQwk7SEVbcD3NngPR4bg%3D"
     ContainerName = "m365-metric-uploads"
     StorageAccount = "m365testresults"
 }
