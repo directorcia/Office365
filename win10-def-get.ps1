@@ -7,6 +7,9 @@
     remediation actions, signature / engine versions (optionally comparing to Microsoft published latest),
     and basic Device Guard / Credential Guard registry configuration.
 
+    This script includes enhanced detection methods for enterprise security features like EDR in Block Mode,
+    Tamper Protection, and Credential Guard that may show as "Unknown" in enterprise environments.
+
     Provides multiple output modes:
       - Console: Colored console summary (default)
       - Plain: Plain text (no colors)
@@ -15,6 +18,27 @@
       - Csv: Exports to CSV format
       - Html: Creates HTML report with styling
       - Xml: Exports to XML using Export-Clixml
+
+.NOTES
+    Manual Verification Commands (run in elevated PowerShell):
+    
+    # Check MDE onboarding status
+    Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Advanced Threat Protection\Status' | Select-Object OnboardingState, LastConnected, OrgId, SenseVersion
+    Get-Service -Name 'Sense', 'WdFilter' | Select-Object Name, Status, StartType
+    
+    # Check Tamper Protection directly
+    Get-MpComputerStatus | Select-Object IsTamperProtected, TamperProtectionSource
+    
+    # Check Credential Guard status
+    Get-CimInstance -ClassName Win32_DeviceGuard | Select-Object SecurityServicesConfigured, SecurityServicesRunning
+    
+    # Check VBS status
+    Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\DeviceGuard' | Select-Object EnableVirtualizationBasedSecurity, RequirePlatformSecurityFeatures
+    
+    # Check Device Health Attestation
+    Get-Service -Name 'DeviceHealthAttestationService' -ErrorAction SilentlyContinue | Select-Object Status, StartType
+    Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DeviceHealthAttestation' -ErrorAction SilentlyContinue
+    Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\DeviceHealthAttestation' -ErrorAction SilentlyContinue
 
 .PARAMETER Quiet
     Suppress standard informational output (only warnings/errors). Still returns object if OutputMode supports it.
@@ -455,46 +479,415 @@ try {
     }
 } catch { Write-KV -Label 'Firewall Status' -Value 'Unknown' -State Warn }
 
-# Exploit Protection (system settings)
+# Enhanced Exploit Protection Detection
 try {
-    $epSettings = Get-ProcessMitigation -System -ErrorAction Stop
-    $epOn = $epSettings.Dep | Where-Object { $_.Enable } | Measure-Object | Select-Object -ExpandProperty Count
-    Write-KV -Label 'Exploit Protection (DEP)' -Value (if($epOn){'Enabled'}else{'Disabled'}) -State (if($epOn){'Good'}else{'Warn'})
-} catch { Write-KV -Label 'Exploit Protection' -Value 'Unknown' -State Warn }
+    $epStatus = 'Unknown'
+    $epDetails = @()
+    
+    # Method 1: Check system-wide process mitigation settings
+    try {
+        $epSettings = Get-ProcessMitigation -System -ErrorAction Stop
+        $mitigations = @()
+        
+        # Check DEP (Data Execution Prevention)
+        if ($epSettings.Dep -and $epSettings.Dep.Enable) {
+            $mitigations += 'DEP'
+        }
+        
+        # Check ASLR (Address Space Layout Randomization)
+        if ($epSettings.Aslr -and $epSettings.Aslr.ForceRelocateImages) {
+            $mitigations += 'ASLR'
+        }
+        
+        # Check CFG (Control Flow Guard)
+        if ($epSettings.CFG -and $epSettings.CFG.Enable) {
+            $mitigations += 'CFG'
+        }
+        
+        # Check SEHOP (Structured Exception Handler Overwrite Protection)
+        if ($epSettings.SEHOP -and $epSettings.SEHOP.Enable) {
+            $mitigations += 'SEHOP'
+        }
+        
+        # Check Heap Protection
+        if ($epSettings.Heap -and $epSettings.Heap.TerminateOnHeapErrors) {
+            $mitigations += 'Heap'
+        }
+        
+        if ($mitigations.Count -gt 0) {
+            $epStatus = 'Enabled'
+            $epDetails += "Mitigations: $($mitigations -join ', ')"
+        } else {
+            $epStatus = 'Limited'
+            $epDetails += 'System: Basic protections only'
+        }
+    } catch {
+        # Fallback to registry check
+        $epReg = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\kernel' -ErrorAction SilentlyContinue
+        if ($epReg -and $epReg.PSObject.Properties.Name -contains 'DisableExceptionChainValidation') {
+            $sehop = if ($epReg.DisableExceptionChainValidation -eq 0) { 'Enabled' } else { 'Disabled' }
+            $epDetails += "SEHOP: $sehop"
+            $epStatus = if ($sehop -eq 'Enabled') { 'Partial' } else { 'Limited' }
+        }
+    }
+    
+    # Method 2: Check Windows Defender Exploit Guard settings
+    try {
+        $egReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Defender\Windows Defender Exploit Guard\Exploit Protection\Settings' -ErrorAction SilentlyContinue
+        if ($egReg) {
+            $epDetails += 'Defender EG: Configured'
+            if ($epStatus -eq 'Unknown') {
+                $epStatus = 'Configured'
+            }
+        }
+    } catch { }
+    
+    # Method 3: Check process-specific mitigations
+    try {
+        $processCount = (Get-ProcessMitigation -RegistryConfigFilePath $null -ErrorAction SilentlyContinue | Measure-Object).Count
+        if ($processCount -gt 0) {
+            $epDetails += "Process Rules: $processCount configured"
+        }
+    } catch { }
+    
+    # Display result
+    $epState = switch ($epStatus) {
+        'Enabled' { 'Good' }
+        'Configured' { 'Good' }
+        'Partial' { 'Warn' }
+        'Limited' { 'Warn' }
+        default { 'Warn' }
+    }
+    
+    # Main status line
+    Write-KV -Label 'Exploit Protection' -Value $epStatus -State $epState
+    
+    # Display details as sub-items
+    if ($epDetails.Count -gt 0) {
+        foreach ($detail in $epDetails) {
+            $detailParts = $detail -split ': ', 2
+            if ($detailParts.Count -eq 2) {
+                $detailLabel = "  └─ $($detailParts[0])"
+                $detailValue = $detailParts[1]
+                Write-KV -Label $detailLabel -Value $detailValue -State Neutral
+            }
+        }
+    }
+} catch { 
+    Write-KV -Label 'Exploit Protection' -Value "Error: $($_.Exception.Message)" -State Warn 
+}
 
-# Controlled Folder Access
+# Enhanced Controlled Folder Access Detection
 try {
+    $cfaStatus = 'Disabled'
+    $cfaDetails = @()
+    
+    # Method 1: Get-MpPreference (primary method)
     $prefs = Get-MpPreference
     $cfa = $null
-    if ($prefs.PSObject.Properties.Name -contains 'ControlledFolderAccess') {
-        $cfa = $prefs.ControlledFolderAccess
-    } elseif ($prefs.PSObject.Properties.Name -contains 'EnableControlledFolderAccess') {
-        $cfa = $prefs.EnableControlledFolderAccess
-    }
-    $cfaState = switch ($cfa) { 1 { 'Enabled' } 2 { 'Audit' } default { 'Disabled' } }
-    $cfaCat = switch ($cfa) { 1 { 'Good' } 2 { 'Warn' } default { 'Warn' } }
-    Write-KV -Label 'Controlled Folder Access' -Value $cfaState -State $cfaCat
-} catch { Write-KV -Label 'Controlled Folder Access' -Value 'Unknown' -State Neutral }
-
-# Ransomware Protection (same as Controlled Folder Access)
-try {
-    $prefs = Get-MpPreference
-    $ransom = $null
     if ($prefs.PSObject.Properties.Name -contains 'EnableControlledFolderAccess') {
-        $ransom = $prefs.EnableControlledFolderAccess
+        $cfa = $prefs.EnableControlledFolderAccess
     } elseif ($prefs.PSObject.Properties.Name -contains 'ControlledFolderAccess') {
-        $ransom = $prefs.ControlledFolderAccess
+        $cfa = $prefs.ControlledFolderAccess
     }
-    $ransomState = if ($ransom -eq 1) { 'Enabled' } elseif ($ransom -eq 2) { 'Audit' } else { 'Disabled' }
-    Write-KV -Label 'Ransomware Protection' -Value $ransomState -State (if($ransom -eq 1){'Good'}elseif($ransom -eq 2){'Warn'}else{'Warn'})
-} catch { Write-KV -Label 'Ransomware Protection' -Value 'Unknown' -State Neutral }
+    
+    $cfaStatus = switch ($cfa) { 
+        1 { 'Enabled' } 
+        2 { 'Audit Mode' } 
+        default { 'Disabled' } 
+    }
+    
+    # Method 2: Check protected folders count
+    if ($cfa -and $cfa -gt 0) {
+        try {
+            $protectedFolders = $prefs.ControlledFolderAccessProtectedFolders
+            if ($protectedFolders) {
+                $folderCount = ($protectedFolders | Measure-Object).Count
+                $cfaDetails += "Protected Folders: $folderCount"
+            } else {
+                $cfaDetails += 'Protected Folders: Default system folders'
+            }
+        } catch { }
+        
+        # Check allowed applications
+        try {
+            $allowedApps = $prefs.ControlledFolderAccessAllowedApplications
+            if ($allowedApps) {
+                $appCount = ($allowedApps | Measure-Object).Count
+                $cfaDetails += "Allowed Apps: $appCount"
+            }
+        } catch { }
+    }
+    
+    # Method 3: Registry fallback check
+    if ($cfa -eq $null) {
+        try {
+            $cfaReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Defender\Windows Defender Exploit Guard\Controlled Folder Access' -ErrorAction SilentlyContinue
+            if ($cfaReg -and $cfaReg.PSObject.Properties.Name -contains 'EnableControlledFolderAccess') {
+                $regValue = $cfaReg.EnableControlledFolderAccess
+                $cfaStatus = switch ($regValue) { 
+                    1 { 'Enabled' } 
+                    2 { 'Audit Mode' } 
+                    default { 'Disabled' } 
+                }
+                $cfaDetails += 'Source: Registry'
+            }
+        } catch { }
+    }
+    
+    # Method 4: Check policy configuration
+    try {
+        $cfaPolicy = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Windows Defender Exploit Guard\Controlled Folder Access' -ErrorAction SilentlyContinue
+        if ($cfaPolicy) {
+            $cfaDetails += 'Policy: Configured'
+        }
+    } catch { }
+    
+    # Display result
+    $cfaState = switch ($cfaStatus) { 
+        'Enabled' { 'Good' } 
+        'Audit Mode' { 'Warn' } 
+        default { 'Warn' } 
+    }
+    
+    # Main status line
+    Write-KV -Label 'Controlled Folder Access' -Value $cfaStatus -State $cfaState
+    
+    # Display details as sub-items
+    if ($cfaDetails.Count -gt 0) {
+        foreach ($detail in $cfaDetails) {
+            $detailParts = $detail -split ': ', 2
+            if ($detailParts.Count -eq 2) {
+                $detailLabel = "  └─ $($detailParts[0])"
+                $detailValue = $detailParts[1]
+                Write-KV -Label $detailLabel -Value $detailValue -State Neutral
+            }
+        }
+    }
+} catch { 
+    Write-KV -Label 'Controlled Folder Access' -Value "Error: $($_.Exception.Message)" -State Warn 
+}
 
-# Cloud Protection
+# Enhanced Ransomware Protection Detection
 try {
-    $cloud = Get-MpPreference | Select-Object -ExpandProperty MAPSReporting
-    $cloudState = if ($cloud -eq 2) { 'Advanced' } elseif ($cloud -eq 1) { 'Basic' } else { 'Disabled' }
-    Write-KV -Label 'Cloud-delivered Protection' -Value $cloudState -State (if($cloud -gt 0){'Good'}else{'Warn'})
-} catch { Write-KV -Label 'Cloud-delivered Protection' -Value 'Unknown' -State Warn }
+    $ransomStatus = 'Disabled'
+    $ransomDetails = @()
+    
+    # Method 1: Controlled Folder Access (primary ransomware protection)
+    $prefs = Get-MpPreference
+    $cfa = $null
+    if ($prefs.PSObject.Properties.Name -contains 'EnableControlledFolderAccess') {
+        $cfa = $prefs.EnableControlledFolderAccess
+    } elseif ($prefs.PSObject.Properties.Name -contains 'ControlledFolderAccess') {
+        $cfa = $prefs.ControlledFolderAccess
+    }
+    
+    $cfaStatus = switch ($cfa) { 
+        1 { 'Enabled' } 
+        2 { 'Audit Mode' } 
+        default { 'Disabled' } 
+    }
+    
+    if ($cfa -and $cfa -gt 0) {
+        $ransomStatus = $cfaStatus
+        $ransomDetails += "Controlled Folder Access: $cfaStatus"
+    }
+    
+    # Method 2: Check ASR rules specifically targeting ransomware
+    $ransomwareAsrRules = @{
+        'c1db55ab-c21a-4637-bb3f-a12568109d35' = 'Advanced Ransomware Protection'
+        '9e6c4e1f-7d60-472f-ba1a-a39ef669e4b2' = 'Credential Stealing Protection'
+        'd1e49aac-8f56-4280-b9ba-993a6d77406c' = 'Process Creation Protection'
+    }
+    
+    $asrRansomProtection = @()
+    if ($results.AttackSurfaceReductionRules_ids) {
+        for ($i = 0; $i -lt $results.AttackSurfaceReductionRules_ids.Count; $i++) {
+            $ruleId = ($results.AttackSurfaceReductionRules_ids[$i] -replace '[{}]', '').ToUpper()
+            $ruleAction = $results.AttackSurfaceReductionRules_Actions[$i]
+            
+            if ($ransomwareAsrRules.ContainsKey($ruleId.ToLower()) -and $ruleAction -eq 1) {
+                $asrRansomProtection += $ransomwareAsrRules[$ruleId.ToLower()]
+            }
+        }
+    }
+    
+    if ($asrRansomProtection.Count -gt 0) {
+        $ransomDetails += "ASR Anti-Ransomware: $($asrRansomProtection.Count) rules enabled"
+        if ($ransomStatus -eq 'Disabled') {
+            $ransomStatus = 'Partial (ASR Only)'
+        }
+    }
+    
+    # Method 3: Check OneDrive Files Restore capability
+    try {
+        $oneDriveReg = Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\OneDrive\Accounts\*' -ErrorAction SilentlyContinue
+        if ($oneDriveReg) {
+            $ransomDetails += 'OneDrive: Files Restore available'
+        }
+    } catch { }
+    
+    # Method 4: Check Windows Backup status
+    try {
+        $backupReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsBackup' -ErrorAction SilentlyContinue
+        if ($backupReg) {
+            $ransomDetails += 'Windows Backup: Configured'
+        }
+    } catch { }
+    
+    # Method 5: Check File History
+    try {
+        $fileHistoryReg = Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\FileHistory' -ErrorAction SilentlyContinue
+        if ($fileHistoryReg -and $fileHistoryReg.PSObject.Properties.Name -contains 'Enabled' -and $fileHistoryReg.Enabled -eq 1) {
+            $ransomDetails += 'File History: Enabled'
+        }
+    } catch { }
+    
+    # Overall status determination
+    if ($ransomStatus -eq 'Disabled' -and $ransomDetails.Count -gt 1) {
+        $ransomStatus = 'Basic Protection'
+    }
+    
+    # Display result
+    $ransomState = switch ($ransomStatus) { 
+        'Enabled' { 'Good' }
+        'Audit Mode' { 'Warn' }  
+        'Partial (ASR Only)' { 'Warn' }
+        'Basic Protection' { 'Warn' }
+        default { 'Bad' } 
+    }
+    
+    # Main status line
+    Write-KV -Label 'Ransomware Protection' -Value $ransomStatus -State $ransomState
+    
+    # Display details as sub-items
+    if ($ransomDetails.Count -gt 0) {
+        foreach ($detail in $ransomDetails) {
+            $detailParts = $detail -split ': ', 2
+            if ($detailParts.Count -eq 2) {
+                $detailLabel = "  └─ $($detailParts[0])"
+                $detailValue = $detailParts[1]
+                Write-KV -Label $detailLabel -Value $detailValue -State Neutral
+            }
+        }
+    }
+} catch { 
+    Write-KV -Label 'Ransomware Protection' -Value "Error: $($_.Exception.Message)" -State Warn 
+}
+
+# Enhanced Cloud-delivered Protection Detection
+try {
+    $cloudStatus = 'Disabled'
+    $cloudDetails = @()
+    
+    # Method 1: MAPS Reporting level
+    try {
+        $cloud = Get-MpPreference | Select-Object -ExpandProperty MAPSReporting -ErrorAction Stop
+        $cloudStatus = switch ($cloud) { 
+            2 { 'Advanced' } 
+            1 { 'Basic' } 
+            default { 'Disabled' } 
+        }
+        $cloudDetails += "MAPS Reporting: $cloudStatus"
+    } catch {
+        # Fallback to direct property check
+        $prefs = Get-MpPreference
+        if ($prefs.PSObject.Properties.Name -contains 'MAPSReporting') {
+            $cloud = $prefs.MAPSReporting
+            $cloudStatus = switch ($cloud) { 
+                2 { 'Advanced' } 
+                1 { 'Basic' } 
+                default { 'Disabled' } 
+            }
+            $cloudDetails += "MAPS Reporting: $cloudStatus"
+        }
+    }
+    
+    # Method 2: Cloud block level
+    try {
+        $prefs = Get-MpPreference
+        if ($prefs.PSObject.Properties.Name -contains 'CloudBlockLevel') {
+            $blockLevel = $prefs.CloudBlockLevel
+            $blockLevelText = switch ($blockLevel) {
+                0 { 'Default' }
+                2 { 'High' }
+                4 { 'High+' }
+                6 { 'Zero Tolerance' }
+                default { "Level $blockLevel" }
+            }
+            $cloudDetails += "Block Level: $blockLevelText"
+        }
+    } catch { }
+    
+    # Method 3: Cloud extended timeout
+    try {
+        $prefs = Get-MpPreference
+        if ($prefs.PSObject.Properties.Name -contains 'CloudExtendedTimeout') {
+            $timeout = $prefs.CloudExtendedTimeout
+            if ($timeout -gt 0) {
+                $cloudDetails += "Extended Timeout: ${timeout}s"
+            }
+        }
+    } catch { }
+    
+    # Method 4: First seen file blocking
+    try {
+        $prefs = Get-MpPreference
+        if ($prefs.PSObject.Properties.Name -contains 'DisableBlockAtFirstSeen') {
+            $blockFirstSeen = -not $prefs.DisableBlockAtFirstSeen
+            if ($blockFirstSeen) {
+                $cloudDetails += 'Block at First Seen: Enabled'
+            }
+        }
+    } catch { }
+    
+    # Method 5: Check registry for additional cloud settings
+    try {
+        $cloudReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Defender\Spynet' -ErrorAction SilentlyContinue
+        if ($cloudReg) {
+            if ($cloudReg.PSObject.Properties.Name -contains 'SpynetReporting') {
+                $spynetLevel = $cloudReg.SpynetReporting
+                if ($spynetLevel -gt 0 -and $cloudStatus -eq 'Disabled') {
+                    $cloudStatus = 'Basic (Registry)'
+                    $cloudDetails += 'Source: Registry configuration'
+                }
+            }
+        }
+    } catch { }
+    
+    # Method 6: Check connectivity to Microsoft cloud
+    try {
+        $connectivityReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Defender\Features' -ErrorAction SilentlyContinue
+        if ($connectivityReg -and $connectivityReg.PSObject.Properties.Name -contains 'TamperProtectionSource' -and $connectivityReg.TamperProtectionSource -eq 1) {
+            $cloudDetails += 'Cloud Connectivity: Active'
+        }
+    } catch { }
+    
+    # Display result
+    $cloudState = switch ($cloudStatus) { 
+        'Advanced' { 'Good' }
+        'Basic' { 'Good' }
+        'Basic (Registry)' { 'Good' }
+        default { 'Warn' } 
+    }
+    
+    # Main status line
+    Write-KV -Label 'Cloud-delivered Protection' -Value $cloudStatus -State $cloudState
+    
+    # Display details as sub-items
+    if ($cloudDetails.Count -gt 0) {
+        foreach ($detail in $cloudDetails) {
+            $detailParts = $detail -split ': ', 2
+            if ($detailParts.Count -eq 2) {
+                $detailLabel = "  └─ $($detailParts[0])"
+                $detailValue = $detailParts[1]
+                Write-KV -Label $detailLabel -Value $detailValue -State Neutral
+            }
+        }
+    }
+} catch { 
+    Write-KV -Label 'Cloud-delivered Protection' -Value "Error: $($_.Exception.Message)" -State Warn 
+}
 
 # Automatic Sample Submission
 try {
@@ -788,81 +1181,344 @@ if ($FastMode) {
 }
 
 # Advanced Defender Features
-# EDR in Block Mode
+# Enhanced EDR in Block Mode Detection
 try {
     $edrBlock = $null
+    
+    # Method 1: Check MpComputerStatus
     if ($null -ne $localdefender -and ($localdefender.PSObject.Properties.Name -contains 'EDRInBlockMode')) {
         $edrBlock = [bool]$localdefender.EDRInBlockMode
-    } else {
-        $cs2 = Get-MpComputerStatus -ErrorAction SilentlyContinue
-        if ($null -ne $cs2 -and ($cs2.PSObject.Properties.Name -contains 'EDRInBlockMode')) {
-            $edrBlock = [bool]$cs2.EDRInBlockMode
+    }
+    
+    # Method 2: Check registry (requires specific permissions)
+    if ($null -eq $edrBlock) {
+        $mdeReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Advanced Threat Protection\Status' -ErrorAction SilentlyContinue
+        if ($mdeReg -and $mdeReg.PSObject.Properties.Name -contains 'EDRInBlockMode') {
+            $edrBlock = [bool]$mdeReg.EDRInBlockMode
         }
     }
-    $mde = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Advanced Threat Protection\Status' -ErrorAction SilentlyContinue
-    $onboarded = ($null -ne $mde -and $mde.OnboardingState -eq 1)
+    
+    # Method 3: Check MDE service status
     if ($null -eq $edrBlock) {
-        if (-not $onboarded) {
-            Write-KV -Label 'EDR in Block Mode' -Value 'Not Applicable (MDE not onboarded)' -State Neutral
-        } else {
-            Write-KV -Label 'EDR in Block Mode' -Value 'Unknown' -State Neutral
+        $mdeService = Get-Service -Name 'Sense' -ErrorAction SilentlyContinue
+        $onboardingState = if ($mdeReg) { $mdeReg.OnboardingState } else { $null }
+        
+        if ($mdeService -and $mdeService.Status -eq 'Running' -and $onboardingState -eq 1) {
+            # If MDE is running and onboarded, try PowerShell method
+            try {
+                $edrStatus = Get-MpPreference | Select-Object -ExpandProperty 'CloudBlockLevel' -ErrorAction SilentlyContinue
+                $edrBlock = $edrStatus -gt 0
+            } catch { }
         }
+    }
+    
+    # Display result
+    if ($null -eq $edrBlock) {
+        $mdeOnboard = if ($mdeReg -and $mdeReg.OnboardingState -eq 1) { 'Yes' } else { 'No' }
+        Write-KV -Label 'EDR in Block Mode' -Value "Unknown (MDE Onboarded: $mdeOnboard)" -State Neutral
     } else {
-        $edrText  = if ($edrBlock) { 'Enabled' } else { 'Disabled' }
+        $edrText = if ($edrBlock) { 'Enabled' } else { 'Disabled' }
         $edrState = if ($edrBlock) { 'Good' } else { 'Warn' }
         Write-KV -Label 'EDR in Block Mode' -Value $edrText -State $edrState
     }
-}
-catch {
-    Write-KV -Label 'EDR in Block Mode' -Value 'Unknown' -State Neutral
+} catch {
+    Write-KV -Label 'EDR in Block Mode' -Value "Error: $($_.Exception.Message)" -State Warn
 }
 
-# Tamper Protection
+# Enhanced Tamper Protection Detection
 try {
     $tp = $null
+    
+    # Method 1: Get-MpComputerStatus (most reliable)
     if ($null -ne $localdefender -and ($localdefender.PSObject.Properties.Name -contains 'IsTamperProtected')) {
         $tp = [bool]$localdefender.IsTamperProtected
+    }
+    
+    # Method 2: Registry check (fallback)
+    if ($null -eq $tp) {
+        $tpReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Defender\Features' -Name 'TamperProtection' -ErrorAction SilentlyContinue
+        if ($tpReg -and $null -ne $tpReg.TamperProtection) {
+            $tp = ([int]$tpReg.TamperProtection) -eq 1
+        }
+    }
+    
+    # Method 3: Alternative registry location
+    if ($null -eq $tp) {
+        $tpReg2 = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Defender\Real-Time Protection' -Name 'TamperProtection' -ErrorAction SilentlyContinue
+        if ($tpReg2 -and $null -ne $tpReg2.TamperProtection) {
+            $tp = ([int]$tpReg2.TamperProtection) -eq 1
+        }
+    }
+    
+    # Method 4: Check if cloud-managed
+    if ($null -eq $tp) {
+        $cloudManaged = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Defender\Features' -Name 'TamperProtectionSource' -ErrorAction SilentlyContinue
+        if ($cloudManaged -and $cloudManaged.TamperProtectionSource -eq 1) {
+            Write-KV -Label 'Tamper Protection' -Value 'Cloud Managed (Status Unknown)' -State Neutral
+            $tp = 'CloudManaged'
+        }
+    }
+    
+    # Display result
+    if ($null -eq $tp) {
+        Write-KV -Label 'Tamper Protection' -Value 'Unknown (Check Defender Security Center)' -State Warn
+    } elseif ($tp -eq 'CloudManaged') {
+        # Already displayed above
     } else {
-        $cs3 = Get-MpComputerStatus -ErrorAction SilentlyContinue
-        if ($null -ne $cs3 -and ($cs3.PSObject.Properties.Name -contains 'IsTamperProtected')) {
-            $tp = [bool]$cs3.IsTamperProtected
-        } else {
-            $tpReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Defender\Features' -ErrorAction SilentlyContinue
-            if ($null -ne $tpReg -and ($tpReg.PSObject.Properties.Name -contains 'TamperProtection')) {
-                $tp = ([int]$tpReg.TamperProtection) -eq 1
+        $tpText = if ($tp) { 'Enabled' } else { 'Disabled' }
+        $tpState = if ($tp) { 'Good' } else { 'Warn' }
+        Write-KV -Label 'Tamper Protection' -Value $tpText -State $tpState
+    }
+} catch {
+    Write-KV -Label 'Tamper Protection' -Value "Error: $($_.Exception.Message)" -State Warn
+}
+
+# Enhanced Device Health Attestation Detection
+try {
+    $dhaStatus = 'Not Available'
+    $dhaDetails = @()
+    
+    # Method 1: Check service configuration
+    $dhaService = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\DeviceHealthAttestation' -ErrorAction SilentlyContinue
+    if ($dhaService) {
+        $startType = switch ($dhaService.Start) {
+            0 { 'Boot' }
+            1 { 'System' }
+            2 { 'Automatic' }
+            3 { 'Manual' }
+            4 { 'Disabled' }
+            default { "Unknown($($dhaService.Start))" }
+        }
+        $dhaDetails += "Service: $startType"
+        
+        if ($dhaService.Start -le 2) {
+            $dhaStatus = 'Available'
+        }
+    }
+    
+    # Method 2: Check actual service status
+    try {
+        $dhaSvc = Get-Service -Name 'DeviceHealthAttestationService' -ErrorAction SilentlyContinue
+        if ($dhaSvc) {
+            $dhaDetails += "Status: $($dhaSvc.Status)"
+            if ($dhaSvc.Status -eq 'Running' -or $dhaSvc.StartType -eq 'Automatic') {
+                $dhaStatus = 'Available'
+            }
+        }
+    } catch { }
+    
+    # Method 3: Check registry configuration
+    $dhaReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DeviceHealthAttestation' -ErrorAction SilentlyContinue
+    if ($dhaReg) {
+        $dhaDetails += 'Registry: Configured'
+        if ($dhaReg.PSObject.Properties.Name -contains 'Enabled' -and $dhaReg.Enabled -eq 1) {
+            $dhaStatus = 'Available'
+        }
+    }
+    
+    # Method 4: Check enterprise policy
+    $dhaPol = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\DeviceHealthAttestation' -ErrorAction SilentlyContinue
+    if ($dhaPol) {
+        $dhaDetails += 'Policy: Configured'
+        if ($dhaPol.PSObject.Properties.Name -contains 'EnableDeviceHealthAttestation' -and $dhaPol.EnableDeviceHealthAttestation -eq 1) {
+            $dhaStatus = 'Available'
+        }
+    }
+    
+    # Method 5: Check TPM requirement (DHA requires TPM)
+    if ($tpmPresent -eq $false -and $dhaStatus -eq 'Available') {
+        $dhaStatus = 'Not Available (No TPM)'
+    }
+    
+    # Display result with better formatting
+    $dhaState = switch ($dhaStatus) {
+        'Available' { 'Good' }
+        'Not Available (No TPM)' { 'Warn' }
+        default { 'Neutral' }
+    }
+    
+    # Main status line
+    Write-KV -Label 'Device Health Attestation' -Value $dhaStatus -State $dhaState
+    
+    # Display detailed information as sub-items if available
+    if ($dhaDetails.Count -gt 0) {
+        foreach ($detail in $dhaDetails) {
+            $detailParts = $detail -split ': ', 2
+            if ($detailParts.Count -eq 2) {
+                $detailLabel = "  └─ $($detailParts[0])"
+                $detailValue = $detailParts[1]
+                Write-KV -Label $detailLabel -Value $detailValue -State Neutral
             }
         }
     }
-    if ($null -eq $tp) {
-        Write-KV -Label 'Tamper Protection' -Value 'Unknown' -State Neutral
-    } else {
-        Write-KV -Label 'Tamper Protection' -Value (if($tp){'Enabled'}else{'Disabled'}) -State (if($tp){'Good'}else{'Warn'})
+} catch { 
+    Write-KV -Label 'Device Health Attestation' -Value "Error: $($_.Exception.Message)" -State Warn 
+}
+
+# Enhanced Defender for Endpoint Detection
+try {
+    $mdeStatus = 'Not Onboarded'
+    $mdeDetails = @()
+    
+    # Method 1: Check primary onboarding registry
+    $mdeReg = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Advanced Threat Protection\Status' -ErrorAction SilentlyContinue
+    if ($mdeReg) {
+        if ($mdeReg.PSObject.Properties.Name -contains 'OnboardingState') {
+            $onboardingState = $mdeReg.OnboardingState
+            $mdeDetails += "OnboardingState: $onboardingState"
+            
+            if ($onboardingState -eq 1) {
+                $mdeStatus = 'Onboarded'
+                
+                # Add last connected info if available
+                if ($mdeReg.PSObject.Properties.Name -contains 'LastConnected') {
+                    $lastConnected = $mdeReg.LastConnected
+                    if ($lastConnected) {
+                        try {
+                            $lastConnectedDate = [DateTime]::FromFileTime($lastConnected).ToString('yyyy-MM-dd HH:mm')
+                            $mdeDetails += "Last Connected: $lastConnectedDate"
+                        } catch { 
+                            $mdeDetails += "Last Connected: $lastConnected"
+                        }
+                    }
+                }
+                
+                # Check org ID
+                if ($mdeReg.PSObject.Properties.Name -contains 'OrgId') {
+                    $orgId = $mdeReg.OrgId
+                    if ($orgId) {
+                        $mdeDetails += "OrgId: $($orgId.Substring(0, [Math]::Min(8, $orgId.Length)))..."
+                    }
+                }
+            }
+        }
+        
+        # Check sense version
+        if ($mdeReg.PSObject.Properties.Name -contains 'SenseVersion') {
+            $senseVer = $mdeReg.SenseVersion
+            if ($senseVer) {
+                $mdeDetails += "Version: $senseVer"
+            }
+        }
     }
+    
+    # Method 2: Check Sense service status
+    try {
+        $senseService = Get-Service -Name 'Sense' -ErrorAction SilentlyContinue
+        if ($senseService) {
+            $mdeDetails += "Sense Service: $($senseService.Status)"
+            if ($senseService.Status -eq 'Running' -and $mdeStatus -eq 'Not Onboarded') {
+                $mdeStatus = 'Service Running (Check Onboarding)'
+            }
+        } else {
+            $mdeDetails += 'Sense Service: Not Installed'
+        }
+    } catch { }
+    
+    # Method 3: Check WdFilter driver
+    try {
+        $wdFilter = Get-Service -Name 'WdFilter' -ErrorAction SilentlyContinue
+        if ($wdFilter -and $wdFilter.Status -eq 'Running') {
+            $mdeDetails += 'WdFilter: Running'
+        }
+    } catch { }
+    
+    # Method 4: Check MDE platform version
+    try {
+        $mdeVer = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Advanced Threat Protection' -ErrorAction SilentlyContinue
+        if ($mdeVer -and $mdeVer.PSObject.Properties.Name -contains 'InstallTime') {
+            $installTime = $mdeVer.InstallTime
+            if ($installTime) {
+                try {
+                    $installDate = [DateTime]::FromFileTime($installTime).ToString('yyyy-MM-dd')
+                    $mdeDetails += "Installed: $installDate"
+                } catch { }
+            }
+        }
+    } catch { }
+    
+    # Method 5: Check cloud connectivity
+    if ($mdeStatus -eq 'Onboarded') {
+        try {
+            $connectivity = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Advanced Threat Protection\Status' -Name 'OnboardingInfo' -ErrorAction SilentlyContinue
+            if ($connectivity -and $connectivity.OnboardingInfo) {
+                $mdeDetails += 'Cloud: Connected'
+            }
+        } catch { }
+    }
+    
+    # Display result with better formatting
+    $mdeState = switch ($mdeStatus) {
+        'Onboarded' { 'Good' }
+        'Service Running (Check Onboarding)' { 'Warn' }
+        'Not Onboarded' { 'Neutral' }
+        default { 'Neutral' }
+    }
+    
+    # Main status line
+    Write-KV -Label 'Defender for Endpoint' -Value $mdeStatus -State $mdeState
+    
+    # Display detailed information as sub-items if onboarded
+    if ($mdeStatus -eq 'Onboarded' -and $mdeDetails.Count -gt 0) {
+        foreach ($detail in $mdeDetails) {
+            $detailParts = $detail -split ': ', 2
+            if ($detailParts.Count -eq 2) {
+                $detailLabel = "  └─ $($detailParts[0])"
+                $detailValue = $detailParts[1]
+                Write-KV -Label $detailLabel -Value $detailValue -State Neutral
+            }
+        }
+    } elseif ($mdeDetails.Count -gt 0) {
+        # For non-onboarded status, show key details inline
+        $keyDetails = $mdeDetails | Where-Object { $_ -match '^(Sense Service|OnboardingState):' } | Select-Object -First 2
+        if ($keyDetails) {
+            Write-KV -Label '  └─ Details' -Value ($keyDetails -join ', ') -State Neutral
+        }
+    }
+} catch { 
+    Write-KV -Label 'Defender for Endpoint' -Value "Error: $($_.Exception.Message)" -State Warn 
 }
-catch {
-    Write-KV -Label 'Tamper Protection' -Value 'Unknown' -State Neutral
+
+# Enhanced Credential Guard Detection
+try {
+    $cg = $null
+    $cgRunning = $null
+    
+    # Method 1: Check DeviceGuard registry
+    $dgReg = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard' -ErrorAction SilentlyContinue
+    if ($dgReg -and $null -ne $dgReg.EnableVirtualizationBasedSecurity) {
+        $vbsEnabled = [int]$dgReg.EnableVirtualizationBasedSecurity -eq 1
+    } else { $vbsEnabled = $false }
+    
+    # Method 2: Check LSA configuration
+    $lsaReg = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\LSA' -ErrorAction SilentlyContinue
+    if ($lsaReg -and $null -ne $lsaReg.LsaCfgFlags) {
+        $cgConfigured = [int]$lsaReg.LsaCfgFlags -gt 0
+    } else { $cgConfigured = $false }
+    
+    # Method 3: Check if Credential Guard is running
+    try {
+        $cgService = Get-CimInstance -ClassName Win32_DeviceGuard -ErrorAction SilentlyContinue
+        if ($cgService -and $cgService.SecurityServicesRunning -contains 1) {
+            $cgRunning = $true
+        }
+    } catch { }
+    
+    # Determine status
+    if ($cgRunning -eq $true) {
+        Write-KV -Label 'Credential Guard' -Value 'Running' -State Good
+    } elseif ($vbsEnabled -and $cgConfigured) {
+        Write-KV -Label 'Credential Guard' -Value 'Configured (VBS Required)' -State Good
+    } elseif ($cgConfigured) {
+        Write-KV -Label 'Credential Guard' -Value 'Configured (VBS Disabled)' -State Warn
+    } elseif ($vbsEnabled) {
+        Write-KV -Label 'Credential Guard' -Value 'VBS Enabled (CG Not Configured)' -State Warn
+    } else {
+        Write-KV -Label 'Credential Guard' -Value 'Not Configured' -State Neutral
+    }
+} catch {
+    Write-KV -Label 'Credential Guard' -Value "Error: $($_.Exception.Message)" -State Warn
 }
-
-# Device Health Attestation
-try {
-    $dha = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\DeviceHealthAttestation' -ErrorAction SilentlyContinue
-    $dhaState = if ($dha -and $dha.Start -eq 2) { 'Available' } else { 'Not Available' }
-    Write-KV -Label 'Device Health Attestation' -Value $dhaState -State Neutral
-} catch { Write-KV -Label 'Device Health Attestation' -Value 'Unknown' -State Neutral }
-
-# Defender for Endpoint Status
-try {
-    $mde = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Advanced Threat Protection\Status' -ErrorAction SilentlyContinue
-    $mdeOnboarded = if ($mde -and $mde.OnboardingState -eq 1) { 'Onboarded' } else { 'Not Onboarded' }
-    Write-KV -Label 'Defender for Endpoint' -Value $mdeOnboarded -State (if($mdeOnboarded -eq 'Onboarded'){'Good'}else{'Neutral'})
-} catch { Write-KV -Label 'Defender for Endpoint' -Value 'Unknown' -State Neutral }
-
-# Credential Guard Status
-try {
-    $cg = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard' -Name EnableVirtualizationBasedSecurity -ErrorAction SilentlyContinue
-    $cgStatus = if ($cg -and $cg.EnableVirtualizationBasedSecurity -eq 1) { 'Enabled' } else { 'Disabled' }
-    Write-KV -Label 'Credential Guard' -Value $cgStatus -State (if($cgStatus -eq 'Enabled'){'Good'}else{'Neutral'})
-} catch { Write-KV -Label 'Credential Guard' -Value 'Unknown' -State Neutral }
 
 Write-Section 'Report Summary'
 # Calculate compliance score based on security settings
@@ -892,15 +1548,6 @@ Write-KV -Label 'Security Compliance' -Value "$compliancePercent% ($goodSettings
 Write-KV -Label 'Report Generated' -Value (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') -State Neutral
 
 Write-Section 'Script Information'
-$cg = Get-ItemProperty -Path HKLM:\System\CurrentControlSet\Control\LSA
-if (-not [string]::IsNullOrEmpty($cg.LsaCfgFlags)) {
-    $credguard = 'Disabled','Enable with UEFI lock','Enable without UEFI lock'
-    $cgState = $credguard[$cg.LsaCfgFlags]
-    ${cgStateVal}= if($cg.LsaCfgFlags -gt 0){'Good'} else {'Warn'}
-    Write-KV -Label 'Credential Guard' -Value $cgState -State $cgStateVal
-} else {
-    Write-KV -Label 'Credential Guard' -Value 'Disabled (Key Missing)' -State Warn
-}
 
 Write-Info "`nScript Finished"
 
