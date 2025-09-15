@@ -118,7 +118,12 @@ function Write-Info {
 }
 function Write-Section {
     param([string]$Title)
-    $bar = ('-' * [Math]::Min([Console]::WindowWidth,80)) 2>$null
+    try {
+        $consoleWidth = [Console]::WindowWidth
+        $bar = ('-' * [Math]::Min($consoleWidth, 80))
+    } catch {
+        $bar = ('-' * 60)
+    }
     if (-not $bar) { $bar = ('-' * 60) }
     $header = "[ $Title ]"
     if ($UseColor) {
