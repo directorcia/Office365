@@ -22,7 +22,7 @@ param(
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 Description: Check for inactive users in Microsoft 365 using Microsoft Graph
 Documentation: https://github.com/directorcia/Office365/wiki/Microsoft-365-Inactive-Users-Check-Script
-Source: 
+Source: https://github.com/directorcia/Office365/blob/master/m365-inactiveusers-get.ps1
 
 #>
 
