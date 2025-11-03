@@ -1,24 +1,26 @@
 <#
 .SYNOPSIS
-    Check Exchange Online Remote Domains settings against ASD Blueprint requirements
+    Check Exchange Online Default Remote Domain settings against ASD Blueprint requirements
 
 .DESCRIPTION
-    This script checks the Exchange Online Remote Domains configuration against 
-    ASD's Blueprint for Secure Cloud requirements.
+    This script checks the Exchange Online Default Remote Domain configuration against 
+    ASD's Blueprint for Secure Cloud requirements. It validates the 'Default' remote domain
+    (which applies to all external domains unless specific remote domains are configured).
     
     Reference: https://blueprint.asd.gov.au/configuration/exchange-online/mail-flow/remote-domains/
 
 .EXAMPLE
     .\asd-remotedomain-get.ps1
     
-    Connects to Exchange Online, checks remote domain settings, and automatically generates 
-    an HTML report in the script directory that opens in the default browser
+    Connects to Exchange Online, downloads latest baseline from GitHub, checks remote domain 
+    settings, and automatically generates an HTML report in the script directory that opens 
+    in the default browser
 
 .EXAMPLE
     .\asd-remotedomain-get.ps1 -ExportToCSV
     
     Runs the check with both HTML report (automatic) and CSV export.
-    All files created in parent directory.
+    Downloads latest baseline from GitHub. All files created in parent directory.
 
 .EXAMPLE
     .\asd-remotedomain-get.ps1 -BaselinePath "C:\Baselines\prod-remote-domains.json"
@@ -35,25 +37,46 @@
     
     Exports CSV to a custom location instead of the default parent directory
 
+.EXAMPLE
+    .\asd-remotedomain-get.ps1 -DetailedLogging
+    
+    Runs the check with detailed logging enabled. Log file created in parent directory
+
+.EXAMPLE
+    .\asd-remotedomain-get.ps1 -DetailedLogging -LogPath "C:\Logs\custom-log.log"
+    
+    Runs the check with detailed logging to a custom log file location
+
 .NOTES
     Author: CIAOPS
-    Date: 2025-11-04
+    Date: 11-04-2025
     Version: 1.0
     
     Requirements:
     - ExchangeOnlineManagement PowerShell module
-    - Exchange Online Permissions: View-Only Organization Management role (minimum) or Exchange Administrator
-    - Baseline File (optional): Place remote-domains.json in parent directory of script
-      If not found, script will fall back to built-in ASD Blueprint defaults
+    - Exchange Online Permissions (one of the following roles):
+      * Exchange Administrator
+      * Global Administrator
+      * Global Reader
+      * View-Only Organization Management
+      * Compliance Administrator
+    - Internet connection (to download baseline from GitHub by default)
+    
+    Baseline Sources (in order of precedence):
+    1. Custom path specified via -BaselinePath parameter
+    2. GitHub (default): https://raw.githubusercontent.com/directorcia/bp/main/ASD/Exchange-Online/Mail-flow/remote-domains.json
+    3. Built-in ASD Blueprint defaults (fallback if GitHub unavailable)
     
     File Locations (Default):
-    - Baseline: {parent-directory}\remote-domains.json
     - HTML Report: {parent-directory}\asd-remotedomain-get-{timestamp}.html
     - CSV Export: {parent-directory}\asd-remotedomain-get-{timestamp}.csv
+    - Log File (if enabled): {parent-directory}\asd-remotedomain-get-{timestamp}.log
 
 .LINK
     https://github.com/directorcia/office365
     https://github.com/directorcia/Office365/wiki/ASD-Remote-Domain-Configuration-Check - Documentation
+    https://github.com/directorcia/bp/wiki/Exchange-Online-Remote-Domain-Security-Controls - Exchange Online Remote Domain Security Controls
+    
     https://blueprint.asd.gov.au/configuration/exchange-online/mail-flow/remote-domains/
 #>
 
@@ -63,8 +86,12 @@
 param(
     [switch]$ExportToCSV,
     [string]$CSVPath,
-    [Parameter(HelpMessage = "Path to baseline JSON file. Defaults to remote-domains.json in parent directory")]
-    [string]$BaselinePath
+    [Parameter(HelpMessage = "Path or URL to baseline JSON file. Defaults to GitHub URL for latest ASD Blueprint settings")]
+    [string]$BaselinePath,
+    [Parameter(HelpMessage = "Enable detailed logging to file")]
+    [switch]$DetailedLogging,
+    [Parameter(HelpMessage = "Path to log file. Defaults to parent directory with timestamp")]
+    [string]$LogPath
 )
 
 # Get script and parent directory paths
@@ -76,20 +103,48 @@ if (-not $CSVPath) {
     $CSVPath = Join-Path $parentPath "asd-remotedomain-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').csv"
 }
 
-$HTMLPath = Join-Path $parentPath "asd-remotedomain-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+# Set default log path if detailed logging is enabled
+if ($DetailedLogging -and -not $LogPath) {
+    $LogPath = Join-Path $parentPath "asd-remotedomain-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+}
+
+# Default GitHub URL for baseline settings
+$defaultGitHubURL = "https://raw.githubusercontent.com/directorcia/bp/main/ASD/Exchange-Online/Mail-flow/remote-domains.json"
 
 # Set default baseline path if not provided (in parent directory)
 if (-not $BaselinePath) {
-    $BaselinePath = Join-Path $parentPath 'remote-domains.json'
+    $BaselinePath = $defaultGitHubURL
 }
 
-# Make baseline path available at script scope for HTML report
+# Script-scope variables for tracking state
 $script:BaselinePath = $BaselinePath
 $script:baselineLoaded = $false
+$script:HTMLPath = Join-Path $parentPath "asd-remotedomain-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+$script:LogPath = $LogPath
+$script:DetailedLogging = $DetailedLogging
 
 # Script variables
 $scriptVersion = "1.0"
 $scriptName = "ASD Remote Domains Check"
+
+# Logging function
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$Level = "INFO"
+    )
+    
+    if ($script:DetailedLogging -and $script:LogPath) {
+        try {
+            $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            $logEntry = "[$timestamp] [$Level] $Message"
+            Add-Content -Path $script:LogPath -Value $logEntry -ErrorAction Stop
+        }
+        catch {
+            Write-Warning "Failed to write to log file: $($_.Exception.Message)"
+        }
+    }
+}
 
 # Color output functions
 function Write-ColorOutput {
@@ -98,6 +153,19 @@ function Write-ColorOutput {
         [string]$Type = "Info"
     )
     
+    # Map Type to log Level
+    $logLevel = switch ($Type) {
+        "Success" { "INFO" }
+        "Warning" { "WARN" }
+        "Error"   { "ERROR" }
+        "Info"    { "INFO" }
+        default   { "INFO" }
+    }
+    
+    # Write to log
+    Write-Log -Message $Message -Level $logLevel
+    
+    # Write to console
     switch ($Type) {
         "Success" { Write-Host $Message -ForegroundColor Green }
         "Warning" { Write-Host $Message -ForegroundColor Yellow }
@@ -176,54 +244,108 @@ function Test-BaselineSchema {
     }
     
     if ($missingFields.Count -gt 0) {
-        Write-ColorOutput "`nBaseline JSON schema validation FAILED!" -Type Error
+        Write-ColorOutput "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+        Write-ColorOutput "❌ BASELINE JSON SCHEMA VALIDATION FAILED" -Type Error
+        Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+        Write-Host ""
         Write-ColorOutput "Missing required fields:" -Type Error
         foreach ($missing in $missingFields) {
-            Write-ColorOutput "  - $($missing.Path): $($missing.Description)" -Type Error
+            Write-Host "  • $($missing.Path)"
+            Write-Host "    └─ $($missing.Description)"
         }
         Write-Host ""
+        Write-ColorOutput "The baseline JSON file does not conform to the expected schema." -Type Warning
+        Write-ColorOutput "Please check the file format or use the default GitHub baseline." -Type Warning
+        Write-Host ""
+        Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
         return $false
     }
     
-    Write-ColorOutput "Baseline JSON schema validation passed." -Type Success
     return $true
 }
 
-# Load baseline from JSON file
+# Load baseline from JSON file or URL
 function Get-BaselineSettings {
     param(
         [string]$Path
     )
     
+    Write-Log "Starting baseline settings load from: $Path" -Level "INFO"
+    
     $remoteDomainBaseline = $null
     $script:baselineLoaded = $false
+    $jsonContent = $null
 
-    if (Test-Path $Path) {
+    # Check if Path is a URL
+    $isUrl = $Path -match '^https?://'
+    Write-Log "Baseline source type: $(if ($isUrl) { 'URL' } else { 'Local File' })" -Level "INFO"
+    
+    if ($isUrl) {
         try {
-            Write-ColorOutput "Loading baseline settings from: $Path" -Type Info
-            $json = Get-Content -Path $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            Write-Progress -Activity "Loading Baseline" -Status "Downloading from GitHub..." -PercentComplete 30
+            Write-ColorOutput "Downloading baseline settings from: $Path" -Type Info
+            $jsonContent = (Invoke-WebRequest -Uri $Path -UseBasicParsing -ErrorAction Stop).Content
+            Write-Progress -Activity "Loading Baseline" -Status "Parsing JSON..." -PercentComplete 60
+            $json = $jsonContent | ConvertFrom-Json -ErrorAction Stop
             
             # Validate schema
+            Write-Progress -Activity "Loading Baseline" -Status "Validating schema..." -PercentComplete 80
             if (Test-BaselineSchema -Baseline $json) {
                 $remoteDomainBaseline = $json.RemoteDomain
                 $script:baselineLoaded = $true
-                Write-ColorOutput "Baseline loaded successfully from JSON file.`n" -Type Success
+                Write-Progress -Activity "Loading Baseline" -Completed
+                Write-Log "Baseline loaded successfully from GitHub" -Level "INFO"
+                Write-ColorOutput "✓ Baseline loaded successfully from GitHub.`n" -Type Success
             }
             else {
-                Write-ColorOutput "Baseline JSON file has invalid schema - falling back to built-in defaults`n" -Type Warning
+                Write-Progress -Activity "Loading Baseline" -Completed
+                Write-Log "Baseline schema validation failed" -Level "ERROR"
                 $remoteDomainBaseline = $null
             }
         }
         catch {
+            Write-Progress -Activity "Loading Baseline" -Completed
+            Write-Log "Failed to download baseline from URL: $($_.Exception.Message)" -Level "ERROR"
+            Write-ColorOutput "Failed to download or parse baseline from URL: $($_.Exception.Message)" -Type Error
+            Write-ColorOutput "⚠️  Using built-in ASD Blueprint defaults instead`n" -Type Warning
+            $remoteDomainBaseline = $null
+        }
+    }
+    elseif (Test-Path $Path) {
+        try {
+            Write-Progress -Activity "Loading Baseline" -Status "Reading local file..." -PercentComplete 30
+            Write-ColorOutput "Loading baseline settings from: $Path" -Type Info
+            $json = Get-Content -Path $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            
+            # Validate schema
+            Write-Progress -Activity "Loading Baseline" -Status "Validating schema..." -PercentComplete 70
+            if (Test-BaselineSchema -Baseline $json) {
+                $remoteDomainBaseline = $json.RemoteDomain
+                $script:baselineLoaded = $true
+                Write-Progress -Activity "Loading Baseline" -Completed
+                Write-Log "Baseline loaded successfully from local file" -Level "INFO"
+                Write-ColorOutput "✓ Baseline loaded successfully from JSON file.`n" -Type Success
+            }
+            else {
+                Write-Progress -Activity "Loading Baseline" -Completed
+                Write-Log "Baseline schema validation failed for local file" -Level "ERROR"
+                $remoteDomainBaseline = $null
+            }
+        }
+        catch {
+            Write-Progress -Activity "Loading Baseline" -Completed
+            Write-Log "Failed to parse baseline JSON: $($_.Exception.Message)" -Level "ERROR"
             Write-ColorOutput "Failed to parse baseline JSON: $($_.Exception.Message)" -Type Error
             Write-ColorOutput "Error at line $($_.InvocationInfo.ScriptLineNumber): $($_.InvocationInfo.Line.Trim())" -Type Error
-            Write-ColorOutput "Falling back to built-in defaults`n" -Type Warning
+            Write-ColorOutput "⚠️  Using built-in ASD Blueprint defaults instead`n" -Type Warning
             $remoteDomainBaseline = $null
         }
     }
     else {
+        Write-Progress -Activity "Loading Baseline" -Completed
+        Write-Log "Baseline file not found at: $Path - using defaults" -Level "WARN"
         Write-ColorOutput "Baseline file not found at: $Path" -Type Warning
-        Write-ColorOutput "Falling back to built-in defaults`n" -Type Warning
+        Write-ColorOutput "⚠️  Using built-in ASD Blueprint defaults instead`n" -Type Warning
     }
 
     # Build and return ASD Blueprint requirements (from baseline if available, otherwise defaults)
@@ -247,29 +369,35 @@ function Get-BaselineSettings {
 
 # Check if ExchangeOnlineManagement module is installed and load it
 function Test-ExchangeModule {
+    Write-Log "Checking for ExchangeOnlineManagement module" -Level "INFO"
     Write-ColorOutput "Checking for ExchangeOnlineManagement module..." -Type Info
     
     # Check if module is already loaded
     if (Get-Module -Name ExchangeOnlineManagement) {
+        Write-Log "ExchangeOnlineManagement module already loaded" -Level "INFO"
         Write-ColorOutput "ExchangeOnlineManagement module already loaded." -Type Success
         return $true
     }
     
     # Check if module is available
     if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
+        Write-Log "ExchangeOnlineManagement module not found" -Level "ERROR"
         Write-ColorOutput "ExchangeOnlineManagement module not found!" -Type Error
         Write-ColorOutput "Install it with: Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser" -Type Warning
         return $false
     }
     
     # Load the module
+    Write-Log "Loading ExchangeOnlineManagement module" -Level "INFO"
     Write-ColorOutput "Loading ExchangeOnlineManagement module..." -Type Info
     try {
         Import-Module ExchangeOnlineManagement -ErrorAction Stop
+        Write-Log "ExchangeOnlineManagement module loaded successfully" -Level "INFO"
         Write-ColorOutput "ExchangeOnlineManagement module loaded successfully." -Type Success
         return $true
     }
     catch {
+        Write-Log "Failed to load module: $($_.Exception.Message)" -Level "ERROR"
         Write-ColorOutput "Failed to load ExchangeOnlineManagement module: $($_.Exception.Message)" -Type Error
         return $false
     }
@@ -277,26 +405,84 @@ function Test-ExchangeModule {
 
 # Connect to Exchange Online
 function Connect-EXO {
+    Write-Log "Checking Exchange Online connection status" -Level "INFO"
     Write-ColorOutput "`nChecking Exchange Online connection..." -Type Info
     
     try {
         # Try to run a simple command to test if already connected
         try {
             $null = Get-OrganizationConfig -ErrorAction Stop
+            Write-Log "Already connected to Exchange Online" -Level "INFO"
             Write-ColorOutput "Already connected to Exchange Online." -Type Success
             return $true
         }
         catch {
             # Not connected or connection expired, need to authenticate
+            Write-Log "Not connected - initiating Exchange Online connection" -Level "INFO"
             Write-ColorOutput "Not connected. Connecting to Exchange Online..." -Type Info
             Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop
+            Write-Log "Successfully connected to Exchange Online" -Level "INFO"
             Write-ColorOutput "Successfully connected to Exchange Online." -Type Success
             return $true
         }
     }
     catch {
+        Write-Log "Failed to connect to Exchange Online: $($_.Exception.Message)" -Level "ERROR"
         Write-ColorOutput "Failed to connect to Exchange Online: $($_.Exception.Message)" -Type Error
         return $false
+    }
+}
+
+# Check Exchange Online permissions
+function Test-ExchangePermissions {
+    Write-ColorOutput "`nValidating Exchange Online permissions..." -Type Info
+    
+    try {
+        # Try to get organization config (requires View-Only Organization Management minimum)
+        $null = Get-OrganizationConfig -ErrorAction Stop
+        
+        # Try to get a remote domain (specific permission test)
+        $null = Get-RemoteDomain -Identity "Default" -ErrorAction Stop
+        
+        Write-ColorOutput "Permission validation passed." -Type Success
+        return $true
+    }
+    catch {
+        $errorMessage = $_.Exception.Message
+        
+        # Check if it's a permission-related error
+        if ($errorMessage -match "Access.*Denied|not have permission|Insufficient|Unauthorized|Authorization|forbidden") {
+            Write-ColorOutput "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+            Write-ColorOutput "❌ INSUFFICIENT PERMISSIONS" -Type Error
+            Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+            Write-Host ""
+            Write-ColorOutput "This script requires Exchange Online read permissions." -Type Warning
+            Write-Host ""
+            Write-ColorOutput "Required Roles (one of the following):" -Type Info
+            Write-Host "  • Exchange Administrator"
+            Write-Host "  • Global Administrator" 
+            Write-Host "  • Global Reader"
+            Write-Host "  • View-Only Organization Management"
+            Write-Host "  • Compliance Administrator"
+            Write-Host ""
+            Write-ColorOutput "Error Details:" -Type Warning
+            Write-Host "  $errorMessage"
+            Write-Host ""
+            Write-ColorOutput "Action Required:" -Type Info
+            Write-Host "  1. Contact your Exchange Online administrator"
+            Write-Host "  2. Request one of the roles listed above"
+            Write-Host "  3. Wait for role assignment to propagate (may take a few minutes)"
+            Write-Host "  4. Re-run this script after role assignment"
+            Write-Host ""
+            Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+            return $false
+        }
+        else {
+            # Some other error occurred
+            Write-ColorOutput "Permission check failed: $errorMessage" -Type Error
+            Write-ColorOutput "Please verify your Exchange Online connection and try again." -Type Warning
+            return $false
+        }
     }
 }
 
@@ -337,6 +523,10 @@ function Test-Setting {
         $result.Status = "FAIL"
     }
     
+    # Log the check result
+    $logMsg = "Check: $SettingName - Current: $($result.CurrentValue), Required: $($result.RequiredValue), Status: $($result.Status)"
+    Write-Log -Message $logMsg -Level $(if ($result.Compliant) { "INFO" } else { "WARN" })
+    
     return $result
 }
 
@@ -355,7 +545,7 @@ function New-HTMLReport {
     $overallStatus = if ($compliancePercentage -eq 100) { "COMPLIANT" } else { "NON-COMPLIANT" }
     $statusColor = if ($compliancePercentage -eq 100) { "#28a745" } else { "#dc3545" }
     
-    $reportDate = Get-Date -Format "MMMM dd, yyyy - HH:mm:ss"
+    $reportDate = Get-Date -Format "dd MMMM yyyy - HH:mm:ss"
     
     $html = @"
 <!DOCTYPE html>
@@ -717,6 +907,7 @@ function New-HTMLReport {
         
         <div class="footer">
             <p><strong>Reference:</strong> <a href="https://blueprint.asd.gov.au/configuration/exchange-online/mail-flow/remote-domains/" target="_blank">ASD's Blueprint for Secure Cloud - Remote Domains</a></p>
+            <p style="margin-top: 10px;"><strong>Security Controls Explanation:</strong> <a href="https://github.com/directorcia/bp/wiki/Exchange-Online-Remote-Domain-Security-Controls" target="_blank">Why These Recommendations Matter</a></p>
         </div>
     </div>
 </body>
@@ -744,7 +935,11 @@ function Invoke-RemoteDomainCheck {
     Write-ColorOutput "  ASD Blueprint Compliance Check" -Type Info
     Write-ColorOutput "========================================`n" -Type Info
     
+    # Initialize progress
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Initializing..." -PercentComplete 0
+    
     # Get the Default remote domain
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Retrieving Default remote domain configuration..." -PercentComplete 10
     Write-ColorOutput "Retrieving Default remote domain configuration..." -Type Info
     
     try {
@@ -759,6 +954,7 @@ function Invoke-RemoteDomainCheck {
         
     }
     catch {
+        Write-Progress -Activity "ASD Remote Domain Check" -Completed
         Write-ColorOutput "Failed to retrieve remote domain: $($_.Exception.Message)" -Type Error
         return
     }
@@ -767,69 +963,95 @@ function Invoke-RemoteDomainCheck {
     $checkResults = @()
     
     # Check each setting
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking settings against ASD Blueprint requirements..." -PercentComplete 20
     Write-ColorOutput "Checking settings against ASD Blueprint requirements...`n" -Type Info
     
+    # Define total checks for progress calculation
+    $totalChecks = 10
+    $currentCheck = 0
+    
     # Domain Name
+    $currentCheck++
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking DomainName ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
     $checkResults += Test-Setting -SettingName "DomainName" `
         -CurrentValue $remoteDomain.DomainName `
         -RequiredValue $Requirements.DomainName `
         -Description "Remote Domain (should be *)"
     
     # Out of Office Type
+    $currentCheck++
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking AllowedOOFType ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
     $checkResults += Test-Setting -SettingName "AllowedOOFType" `
         -CurrentValue $remoteDomain.AllowedOOFType `
         -RequiredValue $Requirements.AllowedOOFType `
         -Description "Out of Office automatic reply types"
     
     # Auto Reply
+    $currentCheck++
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking AutoReplyEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
     $checkResults += Test-Setting -SettingName "AutoReplyEnabled" `
         -CurrentValue $remoteDomain.AutoReplyEnabled `
         -RequiredValue $Requirements.AutoReplyEnabled `
         -Description "Allow automatic replies"
     
     # Auto Forward
+    $currentCheck++
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking AutoForwardEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
     $checkResults += Test-Setting -SettingName "AutoForwardEnabled" `
         -CurrentValue $remoteDomain.AutoForwardEnabled `
         -RequiredValue $Requirements.AutoForwardEnabled `
         -Description "Allow automatic forwarding"
     
     # Delivery Reports
+    $currentCheck++
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking DeliveryReportEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
     $checkResults += Test-Setting -SettingName "DeliveryReportEnabled" `
         -CurrentValue $remoteDomain.DeliveryReportEnabled `
         -RequiredValue $Requirements.DeliveryReportEnabled `
         -Description "Allow delivery reports"
     
     # NDR (Non-Delivery Reports)
+    $currentCheck++
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking NDREnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
     $checkResults += Test-Setting -SettingName "NDREnabled" `
         -CurrentValue $remoteDomain.NDREnabled `
         -RequiredValue $Requirements.NDREnabled `
         -Description "Allow non-delivery reports"
     
     # Meeting Forward Notifications
+    $currentCheck++
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking MeetingForwardNotificationEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
     $checkResults += Test-Setting -SettingName "MeetingForwardNotificationEnabled" `
         -CurrentValue $remoteDomain.MeetingForwardNotificationEnabled `
         -RequiredValue $Requirements.MeetingForwardNotificationEnabled `
         -Description "Allow meeting forward notifications"
     
     # TNEF (Rich Text Format)
+    $currentCheck++
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking TNEFEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
     $checkResults += Test-Setting -SettingName "TNEFEnabled" `
         -CurrentValue $remoteDomain.TNEFEnabled `
         -RequiredValue $Requirements.TNEFEnabled `
         -Description "Use rich-text format (null = Follow user settings)"
     
     # Character Set
+    $currentCheck++
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking CharacterSet ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
     $checkResults += Test-Setting -SettingName "CharacterSet" `
         -CurrentValue $remoteDomain.CharacterSet `
         -RequiredValue $Requirements.CharacterSet `
         -Description "MIME character set"
     
     # Non-MIME Character Set
+    $currentCheck++
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking NonMimeCharacterSet ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
     $checkResults += Test-Setting -SettingName "NonMimeCharacterSet" `
         -CurrentValue $remoteDomain.NonMimeCharacterSet `
         -RequiredValue $Requirements.NonMimeCharacterSet `
         -Description "Non-MIME character set"
     
     # Display results
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Analyzing results..." -PercentComplete 60
     Write-ColorOutput "`n========================================" -Type Info
     Write-ColorOutput "  CHECK RESULTS" -Type Info
     Write-ColorOutput "========================================`n" -Type Info
@@ -876,6 +1098,7 @@ function Invoke-RemoteDomainCheck {
     
     # Export to CSV if requested
     if ($ExportToCSV) {
+        Write-Progress -Activity "ASD Remote Domain Check" -Status "Exporting results to CSV..." -PercentComplete 70
         try {
             $checkResults | Select-Object Setting, Description, CurrentValue, RequiredValue, Status | 
                 Export-Csv -Path $CSVPath -NoTypeInformation -Encoding UTF8
@@ -887,9 +1110,11 @@ function Invoke-RemoteDomainCheck {
     }
     
     # Generate HTML Report (always)
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Generating HTML report..." -PercentComplete 80
     Write-ColorOutput "`nGenerating HTML report..." -Type Info
     if (New-HTMLReport -CheckResults $checkResults -RemoteDomain $remoteDomain -OutputPath $script:HTMLPath) {
         Write-ColorOutput "HTML report generated: $script:HTMLPath" -Type Success
+        Write-Progress -Activity "ASD Remote Domain Check" -Status "Opening report in browser..." -PercentComplete 90
         Write-ColorOutput "Opening report in default browser..." -Type Info
         try {
             Start-Process $script:HTMLPath -ErrorAction Stop
@@ -903,38 +1128,126 @@ function Invoke-RemoteDomainCheck {
         Write-ColorOutput "Failed to generate HTML report." -Type Error
     }
     
+    # Complete progress
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Completed" -PercentComplete 100
+    Start-Sleep -Milliseconds 500
+    Write-Progress -Activity "ASD Remote Domain Check" -Completed
+    
     return $checkResults
 }
 
 # Main execution
 try {
+    # Initialize logging if enabled
+    if ($script:DetailedLogging) {
+        Write-Log "=== ASD Remote Domain Configuration Check Started ===" -Level "INFO"
+        Write-Log "Script Version: $scriptVersion" -Level "INFO"
+        Write-Log "PowerShell Version: $($PSVersionTable.PSVersion)" -Level "INFO"
+        Write-Log "Detailed Logging: Enabled" -Level "INFO"
+        Write-Log "Log Path: $script:LogPath" -Level "INFO"
+    }
+    
     Write-ColorOutput "`n========================================" -Type Info
     Write-ColorOutput "  ASD Remote Domain Configuration Check" -Type Info
     Write-ColorOutput "========================================" -Type Info
-    Write-ColorOutput "Baseline: $(if (Test-Path $script:BaselinePath) { 'Found' } else { 'Not Found (will use defaults)' })" -Type $(if (Test-Path $script:BaselinePath) { 'Success' } else { 'Warning' })
+    $isUrl = $script:BaselinePath -match '^https?://'
+    if ($isUrl) {
+        Write-ColorOutput "Baseline: GitHub (latest)" -Type Info
+    }
+    elseif (Test-Path $script:BaselinePath) {
+        Write-ColorOutput "Baseline: Local File (found)" -Type Success
+    }
+    else {
+        Write-ColorOutput "Baseline: Local File (not found - will use defaults)" -Type Warning
+    }
     Write-ColorOutput "Location: $script:BaselinePath" -Type Info
     Write-ColorOutput "Output:   $parentPath`n" -Type Info
+    
+    if ($script:DetailedLogging) {
+        Write-ColorOutput "Logging:  $script:LogPath" -Type Info
+    }
     
     # Load baseline settings
     $asdRequirements = Get-BaselineSettings -Path $BaselinePath
     
+    if (-not $asdRequirements) {
+        Write-ColorOutput "`nFailed to load baseline settings. Cannot proceed." -Type Error
+        exit 1
+    }
+    
     # Check module
     if (-not (Test-ExchangeModule)) {
+        Write-ColorOutput "`nExchangeOnlineManagement module is required. Please install it first." -Type Error
         exit 1
     }
     
     # Connect to Exchange Online
     if (-not (Connect-EXO)) {
+        Write-ColorOutput "`nFailed to connect to Exchange Online. Cannot proceed." -Type Error
+        exit 1
+    }
+    
+    # Validate permissions before proceeding
+    if (-not (Test-ExchangePermissions)) {
+        Write-ColorOutput "`nScript cannot continue without proper permissions." -Type Error
         exit 1
     }
     
     # Run the check
-    Invoke-RemoteDomainCheck -Requirements $asdRequirements | Out-Null
+    Write-Log "Starting remote domain compliance check" -Level "INFO"
+    $results = Invoke-RemoteDomainCheck -Requirements $asdRequirements
     
-    Write-ColorOutput "`nScript completed successfully." -Type Success
+    if ($results) {
+        Write-Log "Script completed successfully" -Level "INFO"
+        Write-ColorOutput "`nScript completed successfully." -Type Success
+        
+        if ($script:DetailedLogging) {
+            Write-ColorOutput "Detailed log saved to: $script:LogPath" -Type Info
+        }
+    }
+    else {
+        Write-Log "Script completed with warnings" -Level "WARN"
+        Write-ColorOutput "`nScript completed with warnings. Please review the results." -Type Warning
+    }
+    
+    # Log final summary
+    if ($script:DetailedLogging) {
+        Write-Log "=== ASD Remote Domain Configuration Check Completed ===" -Level "INFO"
+        Write-Log "HTML Report: $script:HTMLPath" -Level "INFO"
+        if ($ExportToCSV) {
+            Write-Log "CSV Export: $CSVPath" -Level "INFO"
+        }
+    }
 }
 catch {
-    Write-ColorOutput "`nScript failed with error: $($_.Exception.Message)" -Type Error
-    Write-ColorOutput $_.ScriptStackTrace -Type Error
+    Write-Log "SCRIPT EXECUTION FAILED: $($_.Exception.Message)" -Level "ERROR"
+    Write-Log "Error Location: Line $($_.InvocationInfo.ScriptLineNumber) - $($_.InvocationInfo.Line.Trim())" -Level "ERROR"
+    if ($_.ScriptStackTrace) {
+        Write-Log "Stack Trace: $($_.ScriptStackTrace)" -Level "ERROR"
+    }
+    
+    Write-ColorOutput "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+    Write-ColorOutput "❌ SCRIPT EXECUTION FAILED" -Type Error
+    Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+    Write-Host ""
+    Write-ColorOutput "Error Message:" -Type Error
+    Write-Host "  $($_.Exception.Message)"
+    Write-Host ""
+    Write-ColorOutput "Error Location:" -Type Warning
+    Write-Host "  Line: $($_.InvocationInfo.ScriptLineNumber)"
+    Write-Host "  Command: $($_.InvocationInfo.Line.Trim())"
+    Write-Host ""
+    if ($_.ScriptStackTrace) {
+        Write-ColorOutput "Stack Trace:" -Type Warning
+        Write-Host "  $($_.ScriptStackTrace)"
+    }
+    Write-Host ""
+    Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+    
+    if ($script:DetailedLogging) {
+        Write-Host ""
+        Write-ColorOutput "Detailed error log saved to: $script:LogPath" -Type Info
+    }
+    
     exit 1
 }
