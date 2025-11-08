@@ -1,7 +1,14 @@
 param(                         
-    [switch]$noprompt = $false,   ## if -noprompt used then user will not be asked for any input
-    [switch]$noupdate = $false,   ## if -noupdate used then module will not be checked for more recent version
-    [switch]$debug = $false       ## if -debug create a log file
+    [switch]$noprompt = $false,     ## if -noprompt used then user will not be asked for any input
+    [switch]$noupdate = $false,     ## if -noupdate used then module will not be checked for more recent version
+    [switch]$debug = $false,        ## if -debug create a log file
+    [switch]$deviceauth = $false,   ## legacy switch: force device code flow (maps to -Auth device)
+    [switch]$browserauth = $false,  ## legacy switch: open browser + copy URL (maps to -Auth device with browser open)
+    [ValidateSet('auto','browser','device')]
+    [string]$Auth = 'auto',         ## Authentication mode aligned with patron script
+    [string]$TenantId,              ## Optional TenantId
+    [switch]$ForceReconnect = $false, ## Force reconnect even if already connected
+    [switch]$NoClear = $false       ## Do not Clear-Host at start
 )
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
@@ -26,7 +33,11 @@ $warningmessagecolor = "yellow"
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
-Clear-Host
+if (-not $NoClear) { Clear-Host }
+
+# Enforce modern TLS
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13 } catch {}
+
 
 if ($debug) {
     write-host "Script activity logged at ..\o365-connect-tms.txt"
@@ -44,7 +55,7 @@ else {
         do {
             $response = read-host -Prompt "`nDo you wish to install the Microsoft Teams PowerShell module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
-        if ($result -eq 'Y' -or $result -eq 'y') {
+        if ($response -eq 'Y' -or $response -eq 'y') {
             write-host -foregroundcolor $processmessagecolor "Installing Microsoft Teams PowerShell module - Administration escalation required"
             Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name MicrosoftTeams -Force -confirm:$false" -wait -WindowStyle Hidden
             write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module installed"
@@ -88,7 +99,7 @@ if (-not $noupdate) {
             do {
                 $response = read-host -Prompt "`nDo you wish to update the Microsoft Teams PowerShell module (Y/N)?"
             } until (-not [string]::isnullorempty($response))
-            if ($result -eq 'Y' -or $result -eq 'y') {
+            if ($response -eq 'Y' -or $response -eq 'y') {
                 write-host -foregroundcolor $processmessagecolor "Updating the Microsoft Teams PowerShell module - Administration escalation required"
                 Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name MicrosoftTeams -Force -confirm:$false" -wait -WindowStyle Hidden
                 write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module - updated"
@@ -122,19 +133,103 @@ write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell mod
 
 ## Connect to Microsoft Teams service
 write-host -foregroundcolor $processmessagecolor "Connecting to Microsoft Teams"
-try {
-    $result=Connect-MicrosoftTeams
+
+# Detect existing connection unless forced
+$already = $false
+if (-not $ForceReconnect) {
+    try {
+        $ctx = Get-CsOnlineSession -ErrorAction SilentlyContinue
+        if ($ctx) {
+            $already = $true
+            Write-Host -ForegroundColor $processmessagecolor "Existing Teams session detected - skipping new connection (use -ForceReconnect to override)"
+        }
+    } catch {}
 }
-catch {
-    Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Microsoft Teams`n"
-    Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
-    if ($debug) {
-        Stop-Transcript | Out-Null                 ## Terminate transcription
+if ($already) {
+    write-host -foregroundcolor $processmessagecolor "Connected to Microsoft Teams`n"
+    write-host -foregroundcolor $systemmessagecolor "Microsoft Teams connection script finished`n"
+    if ($debug) { Stop-Transcript | Out-Null }
+    return
+}
+
+# Guard for Connect-MicrosoftTeams cmdlet presence
+if (-not (Get-Command Connect-MicrosoftTeams -ErrorAction SilentlyContinue)) {
+    Write-Host -ForegroundColor $errormessagecolor "[002A] - Connect-MicrosoftTeams cmdlet not available after module import. Verify module installation."
+    if ($debug) { Stop-Transcript | Out-Null }
+    exit 2
+}
+
+function Connect-TeamsSafe {
+    param([Parameter(Mandatory=$true)][ValidateSet('browser','device')][string]$AuthMode, [hashtable]$Splat)
+    try {
+        if ($AuthMode -eq 'device') {
+            $loginUrl = 'https://microsoft.com/devicelogin'
+            Write-Host -ForegroundColor Cyan  ""
+            Write-Host -ForegroundColor Cyan  "============================================================"
+            Write-Host -ForegroundColor Cyan  " DEVICE LOGIN REQUIRED"
+            Write-Host -ForegroundColor Cyan  "============================================================"
+            Write-Host -ForegroundColor Gray  "1) A browser window will open automatically."
+            Write-Host -ForegroundColor Gray  "2) If it doesn't, open: $loginUrl"
+            Write-Host -ForegroundColor Gray  "3) When prompted, paste the device code shown below by the sign-in prompt."
+            Write-Host -ForegroundColor DarkGray "   (We've also copied the URL to your clipboard.)"
+            Write-Host -ForegroundColor Cyan  "------------------------------------------------------------"
+            try { if (Get-Command Set-Clipboard -ErrorAction SilentlyContinue) { $loginUrl | Set-Clipboard } } catch { }
+            try { Start-Process $loginUrl -ErrorAction SilentlyContinue | Out-Null } catch { }
+            Connect-MicrosoftTeams @Splat -UseDeviceAuthentication -ErrorAction Stop | Out-Null
+        }
+        else {
+            Connect-MicrosoftTeams @Splat -ErrorAction Stop | Out-Null
+        }
+        return $true
     }
+    catch {
+        Write-Host -ForegroundColor Yellow ("[003] - Connect ({0}) failed: {1}" -f $AuthMode, $_.Exception.Message)
+        return $false
+    }
+}
+
+$connected = $false
+# Build splat for Connect-MicrosoftTeams
+$connectSplat = @{}
+if ($TenantId) { $connectSplat.TenantId = $TenantId }
+
+# Map legacy switches to $Auth intent if provided
+if ($browserauth) { $Auth = 'device' }
+elseif ($deviceauth) { $Auth = 'device' }
+
+switch ($Auth) {
+    'browser' {
+        $connected = Connect-TeamsSafe -AuthMode 'browser' -Splat $connectSplat
+    }
+    'device' {
+        $connected = Connect-TeamsSafe -AuthMode 'device' -Splat $connectSplat
+    }
+    default {
+        # auto: try browser, then fallback to device on failure or listener issues
+        $connected = Connect-TeamsSafe -AuthMode 'browser' -Splat $connectSplat
+        if (-not $connected) {
+            Write-Host -ForegroundColor Yellow "Retrying with device code authentication..."
+            $connected = Connect-TeamsSafe -AuthMode 'device' -Splat $connectSplat
+            if (-not $connected) {
+                Write-Host -ForegroundColor Yellow "Tip: If you saw an HttpListener error, run these from an elevated prompt:"
+                Write-Host -ForegroundColor Yellow "    netsh http show iplisten"
+                Write-Host -ForegroundColor Yellow "    netsh http add iplisten 127.0.0.1"
+                Write-Host -ForegroundColor Yellow "    netsh http add iplisten ::1"
+            }
+        }
+    }
+}
+
+if ($connected) {
+    write-host -foregroundcolor $processmessagecolor "Connected to Microsoft Teams`n"
+}
+else {
+    Write-Host -ForegroundColor $errormessagecolor "[003] - Failed to connect to Teams using selected authentication mode(s)."
+    if ($debug) { Stop-Transcript | Out-Null }
     exit 3
 }
-write-host -foregroundcolor $processmessagecolor "Connected to Microsoft Teams`n"
 write-host -foregroundcolor $systemmessagecolor "Microsoft Teams connection script finished`n"
 if ($debug) {
     Stop-Transcript | Out-Null
 }
+
