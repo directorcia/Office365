@@ -939,4 +939,340 @@ function Invoke-MailFlowCheck {
     # Initialize progress
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Initializing..." -PercentComplete 0
     
-    # Get the organization config
+    # Get the organization configuration
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Retrieving organization configuration..." -PercentComplete 10
+    Write-ColorOutput "Retrieving organization mail flow configuration..." -Type Info
+    
+    try {
+        $orgConfig = Get-OrganizationConfig -ErrorAction Stop
+        
+        if (-not $orgConfig) {
+            Write-ColorOutput "Organization configuration not found!" -Type Error
+            return
+        }
+        
+        Write-ColorOutput "Organization configuration retrieved: $($orgConfig.DisplayName)`n" -Type Success
+        
+    }
+    catch {
+        Write-Progress -Activity "ASD Mail Flow Settings Check" -Completed
+        Write-ColorOutput "Failed to retrieve organization configuration: $($_.Exception.Message)" -Type Error
+        return
+    }
+    
+    # Array to store all check results
+    $checkResults = @()
+    
+    # Check each setting
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking settings against ASD Blueprint requirements..." -PercentComplete 20
+    Write-ColorOutput "Checking settings against ASD Blueprint requirements...`n" -Type Info
+    
+    # Define total checks for progress calculation
+    $totalChecks = 13
+    $currentCheck = 0
+    
+    # General Settings - Plus Addressing
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking PlusAddressingEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "PlusAddressingEnabled" `
+        -CurrentValue $orgConfig.PlusAddressingEnabled `
+        -RequiredValue $Requirements.PlusAddressingEnabled `
+        -Description "Allow plus addressing (user+tag@domain.com)"
+    
+    # General Settings - Send From Aliases
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking SendFromAliasesEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "SendFromAliasesEnabled" `
+        -CurrentValue $orgConfig.SendFromAliasesEnabled `
+        -RequiredValue $Requirements.SendFromAliasesEnabled `
+        -Description "Allow sending from email aliases"
+    
+    # Security Settings - SMTP Auth
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking SmtpClientAuthenticationDisabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "SmtpClientAuthenticationDisabled" `
+        -CurrentValue $orgConfig.SmtpClientAuthenticationDisabled `
+        -RequiredValue (-not $Requirements.SmtpAuthProtocolEnabled) `
+        -Description "SMTP client authentication (should be disabled)"
+    
+    # Security Settings - Legacy TLS
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking AllowLegacyTLSClients ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "AllowLegacyTLSClients" `
+        -CurrentValue $orgConfig.AllowLegacyTLSClients `
+        -RequiredValue $Requirements.LegacyTlsClientsAllowed `
+        -Description "Allow legacy TLS clients (TLS 1.0/1.1)"
+    
+    # Reply All Storm Protection - Enabled
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking ReplyAllStormProtectionEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "ReplyAllStormProtectionEnabled" `
+        -CurrentValue $orgConfig.ReplyAllStormProtectionEnabled `
+        -RequiredValue $Requirements.ReplyAllStormEnabled `
+        -Description "Enable reply all storm protection"
+    
+    # Reply All Storm Protection - Minimum Recipients
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking ReplyAllStormProtectionMinimumRecipients ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "ReplyAllStormProtectionMinimumRecipients" `
+        -CurrentValue $orgConfig.ReplyAllStormProtectionMinimumRecipients `
+        -RequiredValue $Requirements.ReplyAllStormMinimumRecipients `
+        -Description "Minimum recipients to trigger protection"
+    
+    # Reply All Storm Protection - Minimum Reply Alls
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking ReplyAllStormProtectionMinimumReplies ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "ReplyAllStormProtectionMinimumReplies" `
+        -CurrentValue $orgConfig.ReplyAllStormProtectionMinimumReplies `
+        -RequiredValue $Requirements.ReplyAllStormMinimumReplyAlls `
+        -Description "Minimum reply-alls to trigger protection"
+    
+    # Reply All Storm Protection - Block Duration
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking ReplyAllStormBlockDurationHours ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "ReplyAllStormBlockDurationHours" `
+        -CurrentValue $orgConfig.ReplyAllStormBlockDurationHours `
+        -RequiredValue $Requirements.ReplyAllStormBlockDurationHours `
+        -Description "Block duration in hours"
+    
+    # Message Recall - Enabled
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking MessageRecallEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "MessageRecallEnabled" `
+        -CurrentValue $orgConfig.MessageRecallEnabled `
+        -RequiredValue $Requirements.MessageRecallEnabled `
+        -Description "Enable message recall"
+    
+    # Message Recall - Allow Recall Read Messages
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking RecallReadMessagesEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "RecallReadMessagesEnabled" `
+        -CurrentValue $orgConfig.RecallReadMessagesEnabled `
+        -RequiredValue $Requirements.MessageRecallAllowRecallReadMessages `
+        -Description "Allow recalling already-read messages"
+    
+    # Message Recall - Enable Recipient Alerts
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking MessageRecallAlertRecipientsEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "MessageRecallAlertRecipientsEnabled" `
+        -CurrentValue $orgConfig.MessageRecallAlertRecipientsEnabled `
+        -RequiredValue $Requirements.MessageRecallEnableRecipientAlerts `
+        -Description "Enable recipient alerts for recalls"
+    
+    # Message Recall - Alert Read Messages Only
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking MessageRecallAlertRecipientsReadMessagesOnlyEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "MessageRecallAlertRecipientsReadMessagesOnlyEnabled" `
+        -CurrentValue $orgConfig.MessageRecallAlertRecipientsReadMessagesOnlyEnabled `
+        -RequiredValue $Requirements.MessageRecallAlertReadMessagesOnly `
+        -Description "Alert recipients only for read messages"
+    
+    # Message Recall - Max Age Days
+    $currentCheck++
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking MessageRecallMaxAgeInDays ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    $checkResults += Test-Setting -SettingName "MessageRecallMaxAgeInDays" `
+        -CurrentValue $orgConfig.MessageRecallMaxAgeInDays `
+        -RequiredValue $Requirements.MessageRecallMaxAgeDays `
+        -Description "Maximum age of messages that can be recalled"
+    
+    # Display results
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Analyzing results..." -PercentComplete 60
+    Write-ColorOutput "`n========================================" -Type Info
+    Write-ColorOutput "  CHECK RESULTS" -Type Info
+    Write-ColorOutput "========================================`n" -Type Info
+    
+    foreach ($result in $checkResults) {
+        $statusColor = if ($result.Compliant) { "Success" } else { "Error" }
+        $statusSymbol = if ($result.Compliant) { "[✓]" } else { "[✗]" }
+        
+        Write-ColorOutput "$statusSymbol $($result.Setting)" -Type $statusColor
+        Write-Host "    Description : $($result.Description)"
+        Write-Host "    Current     : $($result.CurrentValue)"
+        Write-Host "    Required    : $($result.RequiredValue)"
+        Write-Host "    Status      : $($result.Status)"
+        Write-Host ""
+    }
+    
+    # Summary
+    $totalChecks = $checkResults.Count
+    $passedChecks = ($checkResults | Where-Object { $_.Compliant }).Count
+    $failedChecks = $totalChecks - $passedChecks
+    $compliancePercentage = [math]::Round(($passedChecks / $totalChecks) * 100, 2)
+    
+    Write-ColorOutput "========================================" -Type Info
+    Write-ColorOutput "  SUMMARY" -Type Info
+    Write-ColorOutput "========================================" -Type Info
+    Write-Host "Total Checks    : $totalChecks"
+    Write-ColorOutput "Passed          : $passedChecks" -Type Success
+    
+    if ($failedChecks -gt 0) {
+        Write-ColorOutput "Failed          : $failedChecks" -Type Error
+    } else {
+        Write-ColorOutput "Failed          : $failedChecks" -Type Success
+    }
+    
+    Write-Host "Compliance      : $compliancePercentage%"
+    
+    if ($compliancePercentage -eq 100) {
+        Write-ColorOutput "`nStatus          : COMPLIANT ✓" -Type Success
+    } else {
+        Write-ColorOutput "`nStatus          : NON-COMPLIANT ✗" -Type Error
+    }
+    
+    Write-ColorOutput "========================================`n" -Type Info
+    
+    # Export to CSV if requested
+    if ($ExportToCSV) {
+        Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Exporting results to CSV..." -PercentComplete 70
+        try {
+            $checkResults | Select-Object Setting, Description, CurrentValue, RequiredValue, Status | 
+                Export-Csv -Path $CSVPath -NoTypeInformation -Encoding UTF8
+            Write-ColorOutput "Results exported to: $CSVPath" -Type Success
+        }
+        catch {
+            Write-ColorOutput "Failed to export results: $($_.Exception.Message)" -Type Error
+        }
+    }
+    
+    # Generate HTML Report (always)
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Generating HTML report..." -PercentComplete 80
+    Write-ColorOutput "`nGenerating HTML report..." -Type Info
+    if (New-HTMLReport -CheckResults $checkResults -OrgConfig $orgConfig -OutputPath $script:HTMLPath) {
+        Write-ColorOutput "HTML report generated: $script:HTMLPath" -Type Success
+        Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Opening report in browser..." -PercentComplete 90
+        Write-ColorOutput "Opening report in default browser..." -Type Info
+        try {
+            Start-Process $script:HTMLPath -ErrorAction Stop
+        }
+        catch {
+            Write-ColorOutput "Could not automatically open browser: $($_.Exception.Message)" -Type Warning
+            Write-ColorOutput "Please open the report manually: $script:HTMLPath" -Type Warning
+        }
+    }
+    else {
+        Write-ColorOutput "Failed to generate HTML report." -Type Error
+    }
+    
+    # Complete progress
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Completed" -PercentComplete 100
+    Start-Sleep -Milliseconds 500
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Completed
+    
+    return $checkResults
+}
+
+# Main execution
+try {
+    # Initialize logging if enabled
+    if ($script:DetailedLogging) {
+        Write-Log "=== ASD Mail Flow Settings Check Started ===" -Level "INFO"
+        Write-Log "Script Version: $scriptVersion" -Level "INFO"
+        Write-Log "PowerShell Version: $($PSVersionTable.PSVersion)" -Level "INFO"
+        Write-Log "Detailed Logging: Enabled" -Level "INFO"
+        Write-Log "Log Path: $script:LogPath" -Level "INFO"
+    }
+    
+    Write-ColorOutput "`n========================================" -Type Info
+    Write-ColorOutput "  ASD Mail Flow Settings Check" -Type Info
+    Write-ColorOutput "========================================" -Type Info
+    $isUrl = $script:BaselinePath -match '^https?://'
+    if ($isUrl) {
+        Write-ColorOutput "Baseline: GitHub (latest)" -Type Info
+    }
+    elseif (Test-Path $script:BaselinePath) {
+        Write-ColorOutput "Baseline: Local File (found)" -Type Success
+    }
+    else {
+        Write-ColorOutput "Baseline: Local File (not found - will use defaults)" -Type Warning
+    }
+    Write-ColorOutput "Location: $script:BaselinePath" -Type Info
+    Write-ColorOutput "Output:   $parentPath`n" -Type Info
+    
+    if ($script:DetailedLogging) {
+        Write-ColorOutput "Logging:  $script:LogPath" -Type Info
+    }
+    
+    # Load baseline settings
+    $asdRequirements = Get-BaselineSettings -Path $BaselinePath
+    
+    if (-not $asdRequirements) {
+        Write-ColorOutput "`nFailed to load baseline settings. Cannot proceed." -Type Error
+        exit 1
+    }
+    
+    # Check module
+    if (-not (Test-ExchangeModule)) {
+        Write-ColorOutput "`nExchangeOnlineManagement module is required. Please install it first." -Type Error
+        exit 1
+    }
+    
+    # Connect to Exchange Online
+    if (-not (Connect-EXO)) {
+        Write-ColorOutput "`nFailed to connect to Exchange Online. Cannot proceed." -Type Error
+        exit 1
+    }
+    
+    # Validate permissions before proceeding
+    if (-not (Test-ExchangePermissions)) {
+        Write-ColorOutput "`nScript cannot continue without proper permissions." -Type Error
+        exit 1
+    }
+    
+    # Run the check
+    Write-Log "Starting mail flow settings compliance check" -Level "INFO"
+    $results = Invoke-MailFlowCheck -Requirements $asdRequirements
+    
+    if ($results) {
+        Write-Log "Script completed successfully" -Level "INFO"
+        Write-ColorOutput "`nScript completed successfully." -Type Success
+        
+        if ($script:DetailedLogging) {
+            Write-ColorOutput "Detailed log saved to: $script:LogPath" -Type Info
+        }
+    }
+    else {
+        Write-Log "Script completed with warnings" -Level "WARN"
+        Write-ColorOutput "`nScript completed with warnings. Please review the results." -Type Warning
+    }
+    
+    # Log final summary
+    if ($script:DetailedLogging) {
+        Write-Log "=== ASD Mail Flow Settings Check Completed ===" -Level "INFO"
+        Write-Log "HTML Report: $script:HTMLPath" -Level "INFO"
+        if ($ExportToCSV) {
+            Write-Log "CSV Export: $CSVPath" -Level "INFO"
+        }
+    }
+}
+catch {
+    Write-Log "SCRIPT EXECUTION FAILED: $($_.Exception.Message)" -Level "ERROR"
+    Write-Log "Error Location: Line $($_.InvocationInfo.ScriptLineNumber) - $($_.InvocationInfo.Line.Trim())" -Level "ERROR"
+    if ($_.ScriptStackTrace) {
+        Write-Log "Stack Trace: $($_.ScriptStackTrace)" -Level "ERROR"
+    }
+    
+    Write-ColorOutput "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+    Write-ColorOutput "❌ SCRIPT EXECUTION FAILED" -Type Error
+    Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+    Write-Host ""
+    Write-ColorOutput "Error Message:" -Type Error
+    Write-Host "  $($_.Exception.Message)"
+    Write-Host ""
+    Write-ColorOutput "Error Location:" -Type Warning
+    Write-Host "  Line: $($_.InvocationInfo.ScriptLineNumber)"
+    Write-Host "  Command: $($_.InvocationInfo.Line.Trim())"
+    Write-Host ""
+    if ($_.ScriptStackTrace) {
+        Write-ColorOutput "Stack Trace:" -Type Warning
+        Write-Host "  $($_.ScriptStackTrace)"
+    }
+    Write-Host ""
+    Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+    
+    if ($script:DetailedLogging) {
+        Write-Host ""
+        Write-ColorOutput "Detailed error log saved to: $script:LogPath" -Type Info
+    }
+    
+    exit 1
+}
