@@ -354,8 +354,8 @@ function Get-BaselineSettings {
     # Build and return ASD Blueprint requirements (from baseline if available, otherwise defaults)
     return @{
         # General settings
-        PlusAddressingEnabled = (Get-BaselineValue -Parent $baselineSettings.general -Property 'plusAddressingEnabled' -Default $false)
-        SendFromAliasesEnabled = (Get-BaselineValue -Parent $baselineSettings.general -Property 'sendFromAliasesEnabled' -Default $false)
+        DisablePlusAddressInRecipients = (Get-BaselineValue -Parent $baselineSettings.general -Property 'disablePlusAddressInRecipients' -Default $true)
+        SendFromAliasEnabled = (Get-BaselineValue -Parent $baselineSettings.general -Property 'sendFromAliasEnabled' -Default $false)
         
         # Security settings
         SmtpAuthProtocolEnabled = (Get-BaselineValue -Parent $baselineSettings.security -Property 'smtpAuthProtocolEnabled' -Default $false)
@@ -987,21 +987,21 @@ function Invoke-MailFlowCheck {
     # General Settings - Plus Addressing
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking PlusAddressingEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    # Treat null as False for boolean settings
-    $plusAddressingValue = if ($null -eq $orgConfig.PlusAddressingEnabled) { $false } else { $orgConfig.PlusAddressingEnabled }
-    $checkResults += Test-Setting -SettingName "PlusAddressingEnabled" `
-        -CurrentValue $plusAddressingValue `
-        -RequiredValue $Requirements.PlusAddressingEnabled `
-        -Description "Allow plus addressing (user+tag@domain.com)"
+    # Treat null as False for DisablePlusAddressInRecipients (meaning plus addressing is enabled by default)
+    $disablePlusAddressValue = if ($null -eq $orgConfig.DisablePlusAddressInRecipients) { $false } else { $orgConfig.DisablePlusAddressInRecipients }
+    $checkResults += Test-Setting -SettingName "DisablePlusAddressInRecipients" `
+        -CurrentValue $disablePlusAddressValue `
+        -RequiredValue $Requirements.DisablePlusAddressInRecipients `
+        -Description "Disable plus addressing (user+tag@domain.com) - ASD recommends disabling"
     
     # General Settings - Send From Aliases
     $currentCheck++
-    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking SendFromAliasesEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking SendFromAliasEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
     # Treat null as False for boolean settings
-    $sendFromAliasesValue = if ($null -eq $orgConfig.SendFromAliasesEnabled) { $false } else { $orgConfig.SendFromAliasesEnabled }
-    $checkResults += Test-Setting -SettingName "SendFromAliasesEnabled" `
-        -CurrentValue $sendFromAliasesValue `
-        -RequiredValue $Requirements.SendFromAliasesEnabled `
+    $sendFromAliasValue = if ($null -eq $orgConfig.SendFromAliasEnabled) { $false } else { $orgConfig.SendFromAliasEnabled }
+    $checkResults += Test-Setting -SettingName "SendFromAliasEnabled" `
+        -CurrentValue $sendFromAliasValue `
+        -RequiredValue $Requirements.SendFromAliasEnabled `
         -Description "Allow sending from email aliases"
     
     # Security Settings - SMTP Auth
