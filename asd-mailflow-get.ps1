@@ -1067,8 +1067,9 @@ function Invoke-MailFlowCheck {
     # Message Recall - Enabled
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking MessageRecallEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    # Treat null as False for boolean settings (default is disabled)
-    $messageRecallEnabledValue = if ($null -eq $orgConfig.MessageRecallEnabled) { $false } else { $orgConfig.MessageRecallEnabled }
+    # SPECIAL CASE: For Message Recall, null/blank = TRUE (Microsoft documentation states this)
+    # Per https://learn.microsoft.com/en-us/exchange/mail-flow-best-practices/work-with-cloud-based-message-recall
+    $messageRecallEnabledValue = if ([string]::IsNullOrWhiteSpace($orgConfig.MessageRecallEnabled)) { $true } else { $orgConfig.MessageRecallEnabled }
     $checkResults += Test-Setting -SettingName "MessageRecallEnabled" `
         -CurrentValue $messageRecallEnabledValue `
         -RequiredValue $Requirements.MessageRecallEnabled `
@@ -1077,8 +1078,8 @@ function Invoke-MailFlowCheck {
     # Message Recall - Allow Recall Read Messages
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking RecallReadMessagesEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    # Treat null as False for boolean settings
-    $recallReadMessagesValue = if ($null -eq $orgConfig.RecallReadMessagesEnabled) { $false } else { $orgConfig.RecallReadMessagesEnabled }
+    # SPECIAL CASE: For Message Recall, null/blank = TRUE (Microsoft documentation states this)
+    $recallReadMessagesValue = if ([string]::IsNullOrWhiteSpace($orgConfig.RecallReadMessagesEnabled)) { $true } else { $orgConfig.RecallReadMessagesEnabled }
     $checkResults += Test-Setting -SettingName "RecallReadMessagesEnabled" `
         -CurrentValue $recallReadMessagesValue `
         -RequiredValue $Requirements.MessageRecallAllowRecallReadMessages `
@@ -1099,20 +1100,36 @@ function Invoke-MailFlowCheck {
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking MessageRecallAlertRecipientsReadMessagesOnlyEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
     # Treat null as False for boolean settings
     $messageRecallAlertReadOnlyValue = if ($null -eq $orgConfig.MessageRecallAlertRecipientsReadMessagesOnlyEnabled) { $false } else { $orgConfig.MessageRecallAlertRecipientsReadMessagesOnlyEnabled }
+    # Add dependency note if parent setting is disabled
+    $alertReadOnlyDescription = "Alert recipients only for read messages"
+    if (-not $messageRecallAlertRecipientsValue) {
+        $alertReadOnlyDescription += " (Requires MessageRecallAlertRecipientsEnabled to be True first)"
+    }
     $checkResults += Test-Setting -SettingName "MessageRecallAlertRecipientsReadMessagesOnlyEnabled" `
         -CurrentValue $messageRecallAlertReadOnlyValue `
         -RequiredValue $Requirements.MessageRecallAlertReadMessagesOnly `
-        -Description "Alert recipients only for read messages"
+        -Description $alertReadOnlyDescription
     
     # Message Recall - Max Age Days
     $currentCheck++
-    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking MessageRecallMaxAgeInDays ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    # Treat null as 0 for numeric settings
-    $messageRecallMaxAgeValue = if ($null -eq $orgConfig.MessageRecallMaxAgeInDays) { 0 } else { $orgConfig.MessageRecallMaxAgeInDays }
-    $checkResults += Test-Setting -SettingName "MessageRecallMaxAgeInDays" `
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking MessageRecallMaxRecallableAge ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # MessageRecallMaxRecallableAge is a TimeSpan string like "365.00:00:00"
+    # We need to convert it to days for comparison
+    $maxRecallAge = $orgConfig.MessageRecallMaxRecallableAge
+    if ([string]::IsNullOrWhiteSpace($maxRecallAge)) {
+        $messageRecallMaxAgeValue = 0
+    } else {
+        # Extract days from TimeSpan format "days.HH:mm:ss"
+        if ($maxRecallAge -match '^\d+') {
+            $messageRecallMaxAgeValue = [int]($matches[0])
+        } else {
+            $messageRecallMaxAgeValue = 0
+        }
+    }
+    $checkResults += Test-Setting -SettingName "MessageRecallMaxRecallableAge" `
         -CurrentValue $messageRecallMaxAgeValue `
         -RequiredValue $Requirements.MessageRecallMaxAgeDays `
-        -Description "Maximum age of messages that can be recalled"
+        -Description "Maximum age of messages that can be recalled (days)"
     
     # Display results
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Analyzing results..." -PercentComplete 60
