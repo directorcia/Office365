@@ -6,7 +6,9 @@
     This script checks the Exchange Online Mail Flow configuration against 
     ASD's Blueprint for Secure Cloud requirements. It validates the organization 
     config settings including plus addressing, alias sending, SMTP authentication,
-    legacy TLS clients, reply all storm protection, and message recall.
+    legacy TLS clients, and message recall.
+    
+    It also validates transport config settings including reply all storm protection.
     
     Reference: https://blueprint.asd.gov.au/configuration/exchange-online/settings/mail-flow/
 
@@ -951,12 +953,23 @@ function Invoke-MailFlowCheck {
             return
         }
         
-        Write-ColorOutput "Organization configuration retrieved: $($orgConfig.DisplayName)`n" -Type Success
+        Write-ColorOutput "Organization configuration retrieved: $($orgConfig.DisplayName)" -Type Success
+        
+        # Get transport configuration for Reply-All Storm Protection settings
+        Write-ColorOutput "Retrieving transport configuration..." -Type Info
+        $transportConfig = Get-TransportConfig -ErrorAction Stop
+        
+        if (-not $transportConfig) {
+            Write-ColorOutput "Transport configuration not found!" -Type Error
+            return
+        }
+        
+        Write-ColorOutput "Transport configuration retrieved.`n" -Type Success
         
     }
     catch {
         Write-Progress -Activity "ASD Mail Flow Settings Check" -Completed
-        Write-ColorOutput "Failed to retrieve organization configuration: $($_.Exception.Message)" -Type Error
+        Write-ColorOutput "Failed to retrieve configuration: $($_.Exception.Message)" -Type Error
         return
     }
     
@@ -974,104 +987,130 @@ function Invoke-MailFlowCheck {
     # General Settings - Plus Addressing
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking PlusAddressingEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as False for boolean settings
+    $plusAddressingValue = if ($null -eq $orgConfig.PlusAddressingEnabled) { $false } else { $orgConfig.PlusAddressingEnabled }
     $checkResults += Test-Setting -SettingName "PlusAddressingEnabled" `
-        -CurrentValue $orgConfig.PlusAddressingEnabled `
+        -CurrentValue $plusAddressingValue `
         -RequiredValue $Requirements.PlusAddressingEnabled `
         -Description "Allow plus addressing (user+tag@domain.com)"
     
     # General Settings - Send From Aliases
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking SendFromAliasesEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as False for boolean settings
+    $sendFromAliasesValue = if ($null -eq $orgConfig.SendFromAliasesEnabled) { $false } else { $orgConfig.SendFromAliasesEnabled }
     $checkResults += Test-Setting -SettingName "SendFromAliasesEnabled" `
-        -CurrentValue $orgConfig.SendFromAliasesEnabled `
+        -CurrentValue $sendFromAliasesValue `
         -RequiredValue $Requirements.SendFromAliasesEnabled `
         -Description "Allow sending from email aliases"
     
     # Security Settings - SMTP Auth
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking SmtpClientAuthenticationDisabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as True for SmtpClientAuthenticationDisabled (default is disabled)
+    $smtpAuthDisabledValue = if ($null -eq $orgConfig.SmtpClientAuthenticationDisabled) { $true } else { $orgConfig.SmtpClientAuthenticationDisabled }
     $checkResults += Test-Setting -SettingName "SmtpClientAuthenticationDisabled" `
-        -CurrentValue $orgConfig.SmtpClientAuthenticationDisabled `
+        -CurrentValue $smtpAuthDisabledValue `
         -RequiredValue (-not $Requirements.SmtpAuthProtocolEnabled) `
         -Description "SMTP client authentication (should be disabled)"
     
     # Security Settings - Legacy TLS
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking AllowLegacyTLSClients ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as False for boolean settings
+    $allowLegacyTlsValue = if ($null -eq $orgConfig.AllowLegacyTLSClients) { $false } else { $orgConfig.AllowLegacyTLSClients }
     $checkResults += Test-Setting -SettingName "AllowLegacyTLSClients" `
-        -CurrentValue $orgConfig.AllowLegacyTLSClients `
+        -CurrentValue $allowLegacyTlsValue `
         -RequiredValue $Requirements.LegacyTlsClientsAllowed `
         -Description "Allow legacy TLS clients (TLS 1.0/1.1)"
     
     # Reply All Storm Protection - Enabled
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking ReplyAllStormProtectionEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as False for boolean settings (default is disabled)
+    $replyAllStormEnabledValue = if ($null -eq $transportConfig.ReplyAllStormProtectionEnabled) { $false } else { $transportConfig.ReplyAllStormProtectionEnabled }
     $checkResults += Test-Setting -SettingName "ReplyAllStormProtectionEnabled" `
-        -CurrentValue $orgConfig.ReplyAllStormProtectionEnabled `
+        -CurrentValue $replyAllStormEnabledValue `
         -RequiredValue $Requirements.ReplyAllStormEnabled `
         -Description "Enable reply all storm protection"
     
     # Reply All Storm Protection - Minimum Recipients
     $currentCheck++
-    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking ReplyAllStormProtectionMinimumRecipients ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking ReplyAllStormDetectionMinimumRecipients ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as 0 for numeric settings
+    $replyAllStormMinRecipientsValue = if ($null -eq $transportConfig.ReplyAllStormDetectionMinimumRecipients) { 0 } else { $transportConfig.ReplyAllStormDetectionMinimumRecipients }
     $checkResults += Test-Setting -SettingName "ReplyAllStormProtectionMinimumRecipients" `
-        -CurrentValue $orgConfig.ReplyAllStormProtectionMinimumRecipients `
+        -CurrentValue $replyAllStormMinRecipientsValue `
         -RequiredValue $Requirements.ReplyAllStormMinimumRecipients `
         -Description "Minimum recipients to trigger protection"
     
     # Reply All Storm Protection - Minimum Reply Alls
     $currentCheck++
-    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking ReplyAllStormProtectionMinimumReplies ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking ReplyAllStormDetectionMinimumReplies ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as 0 for numeric settings
+    $replyAllStormMinRepliesValue = if ($null -eq $transportConfig.ReplyAllStormDetectionMinimumReplies) { 0 } else { $transportConfig.ReplyAllStormDetectionMinimumReplies }
     $checkResults += Test-Setting -SettingName "ReplyAllStormProtectionMinimumReplies" `
-        -CurrentValue $orgConfig.ReplyAllStormProtectionMinimumReplies `
+        -CurrentValue $replyAllStormMinRepliesValue `
         -RequiredValue $Requirements.ReplyAllStormMinimumReplyAlls `
         -Description "Minimum reply-alls to trigger protection"
     
     # Reply All Storm Protection - Block Duration
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking ReplyAllStormBlockDurationHours ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as 0 for numeric settings
+    $replyAllStormBlockDurationValue = if ($null -eq $transportConfig.ReplyAllStormBlockDurationHours) { 0 } else { $transportConfig.ReplyAllStormBlockDurationHours }
     $checkResults += Test-Setting -SettingName "ReplyAllStormBlockDurationHours" `
-        -CurrentValue $orgConfig.ReplyAllStormBlockDurationHours `
+        -CurrentValue $replyAllStormBlockDurationValue `
         -RequiredValue $Requirements.ReplyAllStormBlockDurationHours `
         -Description "Block duration in hours"
     
     # Message Recall - Enabled
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking MessageRecallEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as False for boolean settings (default is disabled)
+    $messageRecallEnabledValue = if ($null -eq $orgConfig.MessageRecallEnabled) { $false } else { $orgConfig.MessageRecallEnabled }
     $checkResults += Test-Setting -SettingName "MessageRecallEnabled" `
-        -CurrentValue $orgConfig.MessageRecallEnabled `
+        -CurrentValue $messageRecallEnabledValue `
         -RequiredValue $Requirements.MessageRecallEnabled `
         -Description "Enable message recall"
     
     # Message Recall - Allow Recall Read Messages
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking RecallReadMessagesEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as False for boolean settings
+    $recallReadMessagesValue = if ($null -eq $orgConfig.RecallReadMessagesEnabled) { $false } else { $orgConfig.RecallReadMessagesEnabled }
     $checkResults += Test-Setting -SettingName "RecallReadMessagesEnabled" `
-        -CurrentValue $orgConfig.RecallReadMessagesEnabled `
+        -CurrentValue $recallReadMessagesValue `
         -RequiredValue $Requirements.MessageRecallAllowRecallReadMessages `
         -Description "Allow recalling already-read messages"
     
     # Message Recall - Enable Recipient Alerts
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking MessageRecallAlertRecipientsEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as False for boolean settings
+    $messageRecallAlertRecipientsValue = if ($null -eq $orgConfig.MessageRecallAlertRecipientsEnabled) { $false } else { $orgConfig.MessageRecallAlertRecipientsEnabled }
     $checkResults += Test-Setting -SettingName "MessageRecallAlertRecipientsEnabled" `
-        -CurrentValue $orgConfig.MessageRecallAlertRecipientsEnabled `
+        -CurrentValue $messageRecallAlertRecipientsValue `
         -RequiredValue $Requirements.MessageRecallEnableRecipientAlerts `
         -Description "Enable recipient alerts for recalls"
     
     # Message Recall - Alert Read Messages Only
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking MessageRecallAlertRecipientsReadMessagesOnlyEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as False for boolean settings
+    $messageRecallAlertReadOnlyValue = if ($null -eq $orgConfig.MessageRecallAlertRecipientsReadMessagesOnlyEnabled) { $false } else { $orgConfig.MessageRecallAlertRecipientsReadMessagesOnlyEnabled }
     $checkResults += Test-Setting -SettingName "MessageRecallAlertRecipientsReadMessagesOnlyEnabled" `
-        -CurrentValue $orgConfig.MessageRecallAlertRecipientsReadMessagesOnlyEnabled `
+        -CurrentValue $messageRecallAlertReadOnlyValue `
         -RequiredValue $Requirements.MessageRecallAlertReadMessagesOnly `
         -Description "Alert recipients only for read messages"
     
     # Message Recall - Max Age Days
     $currentCheck++
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Checking MessageRecallMaxAgeInDays ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
+    # Treat null as 0 for numeric settings
+    $messageRecallMaxAgeValue = if ($null -eq $orgConfig.MessageRecallMaxAgeInDays) { 0 } else { $orgConfig.MessageRecallMaxAgeInDays }
     $checkResults += Test-Setting -SettingName "MessageRecallMaxAgeInDays" `
-        -CurrentValue $orgConfig.MessageRecallMaxAgeInDays `
+        -CurrentValue $messageRecallMaxAgeValue `
         -RequiredValue $Requirements.MessageRecallMaxAgeDays `
         -Description "Maximum age of messages that can be recalled"
     

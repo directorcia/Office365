@@ -199,21 +199,28 @@ function Test-BaselineSchema {
     param(
         [object]$Baseline
     )
-    
+    # New array-only schema validation
+    if (-not ($Baseline -is [System.Collections.IEnumerable] -and $Baseline.Count -ge 1)) { return $false }
     $requiredFields = @(
-        @{Path = 'RemoteDomain'; Type = 'Object'; Description = 'Root RemoteDomain object'},
-        @{Path = 'RemoteDomain.Name'; Type = 'String'; Description = 'Remote domain name'},
-        @{Path = 'RemoteDomain.DomainName'; Type = 'String'; Description = 'Domain name pattern'},
-        @{Path = 'RemoteDomain.EmailReplyTypes'; Type = 'Object'; Description = 'Email reply types configuration'},
-        @{Path = 'RemoteDomain.MessageReporting'; Type = 'Object'; Description = 'Message reporting configuration'},
-        @{Path = 'RemoteDomain.TextAndCharacterSet'; Type = 'Object'; Description = 'Text and character set configuration'}
+        @{Path = 'Identity'; Description = 'Remote domain identity (Default)'},
+        @{Path = 'DomainName'; Description = 'Domain name pattern'},
+        @{Path = 'AllowedOOFType'; Description = 'Out of Office type'},
+        @{Path = 'AutoReplyEnabled'; Description = 'Automatic replies allowed'},
+        @{Path = 'AutoForwardEnabled'; Description = 'Automatic forwarding allowed'},
+        @{Path = 'DeliveryReportEnabled'; Description = 'Delivery reports allowed'},
+        @{Path = 'NDRRequired'; Description = 'NDR required'},
+        @{Path = 'MeetingForwardNotificationEnabled'; Description = 'Meeting forward notifications'},
+        @{Path = 'TNEFEnabled'; Description = 'TNEF (Rich Text)'},
+        @{Path = 'CharacterSet'; Description = 'MIME character set'},
+        @{Path = 'NonMIMECharacterSet'; Description = 'Non-MIME character set'}
     )
+    $BaselineToCheck = $Baseline[0]
     
     $missingFields = @()
     
     foreach ($field in $requiredFields) {
         $pathParts = $field.Path -split '\.'
-        $current = $Baseline
+        $current = $BaselineToCheck
         $found = $true
         
         foreach ($part in $pathParts) {
@@ -266,104 +273,47 @@ function Test-BaselineSchema {
 
 # Load baseline from JSON file or URL
 function Get-BaselineSettings {
-    param(
-        [string]$Path
-    )
-    
+    param([string]$Path)
     Write-Log "Starting baseline settings load from: $Path" -Level "INFO"
-    
-    $remoteDomainBaseline = $null
     $script:baselineLoaded = $false
-    $jsonContent = $null
-
-    # Check if Path is a URL
     $isUrl = $Path -match '^https?://'
-    Write-Log "Baseline source type: $(if ($isUrl) { 'URL' } else { 'Local File' })" -Level "INFO"
-    
-    if ($isUrl) {
-        try {
-            Write-Progress -Activity "Loading Baseline" -Status "Downloading from GitHub..." -PercentComplete 30
-            Write-ColorOutput "Downloading baseline settings from: $Path" -Type Info
-            $jsonContent = (Invoke-WebRequest -Uri $Path -UseBasicParsing -ErrorAction Stop).Content
-            Write-Progress -Activity "Loading Baseline" -Status "Parsing JSON..." -PercentComplete 60
-            $json = $jsonContent | ConvertFrom-Json -ErrorAction Stop
-            
-            # Validate schema
-            Write-Progress -Activity "Loading Baseline" -Status "Validating schema..." -PercentComplete 80
-            if (Test-BaselineSchema -Baseline $json) {
-                $remoteDomainBaseline = $json.RemoteDomain
-                $script:baselineLoaded = $true
-                Write-Progress -Activity "Loading Baseline" -Completed
-                Write-Log "Baseline loaded successfully from GitHub" -Level "INFO"
-                Write-ColorOutput "✓ Baseline loaded successfully from GitHub.`n" -Type Success
-            }
-            else {
-                Write-Progress -Activity "Loading Baseline" -Completed
-                Write-Log "Baseline schema validation failed" -Level "ERROR"
-                $remoteDomainBaseline = $null
-            }
+    try {
+        $raw = if ($isUrl) {
+            Write-Progress -Activity "Loading Baseline" -Status "Downloading..." -PercentComplete 25
+            (Invoke-WebRequest -Uri $Path -UseBasicParsing -ErrorAction Stop).Content
+        } else {
+            Write-Progress -Activity "Loading Baseline" -Status "Reading file..." -PercentComplete 25
+            Get-Content -Path $Path -Raw -ErrorAction Stop
         }
-        catch {
-            Write-Progress -Activity "Loading Baseline" -Completed
-            Write-Log "Failed to download baseline from URL: $($_.Exception.Message)" -Level "ERROR"
-            Write-ColorOutput "Failed to download or parse baseline from URL: $($_.Exception.Message)" -Type Error
-            Write-ColorOutput "⚠️  Using built-in ASD Blueprint defaults instead`n" -Type Warning
-            $remoteDomainBaseline = $null
-        }
-    }
-    elseif (Test-Path $Path) {
-        try {
-            Write-Progress -Activity "Loading Baseline" -Status "Reading local file..." -PercentComplete 30
-            Write-ColorOutput "Loading baseline settings from: $Path" -Type Info
-            $json = Get-Content -Path $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-            
-            # Validate schema
-            Write-Progress -Activity "Loading Baseline" -Status "Validating schema..." -PercentComplete 70
-            if (Test-BaselineSchema -Baseline $json) {
-                $remoteDomainBaseline = $json.RemoteDomain
-                $script:baselineLoaded = $true
-                Write-Progress -Activity "Loading Baseline" -Completed
-                Write-Log "Baseline loaded successfully from local file" -Level "INFO"
-                Write-ColorOutput "✓ Baseline loaded successfully from JSON file.`n" -Type Success
-            }
-            else {
-                Write-Progress -Activity "Loading Baseline" -Completed
-                Write-Log "Baseline schema validation failed for local file" -Level "ERROR"
-                $remoteDomainBaseline = $null
-            }
-        }
-        catch {
-            Write-Progress -Activity "Loading Baseline" -Completed
-            Write-Log "Failed to parse baseline JSON: $($_.Exception.Message)" -Level "ERROR"
-            Write-ColorOutput "Failed to parse baseline JSON: $($_.Exception.Message)" -Type Error
-            Write-ColorOutput "Error at line $($_.InvocationInfo.ScriptLineNumber): $($_.InvocationInfo.Line.Trim())" -Type Error
-            Write-ColorOutput "⚠️  Using built-in ASD Blueprint defaults instead`n" -Type Warning
-            $remoteDomainBaseline = $null
-        }
-    }
-    else {
+        Write-Progress -Activity "Loading Baseline" -Status "Parsing JSON..." -PercentComplete 55
+        $json = $raw | ConvertFrom-Json -ErrorAction Stop
+        if (-not (Test-BaselineSchema -Baseline $json)) { throw "Baseline JSON schema invalid (array format expected)." }
+        $record = ($json | Where-Object { $_.Identity -eq 'Default' } | Select-Object -First 1)
+        if (-not $record) { throw "No 'Default' identity record found in baseline." }
+        $script:baselineLoaded = $true
         Write-Progress -Activity "Loading Baseline" -Completed
-        Write-Log "Baseline file not found at: $Path - using defaults" -Level "WARN"
-        Write-ColorOutput "Baseline file not found at: $Path" -Type Warning
-        Write-ColorOutput "⚠️  Using built-in ASD Blueprint defaults instead`n" -Type Warning
+        Write-ColorOutput "✓ Baseline loaded successfully (array schema)" -Type Success
+    }
+    catch {
+        Write-Progress -Activity "Loading Baseline" -Completed
+        Write-Log "Baseline load failed: $($_.Exception.Message)" -Level "ERROR"
+        Write-ColorOutput "Failed to load baseline: $($_.Exception.Message)" -Type Error
+        Write-ColorOutput "Cannot continue without valid baseline." -Type Error
+        return $null
     }
 
-    # Build and return ASD Blueprint requirements (from baseline if available, otherwise defaults)
     return @{
-        Name = (Get-BaselineValue -Parent $remoteDomainBaseline -Property 'Name' -Default 'Default')
-        DomainName = (Get-BaselineValue -Parent $remoteDomainBaseline -Property 'DomainName' -Default '*')
-        # Email reply types
-        AllowedOOFType = (Get-BaselineValue -Parent $remoteDomainBaseline.EmailReplyTypes -Property 'AllowedOOFType' -Default 'External')
-        AutoReplyEnabled = (Get-BaselineValue -Parent $remoteDomainBaseline.EmailReplyTypes -Property 'AutoReplyEnabled' -Default $false)
-        AutoForwardEnabled = (Get-BaselineValue -Parent $remoteDomainBaseline.EmailReplyTypes -Property 'AutoForwardEnabled' -Default $false)
-        # Message reporting
-        DeliveryReportEnabled = (Get-BaselineValue -Parent $remoteDomainBaseline.MessageReporting -Property 'DeliveryReportEnabled' -Default $false)
-        NDREnabled = (Get-BaselineValue -Parent $remoteDomainBaseline.MessageReporting -Property 'NDREnabled' -Default $false)
-        MeetingForwardNotificationEnabled = (Get-BaselineValue -Parent $remoteDomainBaseline.MessageReporting -Property 'MeetingForwardNotificationEnabled' -Default $false)
-        # Text and character set
-        TNEFEnabled = (Get-BaselineValue -Parent $remoteDomainBaseline.TextAndCharacterSet -Property 'TNEFEnabled' -Default $null)
-        CharacterSet = (Get-BaselineValue -Parent $remoteDomainBaseline.TextAndCharacterSet -Property 'CharacterSet' -Default $null)
-        NonMimeCharacterSet = (Get-BaselineValue -Parent $remoteDomainBaseline.TextAndCharacterSet -Property 'NonMimeCharacterSet' -Default $null)
+        Name = $record.Identity
+        DomainName = $record.DomainName
+        AllowedOOFType = $record.AllowedOOFType
+        AutoReplyEnabled = $record.AutoReplyEnabled
+        AutoForwardEnabled = $record.AutoForwardEnabled
+        DeliveryReportEnabled = $record.DeliveryReportEnabled
+        NDRRequired = $record.NDRRequired
+        MeetingForwardNotificationEnabled = $record.MeetingForwardNotificationEnabled
+        TNEFEnabled = $record.TNEFEnabled
+        CharacterSet = $record.CharacterSet
+        NonMIMECharacterSet = $record.NonMIMECharacterSet
     }
 }
 
@@ -1010,13 +960,13 @@ function Invoke-RemoteDomainCheck {
         -RequiredValue $Requirements.DeliveryReportEnabled `
         -Description "Allow delivery reports"
     
-    # NDR (Non-Delivery Reports)
+    # NDR Required
     $currentCheck++
     Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking NDREnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    $checkResults += Test-Setting -SettingName "NDREnabled" `
-        -CurrentValue $remoteDomain.NDREnabled `
-        -RequiredValue $Requirements.NDREnabled `
-        -Description "Allow non-delivery reports"
+    $checkResults += Test-Setting -SettingName "NDRRequired" `
+        -CurrentValue $remoteDomain.NDRRequired `
+        -RequiredValue $Requirements.NDRRequired `
+        -Description "Require non-delivery reports"
     
     # Meeting Forward Notifications
     $currentCheck++
@@ -1045,9 +995,9 @@ function Invoke-RemoteDomainCheck {
     # Non-MIME Character Set
     $currentCheck++
     Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking NonMimeCharacterSet ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    $checkResults += Test-Setting -SettingName "NonMimeCharacterSet" `
-        -CurrentValue $remoteDomain.NonMimeCharacterSet `
-        -RequiredValue $Requirements.NonMimeCharacterSet `
+    $checkResults += Test-Setting -SettingName "NonMIMECharacterSet" `
+        -CurrentValue $remoteDomain.NonMIMECharacterSet `
+        -RequiredValue $Requirements.NonMIMECharacterSet `
         -Description "Non-MIME character set"
     
     # Display results
