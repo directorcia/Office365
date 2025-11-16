@@ -150,12 +150,7 @@ param(
     IMPORTANT: This version removes deprecated Azure AD and MSOnline modules in favor of Microsoft Graph PowerShell SDK
     
     Major Changes in v2.11:
-    - Replaced generic #Requires -Version 7.0 error with friendly guidance
-    - Added clear PowerShell 7 installation instructions for PS5 users
-    - Improved user experience with formatted upgrade messaging
-    - Shows multiple installation options (WinGet, direct download, Store)
-    - Explains benefits of PowerShell 7 for cloud module management
-    - Provides exact next steps after PS7 installation
+    - Note: #Requires directive still shows system error in PS5 (unavoidable)
     
     Major Changes in v2.10:
     - Enforced PowerShell 7+ only: added `#Requires -Version 7.0` at top
