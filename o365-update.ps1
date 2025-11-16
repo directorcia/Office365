@@ -1,3 +1,28 @@
+<#
+================================================================================
+  IMPORTANT: PowerShell 7 Required
+================================================================================
+
+If you receive an error about "#requires" or PowerShell version when running
+this script, you are using Windows PowerShell 5.1.
+
+This script REQUIRES PowerShell 7 or higher.
+
+QUICK INSTALL (choose one):
+  • WinGet:          winget install Microsoft.PowerShell
+  • Direct download: https://aka.ms/powershell-release?tag=stable
+  • Microsoft Store: Search "PowerShell"
+
+After installing, launch "PowerShell 7" (not "Windows PowerShell") and run
+this script again.
+
+Why PowerShell 7?
+  • Required for modern Microsoft Graph and Azure modules
+  • Better performance, security, and cross-platform support
+  • Actively maintained by Microsoft
+
+================================================================================
+#>
 #Requires -Version 7.0
 
 [CmdletBinding()]
@@ -15,7 +40,7 @@ param(
         }
         return $true
     })]
-    [string]$LogPath = $PWD,
+    [string]$LogPath = (Get-Location).Path,
     
     [Parameter(HelpMessage = "Skip deprecated module cleanup")]
     [switch]$SkipDeprecatedCleanup,
@@ -118,11 +143,19 @@ param(
     Also offers comprehensive cleanup at the end of processing.
 
 .NOTES
-    Author: CIAOPS    Version: 2.10
+    Author: CIAOPS    Version: 2.11
     Last Updated: November 2025
     Requires: PowerShell 7.X or higher, Administrator privileges
     
     IMPORTANT: This version removes deprecated Azure AD and MSOnline modules in favor of Microsoft Graph PowerShell SDK
+    
+    Major Changes in v2.11:
+    - Replaced generic #Requires -Version 7.0 error with friendly guidance
+    - Added clear PowerShell 7 installation instructions for PS5 users
+    - Improved user experience with formatted upgrade messaging
+    - Shows multiple installation options (WinGet, direct download, Store)
+    - Explains benefits of PowerShell 7 for cloud module management
+    - Provides exact next steps after PS7 installation
     
     Major Changes in v2.10:
     - Enforced PowerShell 7+ only: added `#Requires -Version 7.0` at top
