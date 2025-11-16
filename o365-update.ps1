@@ -118,7 +118,7 @@ param(
 .NOTES
     Author: CIAOPS    Version: 2.9
     Last Updated: June 2025
-    Requires: PowerShell 5.1 or higher, Administrator privileges
+    Requires: PowerShell 7.X or higher, Administrator privileges
     
     IMPORTANT: This version removes deprecated Azure AD and MSOnline modules in favor of Microsoft Graph PowerShell SDK
     
