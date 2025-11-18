@@ -183,12 +183,61 @@ function Connect-MSGraph {
         }
         
         Write-ColorOutput "Connecting to Microsoft Graph..." -Type Info
-        Connect-MgGraph -Scopes "DeviceManagementConfiguration.Read.All" -NoWelcome -ErrorAction Stop
-        Write-ColorOutput "Connected to Microsoft Graph." -Type Success
-        return $true
+        try {
+            # Try interactive browser authentication first
+            Connect-MgGraph -Scopes "DeviceManagementConfiguration.Read.All" -NoWelcome -ErrorAction Stop
+            Write-ColorOutput "Connected to Microsoft Graph." -Type Success
+            return $true
+        }
+        catch {
+            # If interactive fails (localhost binding issue), try device code flow
+            if ($_.Exception.Message -like "*HttpListenerException*" -or $_.Exception.Message -like "*localhost*" -or $_.Exception.Message -like "*unable to listen*") {
+                Write-ColorOutput "`nInteractive browser authentication failed (localhost binding issue)." -Type Warning
+                Write-ColorOutput "Switching to device code authentication..." -Type Info
+                Write-ColorOutput "`n============================================================" -Type Info
+                Write-ColorOutput "  DEVICE CODE AUTHENTICATION REQUIRED" -Type Info
+                Write-ColorOutput "============================================================" -Type Info
+                Write-Host ""
+                Write-Host "Opening browser to: " -NoNewline
+                Write-Host "https://microsoft.com/devicelogin" -ForegroundColor Yellow
+                Write-Host ""
+                Write-Host "The device code will appear below - copy it and paste into the browser." -ForegroundColor Cyan
+                Write-Host "============================================================`n" -ForegroundColor Cyan
+                
+                # Open the device login page in default browser
+                try {
+                    Start-Process "https://microsoft.com/devicelogin"
+                    Start-Sleep -Seconds 2  # Give browser time to open
+                } catch {
+                    Write-ColorOutput "Could not open browser automatically." -Type Warning
+                }
+                
+                # Connect with device code - output goes directly to console
+                Write-Host ""
+                Connect-MgGraph -Scopes "DeviceManagementConfiguration.Read.All" -UseDeviceAuthentication -ErrorAction Stop | Out-Default
+                Write-Host ""
+                Write-ColorOutput "Connected to Microsoft Graph via device code." -Type Success
+                return $true
+            }
+            else {
+                throw
+            }
+        }
     }
     catch { 
         Write-ColorOutput "Failed to connect to Microsoft Graph: $($_.Exception.Message)" -Type Error
+        Write-ColorOutput "`n╔════════════════════════════════════════════════════════════════╗" -Type Warning
+        Write-ColorOutput "║                    POSSIBLE SOLUTIONS                          ║" -Type Warning
+        Write-ColorOutput "╠════════════════════════════════════════════════════════════════╣" -Type Warning
+        Write-ColorOutput "║ 1. Run PowerShell as Administrator (easiest solution)          ║" -Type Info
+        Write-ColorOutput "║                                                                ║" -Type Info
+        Write-ColorOutput "║ 2. Run this command as Admin, then retry:                      ║" -Type Info
+        Write-ColorOutput "║    netsh http add iplisten 127.0.0.1                           ║" -Type Info
+        Write-ColorOutput "║                                                                ║" -Type Info
+        Write-ColorOutput "║ 3. Pre-connect manually with device code:                      ║" -Type Info
+        Write-ColorOutput "║    Connect-MgGraph -Scopes 'DeviceManagementConfiguration.Read.All' -UseDeviceAuthentication" -Type Info
+        Write-ColorOutput "║    Then run this script again                                  ║" -Type Info
+        Write-ColorOutput "╚════════════════════════════════════════════════════════════════╝" -Type Warning
         return $false 
     }
 }
