@@ -98,22 +98,29 @@ $scriptName = "ASD OWA Mailbox Policy Settings Check"
 
 # Map baseline property names to actual tenant property names when they differ.
 # If a baseline name appears here, the mapped name will be used for lookup.
+# Based on official Microsoft documentation for Set-OwaMailboxPolicy
 $PropertyAliases = [ordered]@{
-    JournalingEnabled        = 'JournalEnabled'
-    EmailSignatureEnabled    = 'SignaturesEnabled'
-    ThemesEnabled            = 'ThemeSelectionEnabled'
-    OfflineAccessEnabled     = 'AllowOfflineOn'
-    PublicFileAccessEnabled  = 'WSSAccessOnPublicComputersEnabled'   # Baseline expects False (disable public file access)
-    PrivateFileAccessEnabled = 'DirectFileAccessOnPrivateComputersEnabled' # Baseline expects True (allow private file access)
-    MobileDeviceSyncEnabled  = 'ActiveSyncIntegrationEnabled'        # Legacy/obsolete name
+    JournalingEnabled        = 'JournalEnabled'                              # Correct name is JournalEnabled
+    EmailSignatureEnabled    = 'SignaturesEnabled'                          # Correct name is SignaturesEnabled
+    ThemesEnabled            = 'ThemeSelectionEnabled'                      # Correct name is ThemeSelectionEnabled
+    OfflineAccessEnabled     = 'OfflineEnabledWeb'                          # Exchange Online uses OfflineEnabledWeb (primary) and OfflineEnabledWin
+    PublicFileAccessEnabled  = 'DirectFileAccessOnPublicComputersEnabled'   # Maps to public computer file access
+    PrivateFileAccessEnabled = 'DirectFileAccessOnPrivateComputersEnabled'  # Maps to private computer file access
 }
 
 # Provide value synonym mapping (used primarily for Offline access setting mismatches)
+# For on-prem AllowOfflineOn: AllComputers, NoComputers, PrivateComputersOnly, PublicComputersOnly
+# For Exchange Online OfflineEnabledWeb/OfflineEnabledWin: True/False
+# Baseline may use simplified values like "Always", "Never", etc.
 $ValueSynonyms = @{
+    # On-premises AllowOfflineOn values
     'Always'       = 'AllComputers'
     'Never'        = 'NoComputers'
     'PublicOnly'   = 'PublicComputersOnly'
     'PrivateOnly'  = 'PrivateComputersOnly'
+    # Exchange Online boolean equivalents
+    'AllComputers' = 'True'   # When comparing against OfflineEnabledWeb/Win
+    'NoComputers'  = 'False'  # When comparing against OfflineEnabledWeb/Win
 }
 
 # Logging
@@ -230,15 +237,46 @@ function Compare-Values {
     param([object]$Current,[object]$Required)
     $c = Normalize-Value $Current
     $r = Normalize-Value $Required
-    # Apply synonym mapping (e.g. Offline access wording differences)
-    if ($c -is [string] -and $r -is [string]) {
-        if ($ValueSynonyms.ContainsKey($r) -and $ValueSynonyms[$r] -eq $c) { return $true }
-        if ($ValueSynonyms.ContainsKey($c) -and $ValueSynonyms[$c] -eq $r) { return $true }
-    }
+    
+    # Handle null comparisons early
     if ($null -eq $r -and $null -eq $c) { return $true }
     if ($null -eq $r) { return $true }
+    if ($null -eq $c) { return $false }
+    
+    # Apply synonym mapping for both string-to-string and mixed type scenarios
+    # Handle baseline "Always"/"AllComputers" vs tenant boolean True/False
+    if ($r -is [string] -and $ValueSynonyms.ContainsKey($r)) {
+        $synonymValue = $ValueSynonyms[$r]
+        # Direct string match
+        if ($c -is [string] -and $synonymValue -eq $c) { return $true }
+        # Boolean to string conversion match (e.g., baseline "Always" maps to "AllComputers" which maps to "True")
+        if ($c -is [bool]) {
+            $cStr = $c.ToString()
+            if ($synonymValue -ieq $cStr) { return $true }
+            # Check if synonym has further mappings (e.g., "AllComputers" -> "True")
+            if ($ValueSynonyms.ContainsKey($synonymValue) -and $ValueSynonyms[$synonymValue] -ieq $cStr) { return $true }
+        }
+    }
+    
+    # Reverse synonym lookup: tenant value might be the synonym key
+    if ($c -is [string] -and $ValueSynonyms.ContainsKey($c)) {
+        $synonymValue = $ValueSynonyms[$c]
+        if ($r -is [string] -and $synonymValue -eq $r) { return $true }
+        if ($r -is [bool] -and $synonymValue -ieq $r.ToString()) { return $true }
+    }
+    
+    # Direct boolean comparison
     if ($c -is [bool] -and $r -is [bool]) { return ($c -eq $r) }
-    # case-insensitive for strings
+    
+    # String to boolean comparison (e.g., baseline "true" vs tenant $true)
+    if ($c -is [bool] -and $r -is [string] -and $r -match '^(?i:true|false)$') {
+        return ($c -eq [System.Convert]::ToBoolean($r))
+    }
+    if ($r -is [bool] -and $c -is [string] -and $c -match '^(?i:true|false)$') {
+        return ($r -eq [System.Convert]::ToBoolean($c))
+    }
+    
+    # Final fallback: case-insensitive string comparison
     return ("$c" -ieq "$r")
 }
 
@@ -446,9 +484,11 @@ function Invoke-OwaPolicyCheck {
             $current = $null
             try { $current = $tenantPolicy.$actualName } catch { $current = $null }
 
-            # Offline access special-case: original baseline key OfflineAccessEnabled -> AllowOfflineOn
+            # Offline access special-case: try Exchange Online params first, then on-prem
+            # Exchange Online: OfflineEnabledWeb (primary), OfflineEnabledWin (fallback)
+            # On-premises: AllowOfflineOn
             if ($setting -eq 'OfflineAccessEnabled' -and $null -eq $current) {
-                foreach ($alt in @('AllowOfflineOn','OfflineEnabledWeb','OfflineEnabledWin')) {
+                foreach ($alt in @('OfflineEnabledWeb','OfflineEnabledWin','AllowOfflineOn')) {
                     try { $current = $tenantPolicy.$alt } catch { $current = $null }
                     if ($null -ne $current) { $actualName = $alt; break }
                 }
