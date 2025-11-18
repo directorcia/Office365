@@ -1,3 +1,30 @@
+<#
+================================================================================
+  IMPORTANT: PowerShell 7 Required
+================================================================================
+
+If you receive an error about "#requires" or PowerShell version when running
+this script, you are using Windows PowerShell 5.1.
+
+This script REQUIRES PowerShell 7 or higher.
+
+QUICK INSTALL (choose one):
+  • WinGet:          winget install Microsoft.PowerShell
+  • Direct download: https://aka.ms/powershell-release?tag=stable
+  • Microsoft Store: Search "PowerShell"
+
+After installing, launch "PowerShell 7" (not "Windows PowerShell") and run
+this script again.
+
+Why PowerShell 7?
+  • Required for modern Microsoft Graph and Azure modules
+  • Better performance, security, and cross-platform support
+  • Actively maintained by Microsoft
+
+================================================================================
+#>
+#Requires -Version 7.0
+
 [CmdletBinding()]
 param(
     [Parameter(HelpMessage = "Prompt before installing missing modules")]
@@ -13,7 +40,7 @@ param(
         }
         return $true
     })]
-    [string]$LogPath = $PWD,
+    [string]$LogPath = (Get-Location).Path,
     
     [Parameter(HelpMessage = "Skip deprecated module cleanup")]
     [switch]$SkipDeprecatedCleanup,
@@ -116,12 +143,24 @@ param(
     Also offers comprehensive cleanup at the end of processing.
 
 .NOTES
-    Author: CIAOPS    Version: 2.9
-    Last Updated: June 2025
-    Requires: PowerShell 5.1 or higher, Administrator privileges
+    Author: CIAOPS    Version: 2.11
+    Last Updated: November 2025
+    Requires: PowerShell 7.X or higher, Administrator privileges
     
     IMPORTANT: This version removes deprecated Azure AD and MSOnline modules in favor of Microsoft Graph PowerShell SDK
     
+    Major Changes in v2.11:
+    - Note: #Requires directive still shows system error in PS5 (unavoidable)
+    
+    Major Changes in v2.10:
+    - Enforced PowerShell 7+ only: added `#Requires -Version 7.0` at top
+    - Removed `#Requires -RunAsAdministrator` to allow friendly guidance
+    - Added early, user-friendly admin check with clear steps and rationale
+    - Printed ready-to-copy elevation command using safe array-form `-ArgumentList`
+    - Tightened prerequisite check to require PS 7+ (was 5.1+)
+    - Improved non-admin experience: actionable instructions instead of parser errors
+    - Documentation updated to reflect PS7-only support and elevation workflow
+
     Major Changes in v2.9:
     - ELIMINATED "⚠️ Multiple versions installed" warnings through automatic cleanup
     - Added automatic cleanup of old module versions after successful installations/updates
@@ -222,8 +261,6 @@ param(
 .LINK
     https://github.com/directorcia/Office365
 #>
-
-#Requires -RunAsAdministrator
 
 # Script configuration
 $ErrorActionPreference = 'Stop'
@@ -2390,8 +2427,8 @@ function Test-Prerequisites {
     $psVersion = $PSVersionTable.PSVersion
     Write-ColorOutput "PowerShell Version: $($psVersion.Major).$($psVersion.Minor).$($psVersion.Build)" -Type Info
     
-    if ($psVersion.Major -lt 5) {
-        Write-ColorOutput "❌ PowerShell 5.1 or higher is required" -Type Error
+    if ($psVersion.Major -lt 7) {
+        Write-ColorOutput "❌ PowerShell 7.0 or higher is required" -Type Error
         $allPrerequisitesMet = $false
     } else {
         Write-ColorOutput "✅ PowerShell version is supported" -Type Success
@@ -2402,11 +2439,11 @@ function Test-Prerequisites {
         $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
         $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
         
-        if ($isAdmin) {
-            Write-ColorOutput "✅ Running with Administrator privileges" -Type Success
-        } else {
-            Write-ColorOutput "❌ Administrator privileges required" -Type Error
-            $allPrerequisitesMet = $false
+        if (-not $isAdmin) {
+            $scriptPath = $PSCommandPath
+            $pathForDisplay = ($scriptPath -replace "'", "''")
+            $elevateCmd = "Start-Process -Verb RunAs pwsh -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File', '$pathForDisplay')"
+
         }
     }
     catch {
@@ -2773,6 +2810,33 @@ function Write-ProgressHeader {
 #region Main Execution
 
 try {
+    # Early elevation check (friendlier than the generic #Requires message)
+    try {
+        $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+        $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+    catch {
+        $isAdmin = $false
+    }
+
+    if (-not $isAdmin) {
+        $scriptPath = $PSCommandPath
+        $pathForDisplay = ($scriptPath -replace "'", "''")
+        $elevateCmd = "Start-Process -Verb RunAs pwsh -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File', '$pathForDisplay')"
+
+        Write-ColorOutput "❌ Administrator privileges are required." -Type Error
+        Write-ColorOutput "This updater makes system-wide module changes (AllUsers scope)." -Type Info
+        Write-ColorOutput "How to continue:" -Type Info
+        Write-ColorOutput "  1) Close this window and launch PowerShell 7 as Administrator" -Type Info
+        Write-ColorOutput "     - Start menu: search 'PowerShell 7', right‑click > Run as administrator" -Type Info
+        Write-ColorOutput "     - Windows Terminal: open a new Administrator window" -Type Info
+        Write-ColorOutput "  2) Or copy/paste to relaunch elevated:" -Type Info
+        Write-ColorOutput "     $elevateCmd" -Type Process
+        Write-ColorOutput "" -Type Info
+        Write-ColorOutput "Tip: Append your parameters after the -File path if needed." -Type Info
+        exit 1
+    }
+
     # Start transcript logging if requested
     if ($CreateLog) {
         $logPath = Join-Path $env:TEMP "o365-update-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
