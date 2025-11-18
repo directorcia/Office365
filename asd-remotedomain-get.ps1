@@ -199,8 +199,7 @@ function Test-BaselineSchema {
     param(
         [object]$Baseline
     )
-    # New array-only schema validation
-    if (-not ($Baseline -is [System.Collections.IEnumerable] -and $Baseline.Count -ge 1)) { return $false }
+    # Accept either an array of remote domain objects or a single object.
     $requiredFields = @(
         @{Path = 'Identity'; Description = 'Remote domain identity (Default)'},
         @{Path = 'DomainName'; Description = 'Domain name pattern'},
@@ -214,42 +213,34 @@ function Test-BaselineSchema {
         @{Path = 'CharacterSet'; Description = 'MIME character set'},
         @{Path = 'NonMIMECharacterSet'; Description = 'Non-MIME character set'}
     )
-    $BaselineToCheck = $Baseline[0]
-    
+
+    # Determine candidate record
+    $candidate = $null
+    if ($Baseline -is [System.Collections.IEnumerable] -and -not ($Baseline -is [string])) {
+        if ($Baseline.Count -ge 1) { $candidate = $Baseline[0] }
+    } else {
+        $candidate = $Baseline
+    }
+    if (-not $candidate) { return $false }
+
     $missingFields = @()
-    
+    $allowedNullFields = @('TNEFEnabled','CharacterSet','NonMIMECharacterSet')
     foreach ($field in $requiredFields) {
-        $pathParts = $field.Path -split '\.'
-        $current = $BaselineToCheck
-        $found = $true
-        
-        foreach ($part in $pathParts) {
-            if ($null -eq $current) {
-                $found = $false
-                break
-            }
-            
-            try {
-                $current = $current.$part
-                if ($null -eq $current) {
-                    $found = $false
-                    break
+        try {
+            $value = $candidate.($field.Path)
+            if ($null -eq $value -and -not ($allowedNullFields -contains $field.Path)) {
+                $missingFields += @{
+                    Path = $field.Path
+                    Description = $field.Description
                 }
             }
-            catch {
-                $found = $false
-                break
-            }
-        }
-        
-        if (-not $found) {
+        } catch {
             $missingFields += @{
                 Path = $field.Path
                 Description = $field.Description
             }
         }
     }
-    
     if ($missingFields.Count -gt 0) {
         Write-ColorOutput "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
         Write-ColorOutput "❌ BASELINE JSON SCHEMA VALIDATION FAILED" -Type Error
@@ -261,13 +252,12 @@ function Test-BaselineSchema {
             Write-Host "    └─ $($missing.Description)"
         }
         Write-Host ""
-        Write-ColorOutput "The baseline JSON file does not conform to the expected schema." -Type Warning
-        Write-ColorOutput "Please check the file format or use the default GitHub baseline." -Type Warning
+        Write-ColorOutput "The baseline JSON file does not conform to a supported schema." -Type Warning
+        Write-ColorOutput "Supported formats: array of objects OR single object with required fields." -Type Warning
         Write-Host ""
         Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
         return $false
     }
-    
     return $true
 }
 
@@ -277,29 +267,54 @@ function Get-BaselineSettings {
     Write-Log "Starting baseline settings load from: $Path" -Level "INFO"
     $script:baselineLoaded = $false
     $isUrl = $Path -match '^https?://'
+    $record = $null
     try {
         $raw = if ($isUrl) {
-            Write-Progress -Activity "Loading Baseline" -Status "Downloading..." -PercentComplete 25
+            Write-Progress -Activity "Loading Baseline" -Status "Downloading..." -PercentComplete 20
             (Invoke-WebRequest -Uri $Path -UseBasicParsing -ErrorAction Stop).Content
         } else {
-            Write-Progress -Activity "Loading Baseline" -Status "Reading file..." -PercentComplete 25
+            Write-Progress -Activity "Loading Baseline" -Status "Reading file..." -PercentComplete 20
             Get-Content -Path $Path -Raw -ErrorAction Stop
         }
-        Write-Progress -Activity "Loading Baseline" -Status "Parsing JSON..." -PercentComplete 55
+        Write-Progress -Activity "Loading Baseline" -Status "Parsing JSON..." -PercentComplete 45
         $json = $raw | ConvertFrom-Json -ErrorAction Stop
-        if (-not (Test-BaselineSchema -Baseline $json)) { throw "Baseline JSON schema invalid (array format expected)." }
-        $record = ($json | Where-Object { $_.Identity -eq 'Default' } | Select-Object -First 1)
-        if (-not $record) { throw "No 'Default' identity record found in baseline." }
-        $script:baselineLoaded = $true
-        Write-Progress -Activity "Loading Baseline" -Completed
-        Write-ColorOutput "✓ Baseline loaded successfully (array schema)" -Type Success
+        if (Test-BaselineSchema -Baseline $json) {
+            # Normalize to collection
+            $collection = if ($json -is [System.Collections.IEnumerable] -and -not ($json -is [string])) { $json } else { @($json) }
+            $record = ($collection | Where-Object { $_.Identity -eq 'Default' } | Select-Object -First 1)
+            if (-not $record) {
+                # If no explicit Default identity, use first record
+                $record = $collection | Select-Object -First 1
+                Write-ColorOutput "⚠️  'Default' identity not found. Using first record in baseline." -Type Warning
+            }
+            $script:baselineLoaded = $true
+            Write-Progress -Activity "Loading Baseline" -Completed
+            $sourceType = if ($isUrl) { 'Remote (GitHub)' } else { 'Local file' }
+            Write-ColorOutput "✓ Baseline loaded successfully ($sourceType)" -Type Success
+        } else {
+            throw "Baseline JSON schema invalid (unsupported format)."
+        }
     }
     catch {
         Write-Progress -Activity "Loading Baseline" -Completed
-        Write-Log "Baseline load failed: $($_.Exception.Message)" -Level "ERROR"
-        Write-ColorOutput "Failed to load baseline: $($_.Exception.Message)" -Type Error
-        Write-ColorOutput "Cannot continue without valid baseline." -Type Error
-        return $null
+        Write-Log "Baseline load failed: $($_.Exception.Message)" -Level "WARN"
+        Write-ColorOutput "Failed to load baseline: $($_.Exception.Message)" -Type Warning
+        Write-ColorOutput "Using built-in ASD Blueprint defaults instead." -Type Warning
+        # Built-in defaults (ASD recommended posture)
+        $record = [pscustomobject]@{
+            Identity = 'Default'
+            DomainName = '*'
+            AllowedOOFType = 'External'
+            AutoReplyEnabled = $true
+            AutoForwardEnabled = $false
+            DeliveryReportEnabled = $true
+            NDRRequired = $true
+            MeetingForwardNotificationEnabled = $true
+            TNEFEnabled = $null   # Follow user settings
+            CharacterSet = 'Unicode'
+            NonMIMECharacterSet = 'Unicode'
+        }
+        $script:baselineLoaded = $false
     }
 
     return @{
@@ -445,11 +460,28 @@ function Test-Setting {
         [string]$Description
     )
     
+    # Format display values with better context
+    $currentDisplay = if ($null -eq $CurrentValue) { 
+        "Not set (null)" 
+    } elseif ($CurrentValue -is [bool]) {
+        $CurrentValue.ToString()
+    } else { 
+        $CurrentValue.ToString() 
+    }
+    
+    $requiredDisplay = if ($null -eq $RequiredValue) { 
+        "Not set (null)" 
+    } elseif ($RequiredValue -is [bool]) {
+        $RequiredValue.ToString()
+    } else { 
+        $RequiredValue.ToString() 
+    }
+    
     $result = @{
         Setting = $SettingName
         Description = $Description
-        CurrentValue = if ($null -eq $CurrentValue) { "Not set" } else { $CurrentValue.ToString() }
-        RequiredValue = if ($null -eq $RequiredValue) { "Not set" } else { $RequiredValue.ToString() }
+        CurrentValue = $currentDisplay
+        RequiredValue = $requiredDisplay
         Compliant = $false
         Status = ""
     }
