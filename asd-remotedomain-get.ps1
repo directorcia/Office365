@@ -1044,11 +1044,15 @@ function Invoke-RemoteDomainCheck {
             -RequiredValue $Requirements.DomainName `
             -Description "Remote Domain (should be *)"
         
-        # Out of Office Type
+        # Out of Office Type - Normalize baseline value (ExternalOnly -> External)
         $currentCheck++
+        $requiredOOFType = $Requirements.AllowedOOFType
+        if ($requiredOOFType -eq "ExternalOnly") {
+            $requiredOOFType = "External"
+        }
         $checkResults += Test-Setting -SettingName "AllowedOOFType" `
             -CurrentValue $remoteDomain.AllowedOOFType `
-            -RequiredValue $Requirements.AllowedOOFType `
+            -RequiredValue $requiredOOFType `
             -Description "Out of Office automatic reply types"
         
         # Auto Reply
