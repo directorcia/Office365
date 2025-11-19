@@ -200,8 +200,12 @@ function Test-BaselineSchema {
     param(
         [object]$Baseline
     )
-    # New array-only schema validation
-    if (-not ($Baseline -is [System.Collections.IEnumerable] -and $Baseline.Count -ge 1)) { return $false }
+    # Validate it's an array with at least one element
+    if ($null -eq $Baseline) { return $false }
+    if ($Baseline -is [string]) { return $false }
+    if (-not ($Baseline -is [System.Array] -or $Baseline -is [System.Collections.ArrayList])) { return $false }
+    if ($Baseline.Count -lt 1) { return $false }
+    
     $requiredFields = @(
         @{Path = 'Identity'; Description = 'Remote domain identity (Default)'},
         @{Path = 'DomainName'; Description = 'Domain name pattern'},
@@ -231,23 +235,28 @@ function Test-BaselineSchema {
             }
             
             try {
-                $current = $current.$part
-                if ($null -eq $current) {
+                # Check if property exists (not if it's null - null values are valid)
+                $properties = $current.PSObject.Properties.Name
+                if ($properties -notcontains $part) {
                     $found = $false
                     break
                 }
+                $current = $current.$part
             }
             catch {
                 $found = $false
                 break
             }
-        } catch {
+        }
+        
+        if (-not $found) {
             $missingFields += @{
                 Path = $field.Path
                 Description = $field.Description
             }
         }
     }
+    
     if ($missingFields.Count -gt 0) {
         Write-ColorOutput "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
         Write-ColorOutput "❌ BASELINE JSON SCHEMA VALIDATION FAILED" -Type Error
@@ -259,12 +268,13 @@ function Test-BaselineSchema {
             Write-Host "    └─ $($missing.Description)"
         }
         Write-Host ""
-        Write-ColorOutput "The baseline JSON file does not conform to a supported schema." -Type Warning
-        Write-ColorOutput "Supported formats: array of objects OR single object with required fields." -Type Warning
+        Write-ColorOutput "The baseline JSON file does not conform to the expected schema." -Type Warning
+        Write-ColorOutput "Please check the file format or use the default GitHub baseline." -Type Warning
         Write-Host ""
         Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
         return $false
     }
+    
     return $true
 }
 
@@ -527,6 +537,28 @@ function New-HTMLReport {
     $overallCompliance = if ($totalAllChecks -gt 0) { [math]::Round(($totalAllPassed / $totalAllChecks) * 100, 2) } else { 0 }
     $overallStatus = if ($overallCompliance -eq 100) { "COMPLIANT" } else { "NON-COMPLIANT" }
     $statusColor = if ($overallCompliance -eq 100) { "#28a745" } else { "#dc3545" }
+    
+    # Get organization/domain name
+    $domainName = $null
+    try {
+        $orgConfig = Get-OrganizationConfig -ErrorAction Stop
+        if ($orgConfig.OrganizationalUnitRoot) {
+            $domainName = $orgConfig.OrganizationalUnitRoot
+        }
+        elseif ($orgConfig.OrganizationId) {
+            $domainName = ($orgConfig.OrganizationId -split '/')[1]
+        }
+    }
+    catch {
+        $domainName = $null
+    }
+    
+    # Create domain HTML if available
+    $domainHtml = if ($domainName) { 
+        "<p style='margin-top:6px;font-size:1.05em;font-weight:600'>$domainName</p>" 
+    } else { 
+        '' 
+    }
     
     $reportDate = Get-Date -Format "dd MMMM yyyy - HH:mm:ss"
     
@@ -852,7 +884,7 @@ function New-HTMLReport {
     <div class="container">
         <div class="header">
             <h1>🛡️ ASD Remote Domains Compliance Report</h1>
-            <p>Exchange Online Remote Domains Configuration Check</p>
+            $domainHtml
             <p class="timestamp">Generated: $reportDate</p>
         </div>
         
