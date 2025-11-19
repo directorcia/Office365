@@ -457,6 +457,28 @@ function Test-Setting {
         [string]$Description
     )
     
+    # Perform comparison BEFORE converting to strings (to handle enums properly)
+    $isCompliant = $false
+    
+    # Special handling for null values (meaning "not set" or "follow defaults")
+    if ($null -eq $RequiredValue -and $null -eq $CurrentValue) {
+        $isCompliant = $true
+    }
+    elseif ($null -eq $RequiredValue) {
+        # If required is null, we accept any value
+        $isCompliant = $true
+    }
+    elseif ($null -eq $CurrentValue) {
+        # Current is null but required is not
+        $isCompliant = $false
+    }
+    else {
+        # Compare as strings to handle enums and other types
+        $currentStr = $CurrentValue.ToString()
+        $requiredStr = $RequiredValue.ToString()
+        $isCompliant = ($currentStr -eq $requiredStr)
+    }
+    
     # Format display values with better context
     $currentDisplay = if ($null -eq $CurrentValue) { 
         "Not set (null)" 
@@ -479,27 +501,8 @@ function Test-Setting {
         Description = $Description
         CurrentValue = $currentDisplay
         RequiredValue = $requiredDisplay
-        Compliant = $false
-        Status = ""
-    }
-    
-    # Special handling for null values (meaning "not set" or "follow defaults")
-    if ($null -eq $RequiredValue -and $null -eq $CurrentValue) {
-        $result.Compliant = $true
-        $result.Status = "PASS"
-    }
-    elseif ($null -eq $RequiredValue) {
-        # If required is null, we accept any value
-        $result.Compliant = $true
-        $result.Status = "PASS"
-    }
-    elseif ($CurrentValue -eq $RequiredValue) {
-        $result.Compliant = $true
-        $result.Status = "PASS"
-    }
-    else {
-        $result.Compliant = $false
-        $result.Status = "FAIL"
+        Compliant = $isCompliant
+        Status = if ($isCompliant) { "PASS" } else { "FAIL" }
     }
     
     # Log the check result
