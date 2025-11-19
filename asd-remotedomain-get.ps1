@@ -1,11 +1,12 @@
 <#
 .SYNOPSIS
-    Check Exchange Online Default Remote Domain settings against ASD Blueprint requirements
+    Check Exchange Online Remote Domain settings against ASD Blueprint requirements
 
 .DESCRIPTION
-    This script checks the Exchange Online Default Remote Domain configuration against 
-    ASD's Blueprint for Secure Cloud requirements. It validates the 'Default' remote domain
-    (which applies to all external domains unless specific remote domains are configured).
+    This script checks all Exchange Online Remote Domain configurations against 
+    ASD's Blueprint for Secure Cloud requirements. It validates all remote domains
+    in the tenant, including the 'Default' domain and any custom domains (such as 
+    domains configured for email forwarding).
     
     Reference: https://blueprint.asd.gov.au/configuration/exchange-online/mail-flow/remote-domains/
 
@@ -200,7 +201,10 @@ function Test-BaselineSchema {
         [object]$Baseline
     )
     # New array-only schema validation
-    if (-not ($Baseline -is [System.Collections.IEnumerable] -and $Baseline.Count -ge 1)) { return $false }
+    if ($null -eq $Baseline) { return $false }
+    if ($Baseline -is [string]) { return $false }
+    if (-not ($Baseline -is [System.Array] -or $Baseline -is [System.Collections.ArrayList])) { return $false }
+    if ($Baseline.Count -lt 1) { return $false }
     $requiredFields = @(
         @{Path = 'Identity'; Description = 'Remote domain identity (Default)'},
         @{Path = 'DomainName'; Description = 'Domain name pattern'},
@@ -230,11 +234,13 @@ function Test-BaselineSchema {
             }
             
             try {
-                $current = $current.$part
-                if ($null -eq $current) {
+                # Check if property exists (not if it's null - null values are valid)
+                $properties = $current.PSObject.Properties.Name
+                if ($properties -notcontains $part) {
                     $found = $false
                     break
                 }
+                $current = $current.$part
             }
             catch {
                 $found = $false
@@ -287,6 +293,10 @@ function Get-BaselineSettings {
         }
         Write-Progress -Activity "Loading Baseline" -Status "Parsing JSON..." -PercentComplete 55
         $json = $raw | ConvertFrom-Json -ErrorAction Stop
+        # Ensure $json is always an array (PowerShell quirk: single-item JSON arrays become PSCustomObject)
+        if ($json -isnot [System.Array]) {
+            $json = @($json)
+        }
         if (-not (Test-BaselineSchema -Baseline $json)) { throw "Baseline JSON schema invalid (array format expected)." }
         $record = ($json | Where-Object { $_.Identity -eq 'Default' } | Select-Object -First 1)
         if (-not $record) { throw "No 'Default' identity record found in baseline." }
@@ -483,17 +493,18 @@ function Test-Setting {
 # Generate HTML Report
 function New-HTMLReport {
     param(
-        [array]$CheckResults,
-        [object]$RemoteDomain,
+        [array]$AllDomainResults,
         [string]$OutputPath
     )
     
-    $totalChecks = $CheckResults.Count
-    $passedChecks = ($CheckResults | Where-Object { $_.Compliant }).Count
-    $failedChecks = $totalChecks - $passedChecks
-    $compliancePercentage = [math]::Round(($passedChecks / $totalChecks) * 100, 2)
-    $overallStatus = if ($compliancePercentage -eq 100) { "COMPLIANT" } else { "NON-COMPLIANT" }
-    $statusColor = if ($compliancePercentage -eq 100) { "#28a745" } else { "#dc3545" }
+    # Calculate overall statistics
+    $totalDomains = $AllDomainResults.Count
+    $totalAllChecks = ($AllDomainResults | ForEach-Object { $_.TotalChecks } | Measure-Object -Sum).Sum
+    $totalAllPassed = ($AllDomainResults | ForEach-Object { $_.PassedChecks } | Measure-Object -Sum).Sum
+    $totalAllFailed = $totalAllChecks - $totalAllPassed
+    $overallCompliance = if ($totalAllChecks -gt 0) { [math]::Round(($totalAllPassed / $totalAllChecks) * 100, 2) } else { 0 }
+    $overallStatus = if ($overallCompliance -eq 100) { "COMPLIANT" } else { "NON-COMPLIANT" }
+    $statusColor = if ($overallCompliance -eq 100) { "#28a745" } else { "#dc3545" }
     
     $reportDate = Get-Date -Format "dd MMMM yyyy - HH:mm:ss"
     
@@ -547,10 +558,68 @@ function New-HTMLReport {
         
         .summary {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 20px;
             padding: 30px;
             background: #f8f9fa;
+        }
+        
+        .domain-filter {
+            padding: 20px 30px;
+            background: #e9ecef;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .domain-filter h3 {
+            margin-bottom: 10px;
+            color: #2a5298;
+        }
+        
+        .domain-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .domain-tab {
+            padding: 8px 16px;
+            background: white;
+            border: 2px solid #2a5298;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        
+        .domain-tab:hover {
+            background: #2a5298;
+            color: white;
+        }
+        
+        .domain-tab.active {
+            background: #2a5298;
+            color: white;
+        }
+        
+        .domain-section {
+            display: none;
+        }
+        
+        .domain-section.active {
+            display: block;
+        }
+        
+        .domain-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            margin: 20px 30px;
+            border-radius: 8px;
+        }
+        
+        .domain-header h3 {
+            margin: 0;
+            font-size: 1.3em;
         }
         
         .summary-card {
@@ -767,34 +836,35 @@ function New-HTMLReport {
         
         <div class="summary">
             <div class="summary-card total">
+                <h3>Total Domains</h3>
+                <div class="value">$($AllDomainResults.Count)</div>
+            </div>
+            <div class="summary-card total">
                 <h3>Total Checks</h3>
-                <div class="value">$totalChecks</div>
+                <div class="value">$totalAllChecks</div>
             </div>
             <div class="summary-card passed">
                 <h3>Passed</h3>
-                <div class="value">$passedChecks</div>
+                <div class="value">$totalAllPassed</div>
             </div>
             <div class="summary-card failed">
                 <h3>Failed</h3>
-                <div class="value">$failedChecks</div>
+                <div class="value">$totalAllFailed</div>
             </div>
             <div class="summary-card compliance">
                 <h3>Compliance</h3>
-                <div class="value">$compliancePercentage%</div>
+                <div class="value">$overallCompliance%</div>
             </div>
         </div>
         
         <div class="info-section">
-            <h2>📋 Domain Information</h2>
+            <h2>📋 Report Information</h2>
             <div class="info-grid">
                 <div class="info-item">
-                    <strong>Identity:</strong> $($RemoteDomain.Identity)
+                    <strong>Total Domains:</strong> $($AllDomainResults.Count)
                 </div>
                 <div class="info-item">
-                    <strong>Domain Name:</strong> $($RemoteDomain.DomainName)
-                </div>
-                <div class="info-item">
-                    <strong>Distinguished Name:</strong> $($RemoteDomain.DistinguishedName)
+                    <strong>Domains Checked:</strong> $($AllDomainResults.Domain.Identity -join ', ')
                 </div>
                 <div class="info-item">
                     <strong>Baseline Source:</strong> $(if ($script:baselineLoaded) { 
@@ -807,9 +877,21 @@ function New-HTMLReport {
                 </div>
             </div>
         </div>
+"@
+
+    # Generate domain sections
+    foreach ($domainResult in $AllDomainResults) {
+        $domain = $domainResult.Domain
+        $checkResults = $domainResult.CheckResults
+        $domainCompliance = $domainResult.CompliancePercentage
+        $domainStatusColor = if ($domainCompliance -eq 100) { "#28a745" } else { "#dc3545" }
         
+        $html += @"
         <div class="results-section">
-            <h2>🔍 Detailed Check Results</h2>
+            <div style="background: $domainStatusColor; color: white; padding: 15px; margin: 0 0 20px 0; border-radius: 5px;">
+                <h2 style="margin: 0; border: none; padding: 0;">🌐 Domain: $($domain.Identity)</h2>
+                <p style="margin: 5px 0 0 0; font-size: 0.9em;">Domain Name: $($domain.DomainName) | Compliance: $domainCompliance%</p>
+            </div>
             <table class="result-table">
                 <thead>
                     <tr>
@@ -823,12 +905,12 @@ function New-HTMLReport {
                 <tbody>
 "@
 
-    foreach ($result in $CheckResults) {
-        $statusClass = if ($result.Compliant) { "status-pass" } else { "status-fail" }
-        $statusIcon = if ($result.Compliant) { "✓" } else { "✗" }
-        $statusText = if ($result.Compliant) { "PASS" } else { "FAIL" }
-        
-        $html += @"
+        foreach ($result in $checkResults) {
+            $statusClass = if ($result.Compliant) { "status-pass" } else { "status-fail" }
+            $statusIcon = if ($result.Compliant) { "✓" } else { "✗" }
+            $statusText = if ($result.Compliant) { "PASS" } else { "FAIL" }
+            
+            $html += @"
                     <tr>
                         <td>
                             <span class="status-badge $statusClass">
@@ -841,17 +923,21 @@ function New-HTMLReport {
                         <td>$($result.RequiredValue)</td>
                     </tr>
 "@
-    }
+        }
 
-    $html += @"
+        $html += @"
                 </tbody>
             </table>
         </div>
+"@
+    }
+
+    $html += @"
         
         <div class="overall-status">
             <h2>Overall Status: $overallStatus</h2>
             <p style="font-size: 1.2em; margin-top: 10px;">
-                $($passedChecks) out of $($totalChecks) checks passed
+                $totalAllPassed out of $totalAllChecks checks passed across $($AllDomainResults.Count) domain(s)
             </p>
         </div>
         
@@ -888,160 +974,202 @@ function Invoke-RemoteDomainCheck {
     # Initialize progress
     Write-Progress -Activity "ASD Remote Domain Check" -Status "Initializing..." -PercentComplete 0
     
-    # Get the Default remote domain
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Retrieving Default remote domain configuration..." -PercentComplete 10
-    Write-ColorOutput "Retrieving Default remote domain configuration..." -Type Info
+    # Get all remote domains
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Retrieving all remote domain configurations..." -PercentComplete 10
+    Write-ColorOutput "Retrieving all remote domain configurations..." -Type Info
     
     try {
-        $remoteDomain = Get-RemoteDomain -Identity "Default" -ErrorAction Stop
+        $remoteDomains = @(Get-RemoteDomain -ErrorAction Stop)
         
-        if (-not $remoteDomain) {
-            Write-ColorOutput "Default remote domain not found!" -Type Error
+        if (-not $remoteDomains -or $remoteDomains.Count -eq 0) {
+            Write-ColorOutput "No remote domains found!" -Type Error
             return
         }
         
-        Write-ColorOutput "Default remote domain found: $($remoteDomain.DomainName)`n" -Type Success
+        Write-ColorOutput "Found $($remoteDomains.Count) remote domain(s): $($remoteDomains.Identity -join ', ')`n" -Type Success
         
     }
     catch {
         Write-Progress -Activity "ASD Remote Domain Check" -Completed
-        Write-ColorOutput "Failed to retrieve remote domain: $($_.Exception.Message)" -Type Error
+        Write-ColorOutput "Failed to retrieve remote domains: $($_.Exception.Message)" -Type Error
         return
     }
     
-    # Array to store all check results
-    $checkResults = @()
+    # Array to store all results for all domains
+    $allDomainResults = @()
     
-    # Check each setting
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking settings against ASD Blueprint requirements..." -PercentComplete 20
-    Write-ColorOutput "Checking settings against ASD Blueprint requirements...`n" -Type Info
-    
-    # Define total checks for progress calculation
-    $totalChecks = 10
-    $currentCheck = 0
-    
-    # Domain Name
-    $currentCheck++
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking DomainName ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    $checkResults += Test-Setting -SettingName "DomainName" `
-        -CurrentValue $remoteDomain.DomainName `
-        -RequiredValue $Requirements.DomainName `
-        -Description "Remote Domain (should be *)"
-    
-    # Out of Office Type
-    $currentCheck++
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking AllowedOOFType ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    $checkResults += Test-Setting -SettingName "AllowedOOFType" `
-        -CurrentValue $remoteDomain.AllowedOOFType `
-        -RequiredValue $Requirements.AllowedOOFType `
-        -Description "Out of Office automatic reply types"
-    
-    # Auto Reply
-    $currentCheck++
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking AutoReplyEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    $checkResults += Test-Setting -SettingName "AutoReplyEnabled" `
-        -CurrentValue $remoteDomain.AutoReplyEnabled `
-        -RequiredValue $Requirements.AutoReplyEnabled `
-        -Description "Allow automatic replies"
-    
-    # Auto Forward
-    $currentCheck++
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking AutoForwardEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    $checkResults += Test-Setting -SettingName "AutoForwardEnabled" `
-        -CurrentValue $remoteDomain.AutoForwardEnabled `
-        -RequiredValue $Requirements.AutoForwardEnabled `
-        -Description "Allow automatic forwarding"
-    
-    # Delivery Reports
-    $currentCheck++
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking DeliveryReportEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    $checkResults += Test-Setting -SettingName "DeliveryReportEnabled" `
-        -CurrentValue $remoteDomain.DeliveryReportEnabled `
-        -RequiredValue $Requirements.DeliveryReportEnabled `
-        -Description "Allow delivery reports"
-    
-    # NDR Required
-    $currentCheck++
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking NDREnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    $checkResults += Test-Setting -SettingName "NDRRequired" `
-        -CurrentValue $remoteDomain.NDRRequired `
-        -RequiredValue $Requirements.NDRRequired `
-        -Description "Require non-delivery reports"
-    
-    # Meeting Forward Notifications
-    $currentCheck++
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking MeetingForwardNotificationEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    $checkResults += Test-Setting -SettingName "MeetingForwardNotificationEnabled" `
-        -CurrentValue $remoteDomain.MeetingForwardNotificationEnabled `
-        -RequiredValue $Requirements.MeetingForwardNotificationEnabled `
-        -Description "Allow meeting forward notifications"
-    
-    # TNEF (Rich Text Format)
-    $currentCheck++
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking TNEFEnabled ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    $checkResults += Test-Setting -SettingName "TNEFEnabled" `
-        -CurrentValue $remoteDomain.TNEFEnabled `
-        -RequiredValue $Requirements.TNEFEnabled `
-        -Description "Use rich-text format (null = Follow user settings)"
-    
-    # Character Set
-    $currentCheck++
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking CharacterSet ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    $checkResults += Test-Setting -SettingName "CharacterSet" `
-        -CurrentValue $remoteDomain.CharacterSet `
-        -RequiredValue $Requirements.CharacterSet `
-        -Description "MIME character set"
-    
-    # Non-MIME Character Set
-    $currentCheck++
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking NonMimeCharacterSet ($currentCheck of $totalChecks)" -PercentComplete (20 + ($currentCheck / $totalChecks * 40))
-    $checkResults += Test-Setting -SettingName "NonMIMECharacterSet" `
-        -CurrentValue $remoteDomain.NonMIMECharacterSet `
-        -RequiredValue $Requirements.NonMIMECharacterSet `
-        -Description "Non-MIME character set"
-    
-    # Display results
-    Write-Progress -Activity "ASD Remote Domain Check" -Status "Analyzing results..." -PercentComplete 60
-    Write-ColorOutput "`n========================================" -Type Info
-    Write-ColorOutput "  CHECK RESULTS" -Type Info
-    Write-ColorOutput "========================================`n" -Type Info
-    
-    foreach ($result in $checkResults) {
-        $statusColor = if ($result.Compliant) { "Success" } else { "Error" }
-        $statusSymbol = if ($result.Compliant) { "[✓]" } else { "[✗]" }
+    # Process each remote domain
+    $domainIndex = 0
+    foreach ($remoteDomain in $remoteDomains) {
+        $domainIndex++
         
-        Write-ColorOutput "$statusSymbol $($result.Setting)" -Type $statusColor
-        Write-Host "    Description : $($result.Description)"
-        Write-Host "    Current     : $($result.CurrentValue)"
-        Write-Host "    Required    : $($result.RequiredValue)"
-        Write-Host "    Status      : $($result.Status)"
-        Write-Host ""
+        Write-ColorOutput "`n========================================" -Type Info
+        Write-ColorOutput "Checking Domain $domainIndex of $($remoteDomains.Count): $($remoteDomain.Identity)" -Type Info
+        Write-ColorOutput "Domain Name Pattern: $($remoteDomain.DomainName)" -Type Info
+        Write-ColorOutput "========================================`n" -Type Info
+        
+        # Array to store check results for this domain
+        $checkResults = @()
+        
+        # Check each setting
+        Write-Progress -Activity "ASD Remote Domain Check" -Status "Checking domain $domainIndex of $($remoteDomains.Count): $($remoteDomain.Identity)" -PercentComplete (10 + ($domainIndex / $remoteDomains.Count * 50))
+        
+        # Define total checks for progress calculation
+        $totalChecks = 10
+        $currentCheck = 0
+        
+        # Domain Name
+        $currentCheck++
+        $checkResults += Test-Setting -SettingName "DomainName" `
+            -CurrentValue $remoteDomain.DomainName `
+            -RequiredValue $Requirements.DomainName `
+            -Description "Remote Domain (should be *)"
+        
+        # Out of Office Type
+        $currentCheck++
+        $checkResults += Test-Setting -SettingName "AllowedOOFType" `
+            -CurrentValue $remoteDomain.AllowedOOFType `
+            -RequiredValue $Requirements.AllowedOOFType `
+            -Description "Out of Office automatic reply types"
+        
+        # Auto Reply
+        $currentCheck++
+        $checkResults += Test-Setting -SettingName "AutoReplyEnabled" `
+            -CurrentValue $remoteDomain.AutoReplyEnabled `
+            -RequiredValue $Requirements.AutoReplyEnabled `
+            -Description "Allow automatic replies"
+        
+        # Auto Forward
+        $currentCheck++
+        $checkResults += Test-Setting -SettingName "AutoForwardEnabled" `
+            -CurrentValue $remoteDomain.AutoForwardEnabled `
+            -RequiredValue $Requirements.AutoForwardEnabled `
+            -Description "Allow automatic forwarding"
+        
+        # Delivery Reports
+        $currentCheck++
+        $checkResults += Test-Setting -SettingName "DeliveryReportEnabled" `
+            -CurrentValue $remoteDomain.DeliveryReportEnabled `
+            -RequiredValue $Requirements.DeliveryReportEnabled `
+            -Description "Allow delivery reports"
+        
+        # NDR Required
+        $currentCheck++
+        $checkResults += Test-Setting -SettingName "NDRRequired" `
+            -CurrentValue $remoteDomain.NDRRequired `
+            -RequiredValue $Requirements.NDRRequired `
+            -Description "Require non-delivery reports"
+        
+        # Meeting Forward Notifications
+        $currentCheck++
+        $checkResults += Test-Setting -SettingName "MeetingForwardNotificationEnabled" `
+            -CurrentValue $remoteDomain.MeetingForwardNotificationEnabled `
+            -RequiredValue $Requirements.MeetingForwardNotificationEnabled `
+            -Description "Allow meeting forward notifications"
+        
+        # TNEF (Rich Text Format)
+        $currentCheck++
+        $checkResults += Test-Setting -SettingName "TNEFEnabled" `
+            -CurrentValue $remoteDomain.TNEFEnabled `
+            -RequiredValue $Requirements.TNEFEnabled `
+            -Description "Use rich-text format (null = Follow user settings)"
+        
+        # Character Set
+        $currentCheck++
+        $checkResults += Test-Setting -SettingName "CharacterSet" `
+            -CurrentValue $remoteDomain.CharacterSet `
+            -RequiredValue $Requirements.CharacterSet `
+            -Description "MIME character set"
+        
+        # Non-MIME Character Set
+        $currentCheck++
+        $checkResults += Test-Setting -SettingName "NonMIMECharacterSet" `
+            -CurrentValue $remoteDomain.NonMIMECharacterSet `
+            -RequiredValue $Requirements.NonMIMECharacterSet `
+            -Description "Non-MIME character set"
+        
+        # Display results for this domain
+        Write-ColorOutput "`n  CHECK RESULTS - $($remoteDomain.Identity)" -Type Info
+        Write-ColorOutput "  ========================================`n" -Type Info
+        
+        foreach ($result in $checkResults) {
+            $statusColor = if ($result.Compliant) { "Success" } else { "Error" }
+            $statusSymbol = if ($result.Compliant) { "[✓]" } else { "[✗]" }
+            
+            Write-ColorOutput "  $statusSymbol $($result.Setting)" -Type $statusColor
+            Write-Host "      Description : $($result.Description)"
+            Write-Host "      Current     : $($result.CurrentValue)"
+            Write-Host "      Required    : $($result.RequiredValue)"
+            Write-Host "      Status      : $($result.Status)"
+            Write-Host ""
+        }
+        
+        # Summary for this domain
+        $totalChecks = $checkResults.Count
+        $passedChecks = ($checkResults | Where-Object { $_.Compliant }).Count
+        $failedChecks = $totalChecks - $passedChecks
+        $compliancePercentage = [math]::Round(($passedChecks / $totalChecks) * 100, 2)
+        
+        Write-ColorOutput "  ========================================" -Type Info
+        Write-ColorOutput "  SUMMARY - $($remoteDomain.Identity)" -Type Info
+        Write-ColorOutput "  ========================================" -Type Info
+        Write-Host "  Total Checks    : $totalChecks"
+        Write-ColorOutput "  Passed          : $passedChecks" -Type Success
+        
+        if ($failedChecks -gt 0) {
+            Write-ColorOutput "  Failed          : $failedChecks" -Type Error
+        } else {
+            Write-ColorOutput "  Failed          : $failedChecks" -Type Success
+        }
+        
+        Write-Host "  Compliance      : $compliancePercentage%"
+        
+        if ($compliancePercentage -eq 100) {
+            Write-ColorOutput "`n  Status          : COMPLIANT ✓" -Type Success
+        } else {
+            Write-ColorOutput "`n  Status          : NON-COMPLIANT ✗" -Type Error
+        }
+        
+        Write-ColorOutput "  ========================================`n" -Type Info
+        
+        # Store domain results
+        $allDomainResults += @{
+            Domain = $remoteDomain
+            CheckResults = $checkResults
+            TotalChecks = $totalChecks
+            PassedChecks = $passedChecks
+            FailedChecks = $failedChecks
+            CompliancePercentage = $compliancePercentage
+        }
     }
     
-    # Summary
-    $totalChecks = $checkResults.Count
-    $passedChecks = ($checkResults | Where-Object { $_.Compliant }).Count
-    $failedChecks = $totalChecks - $passedChecks
-    $compliancePercentage = [math]::Round(($passedChecks / $totalChecks) * 100, 2)
-    
+    # Overall summary
+    Write-Progress -Activity "ASD Remote Domain Check" -Status "Generating overall summary..." -PercentComplete 60
+    Write-ColorOutput "`n========================================" -Type Info
+    Write-ColorOutput "  OVERALL SUMMARY (ALL DOMAINS)" -Type Info
     Write-ColorOutput "========================================" -Type Info
-    Write-ColorOutput "  SUMMARY" -Type Info
-    Write-ColorOutput "========================================" -Type Info
-    Write-Host "Total Checks    : $totalChecks"
-    Write-ColorOutput "Passed          : $passedChecks" -Type Success
+    Write-Host "Total Domains   : $($remoteDomains.Count)"
     
-    if ($failedChecks -gt 0) {
-        Write-ColorOutput "Failed          : $failedChecks" -Type Error
+    $totalAllChecks = ($allDomainResults | ForEach-Object { $_.TotalChecks } | Measure-Object -Sum).Sum
+    $totalAllPassed = ($allDomainResults | ForEach-Object { $_.PassedChecks } | Measure-Object -Sum).Sum
+    $totalAllFailed = $totalAllChecks - $totalAllPassed
+    $overallCompliance = if ($totalAllChecks -gt 0) { [math]::Round(($totalAllPassed / $totalAllChecks) * 100, 2) } else { 0 }
+    
+    Write-Host "Total Checks    : $totalAllChecks"
+    Write-ColorOutput "Passed          : $totalAllPassed" -Type Success
+    
+    if ($totalAllFailed -gt 0) {
+        Write-ColorOutput "Failed          : $totalAllFailed" -Type Error
     } else {
-        Write-ColorOutput "Failed          : $failedChecks" -Type Success
+        Write-ColorOutput "Failed          : $totalAllFailed" -Type Success
     }
     
-    Write-Host "Compliance      : $compliancePercentage%"
+    Write-Host "Compliance      : $overallCompliance%"
     
-    if ($compliancePercentage -eq 100) {
-        Write-ColorOutput "`nStatus          : COMPLIANT ✓" -Type Success
+    if ($overallCompliance -eq 100) {
+        Write-ColorOutput "`nOverall Status  : COMPLIANT ✓" -Type Success
     } else {
-        Write-ColorOutput "`nStatus          : NON-COMPLIANT ✗" -Type Error
+        Write-ColorOutput "`nOverall Status  : NON-COMPLIANT ✗" -Type Error
     }
     
     Write-ColorOutput "========================================`n" -Type Info
@@ -1050,8 +1178,21 @@ function Invoke-RemoteDomainCheck {
     if ($ExportToCSV) {
         Write-Progress -Activity "ASD Remote Domain Check" -Status "Exporting results to CSV..." -PercentComplete 70
         try {
-            $checkResults | Select-Object Setting, Description, CurrentValue, RequiredValue, Status | 
-                Export-Csv -Path $CSVPath -NoTypeInformation -Encoding UTF8
+            $csvData = @()
+            foreach ($domainResult in $allDomainResults) {
+                foreach ($check in $domainResult.CheckResults) {
+                    $csvData += [PSCustomObject]@{
+                        Domain = $domainResult.Domain.Identity
+                        DomainName = $domainResult.Domain.DomainName
+                        Setting = $check.Setting
+                        Description = $check.Description
+                        CurrentValue = $check.CurrentValue
+                        RequiredValue = $check.RequiredValue
+                        Status = $check.Status
+                    }
+                }
+            }
+            $csvData | Export-Csv -Path $CSVPath -NoTypeInformation -Encoding UTF8
             Write-ColorOutput "Results exported to: $CSVPath" -Type Success
         }
         catch {
@@ -1059,10 +1200,10 @@ function Invoke-RemoteDomainCheck {
         }
     }
     
-    # Generate HTML Report (always)
+    # Generate HTML Report (always) - now with all domains
     Write-Progress -Activity "ASD Remote Domain Check" -Status "Generating HTML report..." -PercentComplete 80
     Write-ColorOutput "`nGenerating HTML report..." -Type Info
-    if (New-HTMLReport -CheckResults $checkResults -RemoteDomain $remoteDomain -OutputPath $script:HTMLPath) {
+    if (New-HTMLReport -AllDomainResults $allDomainResults -OutputPath $script:HTMLPath) {
         Write-ColorOutput "HTML report generated: $script:HTMLPath" -Type Success
         Write-Progress -Activity "ASD Remote Domain Check" -Status "Opening report in browser..." -PercentComplete 90
         Write-ColorOutput "Opening report in default browser..." -Type Info
@@ -1083,7 +1224,7 @@ function Invoke-RemoteDomainCheck {
     Start-Sleep -Milliseconds 500
     Write-Progress -Activity "ASD Remote Domain Check" -Completed
     
-    return $checkResults
+    return $allDomainResults
 }
 
 # Main execution
