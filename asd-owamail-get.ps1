@@ -67,6 +67,9 @@ param(
     [string]$LogPath,
     [Parameter(HelpMessage = "Custom output path for HTML compliance report. Defaults to timestamped file in parent directory.")]
     [string]$HTMLPath
+    ,
+    [Parameter(HelpMessage = "Comma separated list of baseline setting names to ignore (treat as informational). Default excludes ChangePasswordEnabled as per user preference.")]
+    [string[]]$IgnoreSettings = @('ChangePasswordEnabled')
 )
 
 # Paths
@@ -92,6 +95,33 @@ $script:DetailedLogging = $DetailedLogging
 
 $scriptVersion = "1.0"
 $scriptName = "ASD OWA Mailbox Policy Settings Check"
+
+# Map baseline property names to actual tenant property names when they differ.
+# If a baseline name appears here, the mapped name will be used for lookup.
+# Based on official Microsoft documentation for Set-OwaMailboxPolicy
+$PropertyAliases = [ordered]@{
+    JournalingEnabled        = 'JournalEnabled'                              # Correct name is JournalEnabled
+    EmailSignatureEnabled    = 'SignaturesEnabled'                          # Correct name is SignaturesEnabled
+    ThemesEnabled            = 'ThemeSelectionEnabled'                      # Correct name is ThemeSelectionEnabled
+    OfflineAccessEnabled     = 'OfflineEnabledWeb'                          # Exchange Online uses OfflineEnabledWeb (primary) and OfflineEnabledWin
+    PublicFileAccessEnabled  = 'DirectFileAccessOnPublicComputersEnabled'   # Maps to public computer file access
+    PrivateFileAccessEnabled = 'DirectFileAccessOnPrivateComputersEnabled'  # Maps to private computer file access
+}
+
+# Provide value synonym mapping (used primarily for Offline access setting mismatches)
+# For on-prem AllowOfflineOn: AllComputers, NoComputers, PrivateComputersOnly, PublicComputersOnly
+# For Exchange Online OfflineEnabledWeb/OfflineEnabledWin: True/False
+# Baseline may use simplified values like "Always", "Never", etc.
+$ValueSynonyms = @{
+    # On-premises AllowOfflineOn values
+    'Always'       = 'AllComputers'
+    'Never'        = 'NoComputers'
+    'PublicOnly'   = 'PublicComputersOnly'
+    'PrivateOnly'  = 'PrivateComputersOnly'
+    # Exchange Online boolean equivalents
+    'AllComputers' = 'True'   # When comparing against OfflineEnabledWeb/Win
+    'NoComputers'  = 'False'  # When comparing against OfflineEnabledWeb/Win
+}
 
 # Logging
 function Write-Log {
@@ -207,10 +237,46 @@ function Compare-Values {
     param([object]$Current,[object]$Required)
     $c = Normalize-Value $Current
     $r = Normalize-Value $Required
+    
+    # Handle null comparisons early
     if ($null -eq $r -and $null -eq $c) { return $true }
     if ($null -eq $r) { return $true }
+    if ($null -eq $c) { return $false }
+    
+    # Apply synonym mapping for both string-to-string and mixed type scenarios
+    # Handle baseline "Always"/"AllComputers" vs tenant boolean True/False
+    if ($r -is [string] -and $ValueSynonyms.ContainsKey($r)) {
+        $synonymValue = $ValueSynonyms[$r]
+        # Direct string match
+        if ($c -is [string] -and $synonymValue -eq $c) { return $true }
+        # Boolean to string conversion match (e.g., baseline "Always" maps to "AllComputers" which maps to "True")
+        if ($c -is [bool]) {
+            $cStr = $c.ToString()
+            if ($synonymValue -ieq $cStr) { return $true }
+            # Check if synonym has further mappings (e.g., "AllComputers" -> "True")
+            if ($ValueSynonyms.ContainsKey($synonymValue) -and $ValueSynonyms[$synonymValue] -ieq $cStr) { return $true }
+        }
+    }
+    
+    # Reverse synonym lookup: tenant value might be the synonym key
+    if ($c -is [string] -and $ValueSynonyms.ContainsKey($c)) {
+        $synonymValue = $ValueSynonyms[$c]
+        if ($r -is [string] -and $synonymValue -eq $r) { return $true }
+        if ($r -is [bool] -and $synonymValue -ieq $r.ToString()) { return $true }
+    }
+    
+    # Direct boolean comparison
     if ($c -is [bool] -and $r -is [bool]) { return ($c -eq $r) }
-    # case-insensitive for strings
+    
+    # String to boolean comparison (e.g., baseline "true" vs tenant $true)
+    if ($c -is [bool] -and $r -is [string] -and $r -match '^(?i:true|false)$') {
+        return ($c -eq [System.Convert]::ToBoolean($r))
+    }
+    if ($r -is [bool] -and $c -is [string] -and $c -match '^(?i:true|false)$') {
+        return ($r -eq [System.Convert]::ToBoolean($c))
+    }
+    
+    # Final fallback: case-insensitive string comparison
     return ("$c" -ieq "$r")
 }
 
@@ -219,10 +285,20 @@ function Test-Setting {
         [string]$PolicyName,
         [string]$SettingName,
         [object]$CurrentValue,
-        [object]$RequiredValue
+        [object]$RequiredValue,
+        [switch]$Ignored,
+        [switch]$NotApplicable
     )
     $cur = if ($null -eq $CurrentValue) { "Not set" } else { $CurrentValue.ToString() }
     $req = if ($null -eq $RequiredValue) { "Not set" } else { $RequiredValue.ToString() }
+    if ($Ignored) {
+        Write-Log "Check [$PolicyName] $SettingName - Ignored per user preference" -Level 'INFO'
+        return [pscustomobject]@{ Policy=$PolicyName; Setting=$SettingName; CurrentValue=$cur; RequiredValue=$req; Compliant=$true; Status='IGNORED' }
+    }
+    if ($NotApplicable) {
+        Write-Log "Check [$PolicyName] $SettingName - Not applicable (property not present)" -Level 'WARN'
+        return [pscustomobject]@{ Policy=$PolicyName; Setting=$SettingName; CurrentValue='Not present'; RequiredValue=$req; Compliant=$true; Status='N/A' }
+    }
     $ok = Compare-Values -Current $CurrentValue -Required $RequiredValue
     Write-Log "Check [$PolicyName] $SettingName - Current: $cur, Required: $req, Status: $(if($ok){'PASS'}else{'FAIL'})" -Level $(if($ok){'INFO'}else{'WARN'})
     [pscustomobject]@{
@@ -237,7 +313,12 @@ function Test-Setting {
 
 # HTML report
 function New-HTMLReport {
-    param([array]$CheckResults,[object]$OrgConfig,[string]$OutputPath)
+    param(
+        [array]$CheckResults,
+        [object]$OrgConfig,
+        [string]$OutputPath,
+        [string]$DomainName
+    )
     $total = $CheckResults.Count
     $passed = ($CheckResults | Where-Object { $_.Compliant }).Count
     $failed = $total - $passed
@@ -246,7 +327,20 @@ function New-HTMLReport {
     $statusColor = if ($pct -eq 100) { '#28a745' } else { '#dc3545' }
     $reportDate = Get-Date -Format "dd MMMM yyyy - HH:mm:ss"
 
-        $html = @"
+    # Derive domain if not explicitly provided
+    if (-not $DomainName -and $OrgConfig) {
+        try {
+            if ($OrgConfig.OrganizationalUnitRoot) { $DomainName = $OrgConfig.OrganizationalUnitRoot }
+            elseif ($OrgConfig.OrganizationId) {
+                $DomainName = ($OrgConfig.OrganizationId -split '/')[1]
+            }
+        } catch { $DomainName = $null }
+    }
+
+    # Use single quotes inside HTML attributes to avoid PowerShell string escape issues
+    $domainHtml = if ($DomainName) { "<p style='margin-top:6px;font-size:1.05em;font-weight:600'>$DomainName</p>" } else { '' }
+
+    $html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -282,8 +376,9 @@ tbody tr:nth-child(even){background:#f8f9fa}
 <body>
   <div class="container">
     <div class="header">
-      <h1>🛡️ ASD OWA Mailbox Policy Compliance Report</h1>
-      <p>Generated: $reportDate</p>
+    <h1>🛡️ ASD OWA Mailbox Policy Compliance Report</h1>
+    $domainHtml
+    <p>Generated: $reportDate</p>
     </div>
     <div class="summary">
             <div class="card total"><div>Total Checks</div><div class="value">$total</div></div>
@@ -371,21 +466,41 @@ function Invoke-OwaPolicyCheck {
             continue
         }
 
-        # Compare each setting in baseline
+        # Track already mapped actual property names to avoid duplicates (e.g. alias + original)
+        $processedActual = New-Object System.Collections.Generic.HashSet[string]
         $baselineSettings = ($baselinePolicy | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name)
         foreach ($setting in $baselineSettings) {
             $required = $baselinePolicy.$setting
-            # Try to read property directly; if not present, mark as null
+            # Ignore list
+            if ($IgnoreSettings -and $IgnoreSettings -contains $setting) {
+                $results += Test-Setting -PolicyName $policyName -SettingName $setting -CurrentValue $tenantPolicy.$setting -RequiredValue $required -Ignored
+                continue
+            }
+
+            # Map alias if needed (OrderedDictionary uses .Contains(key))
+            $actualName = if ($PropertyAliases.Contains($setting)) { $PropertyAliases[$setting] } else { $setting }
+            if ($processedActual.Contains($actualName)) { continue }
+
             $current = $null
-            try { $current = $tenantPolicy.$setting } catch { $current = $null }
-            # Known alias fallback for Offline access naming variations
-            if ($null -eq $current -and $setting -match 'OfflineAccessEnabled') {
-                # Try common alternatives
-                foreach ($alt in @('OfflineEnabled','AllowOfflineOn','OWAforDevicesOfflineEnabled')) {
+            try { $current = $tenantPolicy.$actualName } catch { $current = $null }
+
+            # Offline access special-case: try Exchange Online params first, then on-prem
+            # Exchange Online: OfflineEnabledWeb (primary), OfflineEnabledWin (fallback)
+            # On-premises: AllowOfflineOn
+            if ($setting -eq 'OfflineAccessEnabled' -and $null -eq $current) {
+                foreach ($alt in @('OfflineEnabledWeb','OfflineEnabledWin','AllowOfflineOn')) {
                     try { $current = $tenantPolicy.$alt } catch { $current = $null }
-                    if ($null -ne $current) { break }
+                    if ($null -ne $current) { $actualName = $alt; break }
                 }
             }
+
+            if ($null -eq $current -and -not $tenantPolicy.PSObject.Properties.Name -contains $actualName) {
+                # Property truly not present in tenant object; treat as Not Applicable rather than FAIL
+                $results += Test-Setting -PolicyName $policyName -SettingName $setting -CurrentValue $null -RequiredValue $required -NotApplicable
+                continue
+            }
+
+            $processedActual.Add($actualName) | Out-Null
             $results += Test-Setting -PolicyName $policyName -SettingName $setting -CurrentValue $current -RequiredValue $required
         }
     }
@@ -395,15 +510,16 @@ function Invoke-OwaPolicyCheck {
     Write-ColorOutput "  CHECK RESULTS" -Type Info
     Write-ColorOutput "========================================`n" -Type Info
     foreach ($r in $results) {
-        $type = if ($r.Compliant) { 'Success' } else { 'Error' }
-        $sym = if ($r.Compliant) { '[✓]' } else { '[✗]' }
+        $type = switch ($r.Status) { 'PASS' {'Success'} 'IGNORED' {'Warning'} 'N/A' {'Warning'} default { if ($r.Compliant) { 'Success' } else { 'Error' } } }
+        $sym = switch ($r.Status) { 'PASS' {'[✓]'} 'IGNORED' {'[~]'} 'N/A' {'[≈]'} default { if ($r.Compliant) { '[✓]' } else { '[✗]' } } }
         Write-ColorOutput "$sym [$($r.Policy)] $($r.Setting)" -Type $type
         Write-Host "    Current : $($r.CurrentValue)"
         Write-Host "    Required: $($r.RequiredValue)"
-    Write-Host "    Status  : $($r.Status)"
+        Write-Host "    Status  : $($r.Status)"
     }
 
     $total = $results.Count
+    # Treat IGNORED and N/A as compliant for summary purposes
     $passed = ($results | Where-Object { $_.Compliant }).Count
     $failed = $total - $passed
     $pct = if ($total -gt 0) { [math]::Round(($passed/$total)*100,2) } else { 0 }
@@ -427,7 +543,13 @@ function Invoke-OwaPolicyCheck {
 
     # HTML report
     Write-ColorOutput "Generating HTML report..." -Type Info
-    if (New-HTMLReport -CheckResults $results -OrgConfig $orgConfig -OutputPath $script:HTMLPath) {
+    # Derive domain for display
+    $tenantDomain = $null
+    try {
+        if ($orgConfig -and $orgConfig.OrganizationalUnitRoot) { $tenantDomain = $orgConfig.OrganizationalUnitRoot }
+    } catch { $tenantDomain = $null }
+
+    if (New-HTMLReport -CheckResults $results -OrgConfig $orgConfig -OutputPath $script:HTMLPath -DomainName $tenantDomain) {
         Write-ColorOutput "HTML report generated: $script:HTMLPath" -Type Success
         try { Start-Process $script:HTMLPath } catch { Write-ColorOutput "Could not open report in browser: $($_.Exception.Message)" -Type Warning }
     }

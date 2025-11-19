@@ -201,10 +201,7 @@ function Test-BaselineSchema {
         [object]$Baseline
     )
     # New array-only schema validation
-    if ($null -eq $Baseline) { return $false }
-    if ($Baseline -is [string]) { return $false }
-    if (-not ($Baseline -is [System.Array] -or $Baseline -is [System.Collections.ArrayList])) { return $false }
-    if ($Baseline.Count -lt 1) { return $false }
+    if (-not ($Baseline -is [System.Collections.IEnumerable] -and $Baseline.Count -ge 1)) { return $false }
     $requiredFields = @(
         @{Path = 'Identity'; Description = 'Remote domain identity (Default)'},
         @{Path = 'DomainName'; Description = 'Domain name pattern'},
@@ -234,28 +231,23 @@ function Test-BaselineSchema {
             }
             
             try {
-                # Check if property exists (not if it's null - null values are valid)
-                $properties = $current.PSObject.Properties.Name
-                if ($properties -notcontains $part) {
+                $current = $current.$part
+                if ($null -eq $current) {
                     $found = $false
                     break
                 }
-                $current = $current.$part
             }
             catch {
                 $found = $false
                 break
             }
-        }
-        
-        if (-not $found) {
+        } catch {
             $missingFields += @{
                 Path = $field.Path
                 Description = $field.Description
             }
         }
     }
-    
     if ($missingFields.Count -gt 0) {
         Write-ColorOutput "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
         Write-ColorOutput "❌ BASELINE JSON SCHEMA VALIDATION FAILED" -Type Error
@@ -267,13 +259,12 @@ function Test-BaselineSchema {
             Write-Host "    └─ $($missing.Description)"
         }
         Write-Host ""
-        Write-ColorOutput "The baseline JSON file does not conform to the expected schema." -Type Warning
-        Write-ColorOutput "Please check the file format or use the default GitHub baseline." -Type Warning
+        Write-ColorOutput "The baseline JSON file does not conform to a supported schema." -Type Warning
+        Write-ColorOutput "Supported formats: array of objects OR single object with required fields." -Type Warning
         Write-Host ""
         Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
         return $false
     }
-    
     return $true
 }
 
@@ -283,20 +274,17 @@ function Get-BaselineSettings {
     Write-Log "Starting baseline settings load from: $Path" -Level "INFO"
     $script:baselineLoaded = $false
     $isUrl = $Path -match '^https?://'
+    $record = $null
     try {
         $raw = if ($isUrl) {
-            Write-Progress -Activity "Loading Baseline" -Status "Downloading..." -PercentComplete 25
+            Write-Progress -Activity "Loading Baseline" -Status "Downloading..." -PercentComplete 20
             (Invoke-WebRequest -Uri $Path -UseBasicParsing -ErrorAction Stop).Content
         } else {
-            Write-Progress -Activity "Loading Baseline" -Status "Reading file..." -PercentComplete 25
+            Write-Progress -Activity "Loading Baseline" -Status "Reading file..." -PercentComplete 20
             Get-Content -Path $Path -Raw -ErrorAction Stop
         }
-        Write-Progress -Activity "Loading Baseline" -Status "Parsing JSON..." -PercentComplete 55
+        Write-Progress -Activity "Loading Baseline" -Status "Parsing JSON..." -PercentComplete 45
         $json = $raw | ConvertFrom-Json -ErrorAction Stop
-        # Ensure $json is always an array (PowerShell quirk: single-item JSON arrays become PSCustomObject)
-        if ($json -isnot [System.Array]) {
-            $json = @($json)
-        }
         if (-not (Test-BaselineSchema -Baseline $json)) { throw "Baseline JSON schema invalid (array format expected)." }
         $record = ($json | Where-Object { $_.Identity -eq 'Default' } | Select-Object -First 1)
         if (-not $record) { throw "No 'Default' identity record found in baseline." }
@@ -306,10 +294,24 @@ function Get-BaselineSettings {
     }
     catch {
         Write-Progress -Activity "Loading Baseline" -Completed
-        Write-Log "Baseline load failed: $($_.Exception.Message)" -Level "ERROR"
-        Write-ColorOutput "Failed to load baseline: $($_.Exception.Message)" -Type Error
-        Write-ColorOutput "Cannot continue without valid baseline." -Type Error
-        return $null
+        Write-Log "Baseline load failed: $($_.Exception.Message)" -Level "WARN"
+        Write-ColorOutput "Failed to load baseline: $($_.Exception.Message)" -Type Warning
+        Write-ColorOutput "Using built-in ASD Blueprint defaults instead." -Type Warning
+        # Built-in defaults (ASD recommended posture)
+        $record = [pscustomobject]@{
+            Identity = 'Default'
+            DomainName = '*'
+            AllowedOOFType = 'External'
+            AutoReplyEnabled = $true
+            AutoForwardEnabled = $false
+            DeliveryReportEnabled = $true
+            NDRRequired = $true
+            MeetingForwardNotificationEnabled = $true
+            TNEFEnabled = $null   # Follow user settings
+            CharacterSet = 'Unicode'
+            NonMIMECharacterSet = 'Unicode'
+        }
+        $script:baselineLoaded = $false
     }
 
     return @{
@@ -455,11 +457,28 @@ function Test-Setting {
         [string]$Description
     )
     
+    # Format display values with better context
+    $currentDisplay = if ($null -eq $CurrentValue) { 
+        "Not set (null)" 
+    } elseif ($CurrentValue -is [bool]) {
+        $CurrentValue.ToString()
+    } else { 
+        $CurrentValue.ToString() 
+    }
+    
+    $requiredDisplay = if ($null -eq $RequiredValue) { 
+        "Not set (null)" 
+    } elseif ($RequiredValue -is [bool]) {
+        $RequiredValue.ToString()
+    } else { 
+        $RequiredValue.ToString() 
+    }
+    
     $result = @{
         Setting = $SettingName
         Description = $Description
-        CurrentValue = if ($null -eq $CurrentValue) { "Not set" } else { $CurrentValue.ToString() }
-        RequiredValue = if ($null -eq $RequiredValue) { "Not set" } else { $RequiredValue.ToString() }
+        CurrentValue = $currentDisplay
+        RequiredValue = $requiredDisplay
         Compliant = $false
         Status = ""
     }
