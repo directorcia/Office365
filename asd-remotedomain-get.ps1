@@ -318,8 +318,8 @@ function Get-BaselineSettings {
             NDRRequired = $true
             MeetingForwardNotificationEnabled = $true
             TNEFEnabled = $null   # Follow user settings
-            CharacterSet = 'Unicode'
-            NonMIMECharacterSet = 'Unicode'
+            CharacterSet = $null  # Use automatic (most flexible)
+            NonMIMECharacterSet = $null  # Use automatic (most flexible)
         }
         $script:baselineLoaded = $false
     }
@@ -1072,12 +1072,25 @@ function Invoke-RemoteDomainCheck {
         $totalChecks = 10
         $currentCheck = 0
         
-        # Domain Name
+        # Domain Name (special handling: only Default must be '*')
         $currentCheck++
-        $checkResults += Test-Setting -SettingName "DomainName" `
-            -CurrentValue $remoteDomain.DomainName `
-            -RequiredValue $Requirements.DomainName `
-            -Description "Remote Domain (should be *)"
+        if ($remoteDomain.Identity -eq 'Default') {
+            $checkResults += Test-Setting -SettingName "DomainName" `
+                -CurrentValue $remoteDomain.DomainName `
+                -RequiredValue $Requirements.DomainName `
+                -Description "Default remote domain wildcard (should be *)"
+        }
+        else {
+            # For non-default remote domains, the baseline does not mandate '*'; treat as informational PASS
+            $checkResults += [pscustomobject]@{
+                Setting      = 'DomainName'
+                Description  = 'Custom remote domain name (not required to be *)'
+                CurrentValue = $remoteDomain.DomainName
+                RequiredValue= 'Not enforced'
+                Compliant    = $true
+                Status       = 'PASS'
+            }
+        }
         
         # Out of Office Type - Normalize baseline value (ExternalOnly -> External)
         $currentCheck++
@@ -1111,12 +1124,12 @@ function Invoke-RemoteDomainCheck {
             -RequiredValue $Requirements.DeliveryReportEnabled `
             -Description "Allow delivery reports"
         
-        # NDR Required
+        # NDR Required (Note: Exchange uses NDREnabled property)
         $currentCheck++
-        $checkResults += Test-Setting -SettingName "NDRRequired" `
-            -CurrentValue $remoteDomain.NDRRequired `
+        $checkResults += Test-Setting -SettingName "NDREnabled" `
+            -CurrentValue $remoteDomain.NDREnabled `
             -RequiredValue $Requirements.NDRRequired `
-            -Description "Require non-delivery reports"
+            -Description "Send non-delivery reports"
         
         # Meeting Forward Notifications
         $currentCheck++
