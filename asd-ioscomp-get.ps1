@@ -47,7 +47,7 @@
 
 .LINK
     https://github.com/directorcia/office365
-    https://github.com/directorcia/office365/wiki/iOS-Compliance-Policy-Check - Documentation
+    https://github.com/directorcia/Office365/wiki/ASD-iOS-Compliance-Policy-Check - Documentation
     https://blueprint.asd.gov.au/configuration/intune/device-compliance/
 #>
 
