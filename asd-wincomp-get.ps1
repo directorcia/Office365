@@ -398,8 +398,8 @@ tbody tr:nth-child(even){background:#f8f9fa}
         </div>
 
             <div class="footer">
-                <p><strong>Reference:</strong> <a href="https://blueprint.asd.gov.au/configuration/intune/device-compliance/" target="_blank">ASD's Blueprint for Secure Cloud - Windows Device Compliance</a></p>
-                <p style="margin-top:10px;"><strong>Security Controls:</strong> <a href="https://github.com/directorcia/bp/wiki/Windows-Compliance-Policy-Check" target="_blank">Why These Recommendations Matter</a></p>
+                <p><strong>Reference:</strong> <a href="https://blueprint.asd.gov.au/configuration/intune/devices/compliance-policies/policies/windows-10-11-compliance-policy/" target="_blank">ASD's Blueprint for Secure Cloud - Windows Device Compliance</a></p>
+                <p style="margin-top:10px;"><strong>Security Controls:</strong> <a href="https://github.com/directorcia/bp/wiki/Windows-Compliance-Policy-Settings-%E2%80%90-Security-Rationale" target="_blank">Why These Recommendations Matter</a></p>
             </div>
   </div>
 </body>
