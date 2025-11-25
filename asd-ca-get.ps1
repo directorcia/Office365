@@ -21,7 +21,6 @@
     Requires: Microsoft.Graph.Authentication PowerShell module (auto-installed if missing)
     
 .LINK
-    Reference - https://blueprint.asd.gov.au/configuration/entra-id/protection/conditional-access/
     Code - https://github.com/directorcia/office365-tools/tree/main/scripts/asd-ca-get.ps1
     Documentation - https://github.com/directorcia/Office365/wiki/ASD-Conditional-Access-Policy-Evaluation-Script
 #>
@@ -1549,6 +1548,356 @@ foreach ($category in $categories) {
                             </ul>
                         </div>
 "@
+        }
+        
+        # Add remediation suggestions if not 100% compliant
+        if ($compliancePercent -lt 100) {
+            $suggestions = @()
+            
+            # Generate specific suggestions based on the recommendation key
+            switch ($rec.Key) {
+                "block-legacy-auth" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a new Conditional Access policy"
+                        $suggestions += "Set 'Users' to 'All users' (consider excluding break-glass accounts)"
+                        $suggestions += "Set 'Client apps' to 'Exchange ActiveSync clients' and 'Other clients'"
+                        $suggestions += "Set grant control to 'Block access'"
+                        $suggestions += "Enable the policy after testing"
+                    } else {
+                        if ($result.Findings -match "User assignment") {
+                            $suggestions += "Update the policy to apply to 'All users'"
+                        }
+                        if ($result.Findings -match "Client app types") {
+                            $suggestions += "Configure client app types to include 'Exchange ActiveSync clients' and 'Other clients'"
+                        }
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Change grant control to 'Block access'"
+                        }
+                    }
+                }
+                "strong-auth" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy for phishing-resistant MFA"
+                        $suggestions += "Set 'Users' to 'All users' (exclude break-glass accounts)"
+                        $suggestions += "Set 'Target resources' to 'All cloud apps'"
+                        $suggestions += "Configure 'Grant' to require 'Authentication strength' using 'Phishing-resistant MFA'"
+                        $suggestions += "Test thoroughly before enabling"
+                    } else {
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Update grant control to require 'Authentication strength' instead of standard MFA"
+                            $suggestions += "Configure the authentication strength to use 'Phishing-resistant MFA' (FIDO2, Windows Hello for Business, Certificate-based)"
+                        }
+                        if ($result.Findings -match "User assignment") {
+                            $suggestions += "Ensure the policy applies to 'All users'"
+                        }
+                        if ($result.Findings -match "Application scope") {
+                            $suggestions += "Configure the policy to apply to 'All cloud apps'"
+                        }
+                    }
+                }
+                "block-high-risk-signins" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy for high-risk sign-ins"
+                        $suggestions += "Set 'Users' to 'All users'"
+                        $suggestions += "Configure 'Conditions' > 'Sign-in risk' to 'High'"
+                        $suggestions += "Set grant control to 'Block access'"
+                        $suggestions += "Note: Requires Microsoft Entra ID P2 licensing"
+                    } else {
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Change grant control from 'Require MFA' to 'Block access' for high-risk sign-ins"
+                            $suggestions += "Consider creating a separate policy for medium risk that requires MFA"
+                        }
+                        if ($result.Findings -match "Sign-in risk not configured") {
+                            $suggestions += "Configure 'Sign-in risk' condition to include 'High'"
+                        }
+                    }
+                }
+                "block-high-risk-users" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy for high-risk users"
+                        $suggestions += "Set 'Users' to 'All users'"
+                        $suggestions += "Configure 'Conditions' > 'User risk' to 'High'"
+                        $suggestions += "Set grant control to 'Block access'"
+                        $suggestions += "Note: Requires Microsoft Entra ID P2 licensing"
+                    } else {
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Change grant control to 'Block access' for high-risk users"
+                        }
+                        if ($result.Findings -match "User risk not configured") {
+                            $suggestions += "Configure 'User risk' condition to include 'High'"
+                        }
+                    }
+                }
+                "compliant-devices" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy requiring device compliance"
+                        $suggestions += "Set 'Users' to 'All users'"
+                        $suggestions += "Set 'Target resources' to 'All cloud apps'"
+                        $suggestions += "Set grant control to 'Require device to be marked as compliant'"
+                        $suggestions += "Ensure Intune device compliance policies are configured first"
+                    } else {
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Add 'Require device to be marked as compliant' to grant controls"
+                        }
+                    }
+                }
+                "intune-enrolment" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy for Intune enrollment"
+                        $suggestions += "Set 'Target resources' to 'Microsoft Intune Enrollment' application"
+                        $suggestions += "Configure 'Grant' to require 'Authentication strength' using 'Phishing-resistant MFA'"
+                    } else {
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Update grant control to require 'Authentication strength' with phishing-resistant MFA"
+                        }
+                        if ($result.Findings -match "Application scope") {
+                            $suggestions += "Ensure the policy targets 'Microsoft Intune Enrollment' application (App ID: d4ebce55-015a-49b5-a083-c84d1797ae8c)"
+                        }
+                    }
+                }
+                "block-guests" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy to control guest access"
+                        $suggestions += "Set 'Users' to 'Guest or external users' > 'All guest and external users'"
+                        $suggestions += "Configure target resources (e.g., sensitive applications)"
+                        $suggestions += "Set grant control to 'Block access'"
+                    } else {
+                        if ($result.Findings -match "User assignment") {
+                            $suggestions += "Update user assignment to target 'Guest or external users'"
+                        }
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Change grant control to 'Block access'"
+                        }
+                    }
+                }
+                "guest-app-access" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy for guest application access"
+                        $suggestions += "Set 'Users' to 'Guest or external users'"
+                        $suggestions += "Configure specific target applications that guests should access"
+                        $suggestions += "Set grant control to require 'Authentication strength'"
+                    } else {
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Update grant control to require 'Authentication strength'"
+                        }
+                    }
+                }
+                "block-unapproved-countries" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy for location-based blocking"
+                        $suggestions += "Create named locations for approved countries in Entra ID > Security > Named locations"
+                        $suggestions += "Set 'Users' to 'All users'"
+                        $suggestions += "Configure 'Locations' to include 'Any location' and exclude approved country locations"
+                        $suggestions += "Set grant control to 'Block access'"
+                    } else {
+                        if ($result.Findings -match "Location conditions not configured") {
+                            $suggestions += "Configure location conditions with approved countries excluded"
+                            $suggestions += "Create named locations in Entra ID for approved countries first"
+                        }
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Change grant control to 'Block access'"
+                        }
+                    }
+                }
+                "block-protected-info" {
+                    if ($result.Status -eq "Missing" -and $authContexts.Count -eq 0) {
+                        $suggestions += "Create authentication contexts in Entra ID > Security > Conditional Access > Authentication context"
+                        $suggestions += "Create a context named 'PROTECTED information' or similar"
+                        $suggestions += "Create a Conditional Access policy that triggers on this authentication context"
+                        $suggestions += "Set grant control to 'Block access' or require specific controls"
+                        $suggestions += "Configure sensitivity labels in Microsoft Purview to use this authentication context"
+                    } elseif ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy for the PROTECTED authentication context"
+                        $suggestions += "Set 'Cloud apps or actions' > 'Authentication context'"
+                        $suggestions += "Select or create an authentication context for PROTECTED information"
+                        $suggestions += "Set grant control to 'Block access'"
+                    } else {
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Change grant control to 'Block access' for PROTECTED information"
+                        }
+                    }
+                }
+                "block-insider-risk" {
+                    if ($result.Status -eq "Missing" -and -not $insiderRiskAvailable) {
+                        $suggestions += "Acquire Microsoft Purview Insider Risk Management licensing (Microsoft 365 E5 Compliance or add-on)"
+                        $suggestions += "Configure Insider Risk Management policies in Microsoft Purview"
+                        $suggestions += "Create a Conditional Access policy that triggers on insider risk levels"
+                        $suggestions += "Set 'Conditions' > 'Insider risk' to 'Elevated'"
+                        $suggestions += "Set grant control to 'Block access'"
+                    } elseif ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy for insider risk"
+                        $suggestions += "Set 'Conditions' > 'Insider risk' to 'Elevated'"
+                        $suggestions += "Set grant control to 'Block access'"
+                    } else {
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Change grant control to 'Block access'"
+                        }
+                    }
+                }
+                "limit-admin-sessions" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy to limit admin session duration"
+                        $suggestions += "Set 'Users' to 'Directory roles' and select administrative roles"
+                        $suggestions += "Configure 'Session' > 'Sign-in frequency' to a short duration (e.g., 4 hours)"
+                        $suggestions += "Set grant control to 'Grant access'"
+                    } else {
+                        if ($result.Findings -match "Session sign-in frequency") {
+                            $suggestions += "Configure 'Session' > 'Sign-in frequency' for administrators"
+                            $suggestions += "Recommended frequency: 4 hours or less"
+                        }
+                        if ($result.Findings -match "User assignment") {
+                            $suggestions += "Update user assignment to target 'Directory roles'"
+                        }
+                    }
+                }
+                "limit-user-sessions" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy to limit user session duration"
+                        $suggestions += "Set 'Users' to 'All users'"
+                        $suggestions += "Configure 'Session' > 'Sign-in frequency' (e.g., 8-12 hours for standard users)"
+                        $suggestions += "Set grant control to 'Grant access'"
+                    } else {
+                        if ($result.Findings -match "Session sign-in frequency") {
+                            $suggestions += "Configure 'Session' > 'Sign-in frequency' for all users"
+                            $suggestions += "Recommended frequency: 8-12 hours"
+                        }
+                    }
+                }
+                "risky-signins-auth" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy for risky sign-ins"
+                        $suggestions += "Set 'Users' to 'All users'"
+                        $suggestions += "Configure 'Sign-in risk' to 'Medium and High'"
+                        $suggestions += "Set grant control to 'Require multifactor authentication'"
+                        $suggestions += "Note: Requires Microsoft Entra ID P2 licensing"
+                    } else {
+                        if ($result.Findings -match "Sign-in risk") {
+                            $suggestions += "Configure 'Sign-in risk' to include both 'Medium' and 'High' levels"
+                        }
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Add 'Require multifactor authentication' to grant controls"
+                        }
+                    }
+                }
+                "register-security-info" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy for security info registration"
+                        $suggestions += "Set 'Users' to 'All users'"
+                        $suggestions += "Configure 'User actions' > 'Register security information'"
+                        $suggestions += "Set grant control to require 'Authentication strength' with phishing-resistant MFA"
+                    } else {
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Update grant control to require 'Authentication strength'"
+                        }
+                    }
+                }
+                "terms-of-use" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create Terms of Use in Entra ID > Identity governance > Terms of use"
+                        $suggestions += "Create a Conditional Access policy requiring ToU acceptance"
+                        $suggestions += "Set 'Users' to 'All users'"
+                        $suggestions += "Set grant control to 'Require terms of use'"
+                    } else {
+                        if ($result.Findings -match "terms of use") {
+                            $suggestions += "Configure grant control to require specific 'Terms of use'"
+                            $suggestions += "Ensure Terms of Use documents are published in Entra ID first"
+                        }
+                    }
+                }
+                "block-unapproved-devices" {
+                    if ($result.Status -eq "Missing") {
+                        $suggestions += "Create a Conditional Access policy for device platform control"
+                        $suggestions += "Set 'Users' to 'All users'"
+                        $suggestions += "Configure 'Device platforms' to target specific platforms"
+                        $suggestions += "Set grant control to 'Block access' or 'Require compliant device'"
+                    } else {
+                        if ($result.Findings -match "Grant controls") {
+                            $suggestions += "Update grant control to 'Block access' or 'Require compliant device'"
+                        }
+                        if ($result.Findings -match "Device platform") {
+                            $suggestions += "Configure device platform conditions"
+                        }
+                    }
+                }
+            }
+            
+            # If no specific suggestions were generated but policy isn't 100%, analyze findings for concrete guidance
+            if ($suggestions.Count -eq 0 -and $compliancePercent -lt 100) {
+                # Analyze the findings to provide specific remediation based on what's missing
+                $findingsText = $result.Findings -join " "
+                
+                # Check for partial sign-in risk configuration
+                if ($findingsText -match "⚠ Sign-in risk levels partially match") {
+                    $suggestions += "Update 'Conditions' > 'Sign-in risk' to include all required risk levels (e.g., both 'Medium' and 'High' if recommended)"
+                    $suggestions += "Verify the risk levels match the ASD Blueprint requirement exactly"
+                }
+                
+                # Check for missing policy enablement
+                if ($result.BestMatch -and $result.BestMatch.Policy.state -ne "enabled") {
+                    $suggestions += "Enable the policy: Change state from 'Report-only' or 'Disabled' to 'Enabled'"
+                    $suggestions += "Test in report-only mode first if unsure about impact"
+                }
+                
+                # Check for exclusions that might be reducing score
+                if ($result.BestMatch.Policy.conditions.users.excludeUsers -or 
+                    $result.BestMatch.Policy.conditions.users.excludeGroups -or
+                    $result.BestMatch.Policy.conditions.users.excludeRoles) {
+                    $suggestions += "Review user exclusions to ensure they align with ASD Blueprint guidance"
+                    $suggestions += "Only exclude break-glass/emergency access accounts as required"
+                }
+                
+                # Check for application scope issues
+                if ($result.BestMatch.Policy.conditions.applications.includeApplications -and 
+                    $result.BestMatch.Policy.conditions.applications.includeApplications -ne "All") {
+                    $suggestions += "Verify 'Target resources' includes all required cloud apps or specific apps per ASD guidance"
+                    $suggestions += "For broader protection, consider changing to 'All cloud apps'"
+                }
+                
+                # Check for missing session frequency details
+                if ($findingsText -match "✓ Sign-in frequency configured" -and $compliancePercent -lt 100) {
+                    $suggestions += "Verify the sign-in frequency duration meets ASD Blueprint requirements"
+                    $suggestions += "Recommended: 4 hours or less for admins, 8-12 hours for standard users"
+                }
+                
+                # Check for device platform specificity
+                if ($result.BestMatch.Policy.conditions.platforms -and 
+                    $result.BestMatch.Policy.conditions.platforms.includePlatforms -ne "all") {
+                    $suggestions += "Review 'Device platforms' to ensure coverage across all required platforms"
+                    $suggestions += "Consider using 'All device platforms' unless specific platform targeting is required"
+                }
+                
+                # If still no specific suggestions, provide targeted review guidance
+                if ($suggestions.Count -eq 0) {
+                    $score = $result.BestMatch.ComplianceScore
+                    $maxScore = $result.BestMatch.MaxScore
+                    $missingPoints = $maxScore - $score
+                    
+                    $suggestions += "Policy is close to full compliance but missing $missingPoints/$maxScore points"
+                    $suggestions += "In the Entra portal, open policy: '$($result.BestMatch.Policy.displayName)'"
+                    $suggestions += "Systematically verify each section matches ASD Blueprint exactly:"
+                    $suggestions += "  - Users: Confirm 'All users' selected (or correct directory roles for admin policies)"
+                    $suggestions += "  - Target resources: Verify application scope matches requirement"
+                    $suggestions += "  - Conditions: Check all conditions (sign-in risk, user risk, locations, client apps, device platforms)"
+                    $suggestions += "  - Grant controls: Confirm exact match to required controls (MFA type, device compliance, approved app, etc.)"
+                    $suggestions += "  - Session controls: Verify sign-in frequency, persistent browser session, app enforced restrictions"
+                }
+            }
+            
+            if ($suggestions.Count -gt 0) {
+                $html += @"
+                        
+                        <div style="background: #E0F7FA; border: 2px solid #00ACC1; border-left: 5px solid #00ACC1; padding: 15px; margin-top: 15px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0, 172, 193, 0.2);">
+                            <h4 style="color: #00838F; margin-bottom: 10px; font-weight: 700;">💡 Remediation Steps to Achieve 100% Compliance</h4>
+                            <ol style="margin-left: 20px; color: #006064; line-height: 1.8; font-weight: 500;">
+"@
+                foreach ($suggestion in $suggestions) {
+                    $html += "                                <li>$suggestion</li>`n"
+                }
+                $html += @"
+                            </ol>
+                        </div>
+"@
+            }
         }
         
         if ($result.BestMatch) {
