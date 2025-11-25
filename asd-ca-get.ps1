@@ -86,13 +86,52 @@ else {
 
 # Connect to Microsoft Graph
 Write-Host "`nConnecting to Microsoft Graph..." -ForegroundColor Cyan
-try {
-    $null = Connect-MgGraph -Scopes "Policy.Read.All", "Directory.Read.All" -NoWelcome -ErrorAction Stop
-    Write-Host "Successfully connected to Microsoft Graph" -ForegroundColor Green
+
+# Check if already connected
+$context = Get-MgContext -ErrorAction SilentlyContinue
+if ($context -and $context.Scopes -contains "Policy.Read.All") {
+    Write-Host "Already connected to Microsoft Graph" -ForegroundColor Green
+    Write-Host "Account: $($context.Account)" -ForegroundColor Gray
 }
-catch {
-    Write-Host "Failed to connect to Microsoft Graph. Error: $_" -ForegroundColor Red
-    exit 1
+else {
+    try {
+        # Try interactive browser authentication first
+        Connect-MgGraph -Scopes "Policy.Read.All", "Directory.Read.All" -NoWelcome -ErrorAction Stop
+        Write-Host "Successfully connected to Microsoft Graph" -ForegroundColor Green
+    }
+    catch {
+        # If interactive fails (localhost binding issue), try device code flow
+        if ($_.Exception.Message -like "*HttpListenerException*" -or $_.Exception.Message -like "*localhost*" -or $_.Exception.Message -like "*unable to listen*") {
+            Write-Host "`nInteractive browser authentication failed (localhost binding issue)." -ForegroundColor Yellow
+            Write-Host "Switching to device code authentication..." -ForegroundColor Cyan
+            Write-Host "`n============================================================" -ForegroundColor Cyan
+            Write-Host "  DEVICE CODE AUTHENTICATION REQUIRED" -ForegroundColor Cyan
+            Write-Host "============================================================" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host "Opening browser to: " -NoNewline
+            Write-Host "https://microsoft.com/devicelogin" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "The device code will appear below - copy it and paste into the browser." -ForegroundColor Cyan
+            Write-Host "============================================================`n" -ForegroundColor Cyan
+            
+            # Open the device login page in default browser
+            try {
+                Start-Process "https://microsoft.com/devicelogin"
+                Start-Sleep -Seconds 2  # Give browser time to open
+            } catch {
+                Write-Host "Could not open browser automatically." -ForegroundColor Yellow
+            }
+            
+            # Connect with device code - output goes directly to console
+            Write-Host ""
+            Connect-MgGraph -Scopes "Policy.Read.All", "Directory.Read.All" -UseDeviceAuthentication -NoWelcome -ErrorAction Stop | Out-Default
+            Write-Host ""
+            Write-Host "Successfully connected to Microsoft Graph via device code." -ForegroundColor Green
+        }
+        else {
+            throw
+        }
+    }
 }
 
 # Get tenant information
@@ -1273,7 +1312,6 @@ foreach ($recommendation in $asdRecommendations) {
                 $maxConditionScore += 100
                 if ($policy.conditions.authenticationContextClassReferences) {
                     $conditionScore += 100
-                    }
                 }
             }
         }
