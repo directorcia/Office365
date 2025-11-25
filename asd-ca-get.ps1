@@ -1868,11 +1868,6 @@ foreach ($category in $categories) {
                 
                 # If still no specific suggestions, provide targeted review guidance
                 if ($suggestions.Count -eq 0) {
-                    $score = $result.BestMatch.ComplianceScore
-                    $maxScore = $result.BestMatch.MaxScore
-                    $missingPoints = $maxScore - $score
-                    
-                    $suggestions += "Policy is close to full compliance but missing $missingPoints/$maxScore points"
                     $suggestions += "In the Entra portal, open policy: '$($result.BestMatch.Policy.displayName)'"
                     $suggestions += "Systematically verify each section matches ASD Blueprint exactly:"
                     $suggestions += "  - Users: Confirm 'All users' selected (or correct directory roles for admin policies)"
