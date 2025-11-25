@@ -416,7 +416,14 @@ function Test-PolicyCompliance {
         $maxScore += 30
         $expectedGrant = $Recommendation.CheckCriteria.GrantControls
         
-        if ($expectedGrant -match "Block access" -and $Policy.grantControls.builtInControls -contains "block") {
+        if ($expectedGrant -eq "Grant access" -and 
+            $Policy.grantControls._Operator -in @("AND", "OR") -and
+            -not ($Policy.grantControls.builtInControls -contains "block")) {
+            # Grant access with no blocking - allows access (possibly with session controls)
+            $complianceScore += 30
+            $findings += "✓ Grants access as recommended"
+        }
+        elseif ($expectedGrant -match "Block access" -and $Policy.grantControls.builtInControls -contains "block") {
             $complianceScore += 30
             $findings += "✓ Blocks access as recommended"
         }
@@ -466,6 +473,9 @@ function Test-PolicyCompliance {
             
             $actualControlsText = if ($actualControls.Count -gt 0) { 
                 ($actualControls -join ", ") 
+            } elseif ($Policy.grantControls._Operator -in @("AND", "OR") -and 
+                      -not ($Policy.grantControls.builtInControls -contains "block")) {
+                "Grant access"
             } else { 
                 "None configured" 
             }
