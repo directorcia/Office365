@@ -662,17 +662,34 @@ foreach ($recommendation in $asdRecommendations) {
         if ($recommendation.Key -match "guest") {
             $maxConditionScore += 30
             if ($policy.conditions.users.includeGuestsOrExternalUsers -or
-                $policy.conditions.users.guestOrExternalUserTypes) {
-                $conditionScore += 30
+                $policy.conditions.users.includeUsers -contains "GuestsOrExternalUsers") {
                 if ($recommendation.Key -eq "block-guests" -and 
                     $policy.grantControls.builtInControls -contains "block") {
+                    # Blocking guests - full score
+                    $conditionScore += 30
                     $conditionScore += 20
                     $maxConditionScore += 20
                 }
-                elseif ($recommendation.Key -eq "guest-app-access" -and 
-                        $policy.grantControls.authenticationStrength) {
-                    $conditionScore += 20
-                    $maxConditionScore += 20
+                elseif ($recommendation.Key -eq "guest-app-access") {
+                    # Allow guest access with auth strength to SPECIFIC apps
+                    $hasSpecificApp = $policy.conditions.applications.includeApplications -and
+                                      $policy.conditions.applications.includeApplications -notcontains "All" -and
+                                      $policy.conditions.applications.includeApplications.Count -gt 0
+                    $hasAuthStrength = $policy.grantControls.authenticationStrength -ne $null
+                    if ($hasSpecificApp -and $hasAuthStrength) {
+                        # Perfect match - specific app + auth strength
+                        $conditionScore += 30
+                        $conditionScore += 20
+                        $maxConditionScore += 20
+                    }
+                    elseif ($hasAuthStrength) {
+                        # Partial - has auth strength but wrong app scope
+                        $conditionScore += 20
+                    }
+                    elseif ($hasSpecificApp) {
+                        # Partial - specific app but wrong control
+                        $conditionScore += 15
+                    }
                 }
             }
         }
