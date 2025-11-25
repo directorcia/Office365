@@ -443,7 +443,37 @@ function Test-PolicyCompliance {
             $findings += "✓ Requires terms of use"
         }
         else {
+            # Provide detailed information about what's expected vs what's configured
+            $actualControls = @()
+            if ($Policy.grantControls.builtInControls) {
+                $actualControls += $Policy.grantControls.builtInControls | ForEach-Object { 
+                    switch ($_) {
+                        "block" { "Block access" }
+                        "mfa" { "Require MFA" }
+                        "compliantDevice" { "Require compliant device" }
+                        "domainJoinedDevice" { "Require domain joined device" }
+                        "approvedApplication" { "Require approved client app" }
+                        "compliantApplication" { "Require app protection policy" }
+                        default { $_ }
+                    }
+                }
+            }
+            if ($Policy.grantControls.authenticationStrength) {
+                $actualControls += "Require authentication strength"
+            }
+            if ($Policy.grantControls.termsOfUse) {
+                $actualControls += "Require terms of use"
+            }
+            
+            $actualControlsText = if ($actualControls.Count -gt 0) { 
+                ($actualControls -join ", ") 
+            } else { 
+                "None configured" 
+            }
+            
             $findings += "✗ Grant controls don't match recommendation"
+            $findings += "  Expected: $expectedGrant"
+            $findings += "  Current: $actualControlsText"
         }
     }
     
