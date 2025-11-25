@@ -89,19 +89,39 @@ Write-Host "`nConnecting to Microsoft Graph..." -ForegroundColor Cyan
 
 # Check if already connected
 $context = Get-MgContext -ErrorAction SilentlyContinue
-if ($context -and $context.Scopes -contains "Policy.Read.All") {
+if ($context -and 
+    $context.Scopes -contains "Policy.Read.All" -and 
+    $context.Scopes -contains "Directory.Read.All") {
     Write-Host "Already connected to Microsoft Graph" -ForegroundColor Green
     Write-Host "Account: $($context.Account)" -ForegroundColor Gray
 }
 else {
     try {
         # Try interactive browser authentication first
+        # Note: No Out-Default needed - browser auth produces no console output
         Connect-MgGraph -Scopes "Policy.Read.All", "Directory.Read.All" -NoWelcome -ErrorAction Stop
         Write-Host "Successfully connected to Microsoft Graph" -ForegroundColor Green
     }
     catch {
-        # If interactive fails (localhost binding issue), try device code flow
-        if ($_.Exception.Message -like "*HttpListenerException*" -or $_.Exception.Message -like "*localhost*" -or $_.Exception.Message -like "*unable to listen*") {
+        # Check if it's a localhost binding / HTTP listener issue
+        # This can be an HttpListenerException or contain related keywords in the error chain
+        $isHttpListenerIssue = $false
+        $currentException = $_.Exception
+        
+        # Walk the exception chain to find HttpListenerException or related errors
+        while ($currentException) {
+            if ($currentException -is [System.Net.HttpListenerException]) {
+                $isHttpListenerIssue = $true
+                break
+            }
+            if ($currentException.Message -match "HttpListener|localhost.*listen|unable to listen|127\.0\.0\.1.*listen") {
+                $isHttpListenerIssue = $true
+                break
+            }
+            $currentException = $currentException.InnerException
+        }
+        
+        if ($isHttpListenerIssue) {
             Write-Host "`nInteractive browser authentication failed (localhost binding issue)." -ForegroundColor Yellow
             Write-Host "Switching to device code authentication..." -ForegroundColor Cyan
             Write-Host "`n============================================================" -ForegroundColor Cyan
@@ -120,9 +140,11 @@ else {
                 Start-Sleep -Seconds 2  # Give browser time to open
             } catch {
                 Write-Host "Could not open browser automatically." -ForegroundColor Yellow
+                Write-Host "If on a headless system, manually navigate to https://microsoft.com/devicelogin" -ForegroundColor Cyan
             }
             
             # Connect with device code - output goes directly to console
+            # Note: Out-Default forces immediate display of device code and instructions
             Write-Host ""
             Connect-MgGraph -Scopes "Policy.Read.All", "Directory.Read.All" -UseDeviceAuthentication -NoWelcome -ErrorAction Stop | Out-Default
             Write-Host ""
