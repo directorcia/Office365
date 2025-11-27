@@ -173,30 +173,45 @@ function Test-GraphModule {
 }
 
 function Connect-MSGraph {
+    param([switch]$ForceReconnect)
+    
     Write-ColorOutput "`nChecking Microsoft Graph connection..." -Type Info
     try {
         # Check if already connected
         $context = Get-MgContext -ErrorAction SilentlyContinue
-        if ($context) {
+        if ($context -and -not $ForceReconnect) {
             Write-ColorOutput "Already connected to Microsoft Graph." -Type Success
             Write-ColorOutput "Tenant: $($context.TenantId)" -Type Info
             
-            # Get organization domain
-            try {
-                $orgUrl = "https://graph.microsoft.com/v1.0/organization"
-                $org = Invoke-MgGraphRequest -Method GET -Uri $orgUrl -ErrorAction Stop
-                if ($org.value -and $org.value.Count -gt 0) {
-                    $domain = $org.value[0].verifiedDomains | Where-Object { $_.isDefault -eq $true } | Select-Object -ExpandProperty name
-                    if ($domain) {
-                        $script:connectedDomain = $domain
-                        Write-ColorOutput "Domain: $domain" -Type Info
+            # Check if we have the required scope
+            $requiredScope = "DeviceManagementConfiguration.Read.All"
+            if ($context.Scopes -notcontains $requiredScope) {
+                Write-ColorOutput "`nWarning: Current connection missing required permission: $requiredScope" -Type Warning
+                Write-ColorOutput "Disconnecting and reconnecting with correct permissions..." -Type Info
+                Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
+                Start-Sleep -Seconds 1
+            } else {
+                # Get organization domain
+                try {
+                    $orgUrl = "https://graph.microsoft.com/v1.0/organization"
+                    $org = Invoke-MgGraphRequest -Method GET -Uri $orgUrl -ErrorAction Stop
+                    if ($org.value -and $org.value.Count -gt 0) {
+                        $domain = $org.value[0].verifiedDomains | Where-Object { $_.isDefault -eq $true } | Select-Object -ExpandProperty name
+                        if ($domain) {
+                            $script:connectedDomain = $domain
+                            Write-ColorOutput "Domain: $domain" -Type Info
+                        }
                     }
+                } catch {
+                    Write-Log "Failed to retrieve organization domain: $($_.Exception.Message)" -Level WARN
                 }
-            } catch {
-                Write-Log "Failed to retrieve organization domain: $($_.Exception.Message)" -Level WARN
+                return $true
             }
-            
-            return $true
+        }
+        elseif ($ForceReconnect -and $context) {
+            Write-ColorOutput "Force reconnect requested. Disconnecting..." -Type Info
+            Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
+            Start-Sleep -Seconds 1
         }
         
         Write-ColorOutput "Connecting to Microsoft Graph..." -Type Info
@@ -237,6 +252,28 @@ function Test-GraphPermissions {
     catch { 
         Write-ColorOutput "Permission validation failed: $($_.Exception.Message)" -Type Error
         Write-ColorOutput "Required permission: DeviceManagementConfiguration.Read.All" -Type Warning
+        
+        # Check if this is a permission issue (BadRequest often means insufficient permissions)
+        if ($_.Exception.Message -like "*BadRequest*" -or $_.Exception.Message -like "*Forbidden*" -or $_.Exception.Message -like "*Unauthorized*") {
+            Write-ColorOutput "`nInsufficient permissions detected. Attempting to reconnect with correct scope..." -Type Warning
+            
+            # Try to reconnect with the required permission
+            $reconnected = Connect-MSGraph -ForceReconnect
+            if ($reconnected) {
+                Write-ColorOutput "`nRetrying permission validation..." -Type Info
+                try {
+                    $null = Invoke-MgGraphRequest -Method GET -Uri $url -ErrorAction Stop
+                    Write-ColorOutput "Permission validation passed after reconnection." -Type Success
+                    return $true
+                }
+                catch {
+                    Write-ColorOutput "Permission validation still failed: $($_.Exception.Message)" -Type Error
+                    Write-ColorOutput "`nYou may need to grant admin consent for the app in Azure AD." -Type Warning
+                    Write-ColorOutput "Required permission: DeviceManagementConfiguration.Read.All" -Type Warning
+                    return $false
+                }
+            }
+        }
         return $false 
     }
 }

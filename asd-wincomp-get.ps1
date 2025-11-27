@@ -243,7 +243,7 @@ function Connect-MSGraph {
 }
 
 function Test-GraphPermissions {
-    Write-ColorOutput "`nValidating Microsoft Graph permissions..." -Type Info
+    Write-ColorOutput "\nValidating Microsoft Graph permissions..." -Type Info
     try { 
         $url = "https://graph.microsoft.com/beta/deviceManagement/deviceCompliancePolicies?`$top=1"
         $null = Invoke-MgGraphRequest -Method GET -Uri $url -ErrorAction Stop
@@ -253,6 +253,28 @@ function Test-GraphPermissions {
     catch { 
         Write-ColorOutput "Permission validation failed: $($_.Exception.Message)" -Type Error
         Write-ColorOutput "Required permission: DeviceManagementConfiguration.Read.All" -Type Warning
+        
+        # Check if this is a permission issue (BadRequest often means insufficient permissions)
+        if ($_.Exception.Message -like "*BadRequest*" -or $_.Exception.Message -like "*Forbidden*" -or $_.Exception.Message -like "*Unauthorized*") {
+            Write-ColorOutput "\nInsufficient permissions detected. Attempting to reconnect with correct scope..." -Type Warning
+            
+            # Try to reconnect with the required permission
+            $reconnected = Connect-MSGraph -ForceReconnect
+            if ($reconnected) {
+                Write-ColorOutput "\nRetrying permission validation..." -Type Info
+                try {
+                    $null = Invoke-MgGraphRequest -Method GET -Uri $url -ErrorAction Stop
+                    Write-ColorOutput "Permission validation passed after reconnection." -Type Success
+                    return $true
+                }
+                catch {
+                    Write-ColorOutput "Permission validation still failed: $($_.Exception.Message)" -Type Error
+                    Write-ColorOutput "\nYou may need to grant admin consent for the app in Azure AD." -Type Warning
+                    Write-ColorOutput "Required permission: DeviceManagementConfiguration.Read.All" -Type Warning
+                    return $false
+                }
+            }
+        }
         return $false 
     }
 }
