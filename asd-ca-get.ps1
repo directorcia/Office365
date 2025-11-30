@@ -1467,7 +1467,9 @@ $reportPath = Join-Path (Split-Path $PSScriptRoot -Parent) "ASD-CA-Evaluation-Re
 $totalRecommendations = $asdRecommendations.Count
 $compliantCount = ($evaluationResults | Where-Object { $_.Status -eq "Compliant" }).Count
 $partialCount = ($evaluationResults | Where-Object { $_.Status -eq "Partial" }).Count
-$nonCompliantCount = ($evaluationResults | Where-Object { $_.Status -eq "Non-Compliant" }).Count
+# Combine Non-Compliant and Missing into a single "Non-Compliant" metric
+# Both represent recommendations that are not adequately met
+$nonCompliantCount = ($evaluationResults | Where-Object { $_.Status -eq "Non-Compliant" -or $_.Status -eq "Missing" }).Count
 $missingCount = ($evaluationResults | Where-Object { $_.Status -eq "Missing" }).Count
 $overallCompliance = [math]::Round((($evaluationResults | Measure-Object -Property CompliancePercentage -Average).Average), 0)
 
@@ -1619,6 +1621,13 @@ $html = @"
             font-size: 0.9em;
             text-transform: uppercase;
             letter-spacing: 1px;
+        }
+        
+        .stat-sublabel {
+            color: #9ca3af;
+            font-size: 0.75em;
+            font-style: italic;
+            margin-top: 5px;
         }
         
         .priority-alerts {
@@ -2034,11 +2043,7 @@ $html = @"
                     <div class="stat-label">Non-Compliant</div>
                     <div class="stat-number">$nonCompliantCount</div>
                     <div class="stat-label">of $totalRecommendations</div>
-                </div>
-                <div class="stat-card missing">
-                    <div class="stat-label">Missing</div>
-                    <div class="stat-number">$missingCount</div>
-                    <div class="stat-label">of $totalRecommendations</div>
+                    <div class="stat-sublabel">(includes missing policies)</div>
                 </div>
             </div>
             
@@ -2651,8 +2656,7 @@ Write-Host "$overallCompliance%" -ForegroundColor $(
 Write-Host "`nSummary:" -ForegroundColor Cyan
 Write-Host "  ✓ Compliant:     $compliantCount / $totalRecommendations" -ForegroundColor Green
 Write-Host "  ⚠ Partial:       $partialCount / $totalRecommendations" -ForegroundColor Yellow
-Write-Host "  ✗ Non-Compliant: $nonCompliantCount / $totalRecommendations" -ForegroundColor Red
-Write-Host "  ⊘ Missing:       $missingCount / $totalRecommendations" -ForegroundColor Gray
+Write-Host "  ✗ Non-Compliant: $nonCompliantCount / $totalRecommendations (includes $missingCount missing)" -ForegroundColor Red
 Write-Host ""
 
 # Open the report in default browser
