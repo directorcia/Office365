@@ -124,15 +124,29 @@ write-host -foregroundcolor $processmessagecolor "Exchange Online PowerShell mod
 ## Connect to Exchange Online service
 write-host -foregroundcolor $processmessagecolor "Connecting to Exchange Online"
 try {
-    $result = Connect-ExchangeOnline -ShowProgress:$false -ShowBanner:$false | Out-Null
+    $result = Connect-ExchangeOnline -ShowProgress:$false -ShowBanner:$false -ErrorAction Stop | Out-Null
 }
 catch {
-    Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Exchange Online`n"
-    Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
-    if ($debug) {
-        Stop-Transcript | Out-Null                 ## Terminate transcription
+    Write-Host -ForegroundColor $warningmessagecolor "Primary connect failed ($($_.Exception.Message)). Retrying with web login..."
+    try {
+        Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue
+        $result = Connect-ExchangeOnline -UseWebLogin -ShowBanner:$false -ErrorAction Stop | Out-Null
     }
-    exit 3 
+    catch {
+        Write-Host -ForegroundColor $warningmessagecolor "Web login failed ($($_.Exception.Message)). Retrying with device code..."
+        try {
+            Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue
+            $result = Connect-ExchangeOnline -Device -ShowBanner:$false -ErrorAction Stop | Out-Null
+        }
+        catch {
+            Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Exchange Online`n"
+            Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
+            if ($debug) {
+                Stop-Transcript | Out-Null                 ## Terminate transcription
+            }
+            exit 3 
+        }
+    }
 }
 
 write-host -foregroundcolor $processmessagecolor "Connected to Exchange Online`n"
