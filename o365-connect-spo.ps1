@@ -1,7 +1,8 @@
 param(                         
     [switch]$noprompt = $false,   ## if -noprompt used then user will not be asked for any input
     [switch]$noupdate = $false,   ## if -noupdate used then module will not be checked for more recent version
-    [switch]$debug = $false       ## if -debug create a log file
+    [switch]$debug = $false,      ## if -debug create a log file
+    [switch]$UseDeviceCode = $false ## if -UseDeviceCode parameter use device code authentication
 )
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
@@ -9,6 +10,7 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 Description - Log into the Office 365 admin portal and the SharePoint Online portal
 
 Source - https://github.com/directorcia/Office365/blob/master/o365-connect-spo.ps1
+Documentation - https://github.com/directorcia/Office365/wiki/SharePoint-Online-Connection-Script
 
 Prerequisites = 2
 1. Ensure Graph module installed or updated
@@ -117,46 +119,264 @@ if (-not $noupdate) {
 }
 
 write-host -foregroundcolor $processmessagecolor "Microsoft Graph PowerShell module loading"
-Try {
-    
-    Import-Module Microsoft.Graph.Identity.DirectoryManagement | Out-Null
+
+$RequiredModules = @("Microsoft.Graph.Authentication", "Microsoft.Graph.Identity.DirectoryManagement")
+
+# Check if the assembly is already loaded in the .NET AppDomain to avoid conflicts
+$LoadedAssembly = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -eq "Microsoft.Graph.Authentication" } | Select-Object -First 1
+$TargetVersion = $null
+
+if ($LoadedAssembly) {
+    $LoadedVersion = $LoadedAssembly.GetName().Version
+    # Map assembly version to module version (Major.Minor.Build)
+    $TargetVersion = [Version]"$($LoadedVersion.Major).$($LoadedVersion.Minor).$($LoadedVersion.Build)"
+    Write-Warning "Microsoft.Graph.Authentication assembly $TargetVersion is already loaded. Locking to this version."
 }
-catch {
-    Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Microsoft Graph PowerShell module`n"
-    Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
-    if ($debug) {
-        Stop-Transcript | Out-Null                ## Terminate transcription
+else {
+    # Attempt to clear existing Graph modules to prevent version conflicts
+    Get-Module Microsoft.Graph* | Remove-Module -Force -ErrorAction SilentlyContinue
+
+    # Find the highest common version available for all required modules
+    Write-Host -ForegroundColor $processmessagecolor "Resolving module versions..."
+    $CommonVersions = $null
+    foreach ($Name in $RequiredModules) {
+        $Available = Get-Module -ListAvailable $Name
+        if ($null -eq $Available) {
+            Write-Host -ForegroundColor $errormessagecolor "[002] - Required module $Name is not installed.`n"
+            if ($debug) {
+                Stop-Transcript | Out-Null
+            }
+            exit 2
+        }
+        $Versions = $Available.Version
+        if ($null -eq $CommonVersions) {
+            $CommonVersions = $Versions
+        } else {
+            $CommonVersions = $CommonVersions | Where-Object { $_ -in $Versions }
+        }
     }
-    exit 2
+    $TargetVersion = $CommonVersions | Sort-Object -Descending | Select-Object -First 1
 }
+
+if ($TargetVersion) {
+    Write-Host -ForegroundColor $processmessagecolor "Targeting Microsoft Graph version: $TargetVersion"
+    foreach ($Name in $RequiredModules) {
+        try {
+            # Find the specific module file for this version
+            $ModuleInfo = Get-Module -ListAvailable $Name | Where-Object Version -eq $TargetVersion | Select-Object -First 1
+            if ($ModuleInfo) {
+                Import-Module $ModuleInfo.Path -Force -ErrorAction Stop
+            }
+            else {
+                throw "Module path not found for $Name version $TargetVersion"
+            }
+        }
+        catch {
+            Write-Host -ForegroundColor $errormessagecolor "[002] - Failed to load $Name version $TargetVersion`n"
+            Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
+            Write-Warning "A restart of the PowerShell session is likely required to clear loaded assemblies."
+            if ($debug) {
+                Stop-Transcript | Out-Null
+            }
+            exit 2
+        }
+    }
+}
+else {
+    Write-Warning "Could not find a common version for all modules. Attempting to load latest available..."
+    foreach ($Module in $RequiredModules) {
+        try {
+            Import-Module $Module -Force -ErrorAction Stop
+        }
+        catch {
+            Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Microsoft Graph PowerShell module`n"
+            Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
+            if ($debug) {
+                Stop-Transcript | Out-Null
+            }
+            exit 2
+        }
+    }
+}
+
 write-host -foregroundcolor $processmessagecolor "Microsoft Graph PowerShell module loaded"
 
 ## Connect to Office 365 admin service
 write-host -foregroundcolor $processmessagecolor "Connecting to Microsoft 365 Admin service"
-try {
-    Connect-MGGraph -Scopes "Domain.Read.All" | Out-Null
+$context = Get-MgContext
+
+# Disconnect any existing stale connections
+if ($null -ne $context) {
+    Write-Host -ForegroundColor $warningmessagecolor "Existing connection detected. Disconnecting to ensure fresh authentication..."
+    Disconnect-MgGraph | Out-Null
+    $context = $null
 }
-catch {
-    Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Microsoft Graph`n"
-    Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
-    if ($debug) {
-        Stop-Transcript | Out-Null                ## Terminate transcription
+
+if ($null -eq $context) {
+    try {
+        if ($UseDeviceCode) {
+            Write-Host -ForegroundColor $warningmessagecolor "`nUsing device code authentication..."
+            Write-Host -ForegroundColor $warningmessagecolor "Opening browser to https://microsoft.com/devicelogin..."
+            try { Start-Process "https://microsoft.com/devicelogin" } catch { Write-Warning "Could not open browser automatically." }
+
+            Connect-MgGraph -UseDeviceCode -Scopes "Domain.Read.All","Organization.Read.All" -NoWelcome -ErrorAction Stop 2>&1 | ForEach-Object {
+                if ($_ -match "enter the code ([A-Z0-9]+) to authenticate") {
+                    Write-Host -ForegroundColor Cyan "`nDevice Code: $($matches[1])`n"
+                }
+                elseif ($_ -notmatch "To sign in, use a web browser") {
+                    Write-Host $_
+                }
+            }
+        }
+        else {
+            try {
+                Connect-MgGraph -Scopes "Domain.Read.All","Organization.Read.All" -NoWelcome -ErrorAction Stop | Out-Null
+            }
+            catch {
+                Write-Host -ForegroundColor $warningmessagecolor "Interactive login failed. Falling back to Device Code authentication..."
+                Write-Host -ForegroundColor $warningmessagecolor "Opening browser to https://microsoft.com/devicelogin..."
+                try { Start-Process "https://microsoft.com/devicelogin" } catch { Write-Warning "Could not open browser automatically." }
+
+                Connect-MgGraph -UseDeviceCode -Scopes "Domain.Read.All","Organization.Read.All" -NoWelcome -ErrorAction Stop 2>&1 | ForEach-Object {
+                    if ($_ -match "enter the code ([A-Z0-9]+) to authenticate") {
+                        Write-Host -ForegroundColor Cyan "`nDevice Code: $($matches[1])`n"
+                    }
+                    elseif ($_ -notmatch "To sign in, use a web browser") {
+                        Write-Host $_
+                    }
+                }
+            }
+        }
+        $context = Get-MgContext
+        if (-not $context) {
+            throw "Failed to establish Microsoft Graph connection."
+        }
+        Write-Host -ForegroundColor $processmessagecolor "Successfully connected to Microsoft Graph"
+        Write-Host -ForegroundColor $processmessagecolor "Account = $($context.Account)"
+        Write-Host -ForegroundColor $processmessagecolor "TenantId = $($context.TenantId)"
     }
-    exit 3
+    catch {
+        Write-Host -ForegroundColor $errormessagecolor "`n[003] - Unable to connect to Microsoft Graph - $($_.Exception.Message)`n"
+        Write-Host -ForegroundColor $warningmessagecolor "If you're experiencing authentication issues, try:"
+        Write-Host -ForegroundColor $warningmessagecolor "  1. Run: Disconnect-MgGraph"
+        Write-Host -ForegroundColor $warningmessagecolor "  2. Clear browser cache/cookies"
+        Write-Host -ForegroundColor $warningmessagecolor "  3. Try device code flow: Use the -UseDeviceCode parameter`n"
+        if ($debug) {
+            Stop-Transcript | Out-Null
+        }
+        exit 3
+    }
+}
+else {
+    Write-Host -ForegroundColor $processmessagecolor "Existing Microsoft Graph connection detected"
+    Write-Host -ForegroundColor $processmessagecolor "Account = $($context.Account)"
 }
 write-host -foregroundcolor $processmessagecolor "Connected to Microsoft 365 Admin service"
 
 ## Auto detect SharePoint Online admin domain
 write-host -foregroundcolor $processmessagecolor "Determining SharePoint Administration URL"
-$domains = Get-MGDomain
-foreach ($domain in $domains.id) {                     ## loop through all these domains
-    if ($domain.contains('onmicrosoft')) {     ## find the onmicrosoft.com domain
-        $onname = $domain.split(".")           ## split the onmicrosoft.com domain when found at the period. Will produce an array that contains each string as an element
-        $tenantname = $onname[0]                    ## the first string in this array is the name of the tenant
-    }                                               ## end of find the on.microsoft.com domain
-}                                                   ## end of the domain checking look
-$tenanturl = "https://" + $tenantname + "-admin.sharepoint.com"
-Write-host -ForegroundColor $processmessagecolor "SharePoint admin URL =", $tenanturl
+try {
+    # Try to get tenant name from the current context or organization
+    $tenantname = $null
+    
+    # Method 1: Try getting from context account
+    if ($context.Account) {
+        $accountParts = $context.Account -split '@'
+        if ($accountParts.Count -eq 2) {
+            $domain = $accountParts[1]
+            if ($domain -match '^(.+)\.onmicrosoft\.com$') {
+                $tenantname = $matches[1]
+                Write-Host -ForegroundColor $processmessagecolor "Tenant name from context account: $tenantname"
+            }
+            elseif ($domain -notlike "*.onmicrosoft.com") {
+                # If not an onmicrosoft.com domain, we need to query organization
+                Write-Host -ForegroundColor $processmessagecolor "Custom domain detected: $domain"
+            }
+        }
+    }
+    
+    # Method 2: Use Graph cmdlet to get organization details
+    if (-not $tenantname) {
+        try {
+            Write-Host -ForegroundColor $processmessagecolor "Querying organization using Get-MgOrganization..."
+            
+            # Need to import the Organizations module if not already loaded
+            if (-not (Get-Module -Name Microsoft.Graph.Identity.DirectoryManagement)) {
+                $ModuleInfo = Get-Module -ListAvailable Microsoft.Graph.Identity.DirectoryManagement | Where-Object Version -eq $TargetVersion | Select-Object -First 1
+                if ($ModuleInfo) {
+                    Import-Module $ModuleInfo.Path -Force -ErrorAction Stop
+                }
+            }
+            
+            $org = Get-MgOrganization -ErrorAction Stop
+            if ($org.VerifiedDomains) {
+                $onmicrosoftDomain = $org.VerifiedDomains | Where-Object { $_.Name -like "*.onmicrosoft.com" -and $_.IsInitial -eq $true } | Select-Object -First 1
+                if ($onmicrosoftDomain) {
+                    $onname = $onmicrosoftDomain.Name.split(".")
+                    $tenantname = $onname[0]
+                    Write-Host -ForegroundColor $processmessagecolor "Tenant name from Get-MgOrganization: $tenantname"
+                }
+            }
+        }
+        catch {
+            Write-Host -ForegroundColor $warningmessagecolor "Unable to get organization using cmdlet: $_"
+        }
+    }
+    
+    # Method 3: Use REST API to get organization details
+    if (-not $tenantname) {
+        try {
+            Write-Host -ForegroundColor $processmessagecolor "Querying organization via REST API..."
+            $orgResponse = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/organization" -ErrorAction Stop
+            
+            if ($orgResponse.value -and $orgResponse.value.Count -gt 0) {
+                $org = $orgResponse.value[0]
+                if ($org.verifiedDomains) {
+                    $onmicrosoftDomain = $org.verifiedDomains | Where-Object { $_.name -like "*.onmicrosoft.com" -and $_.isInitial -eq $true } | Select-Object -First 1
+                    if ($onmicrosoftDomain) {
+                        $onname = $onmicrosoftDomain.name.split(".")
+                        $tenantname = $onname[0]
+                        Write-Host -ForegroundColor $processmessagecolor "Tenant name from REST API: $tenantname"
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Host -ForegroundColor $warningmessagecolor "Unable to get organization details via REST API: $_"
+        }
+    }
+    
+    # Method 4: Manual input as last resort
+    if (-not $tenantname) {
+        if (-not $noprompt) {
+            Write-Host -ForegroundColor $warningmessagecolor "`nUnable to auto-detect tenant name."
+            Write-Host -ForegroundColor $processmessagecolor "Please enter your tenant name (the part before .onmicrosoft.com)"
+            Write-Host -ForegroundColor $processmessagecolor "Example: If your domain is contoso.onmicrosoft.com, enter 'contoso'"
+            do {
+                $tenantname = Read-Host -Prompt "Tenant name"
+            } until (-not [string]::IsNullOrWhiteSpace($tenantname))
+            Write-Host -ForegroundColor $processmessagecolor "Using manually entered tenant name: $tenantname"
+        }
+        else {
+            throw "Unable to determine tenant name automatically and -noprompt is enabled."
+        }
+    }
+    
+    if (-not $tenantname) {
+        throw "Unable to determine tenant name. Please ensure you have the necessary permissions."
+    }
+    
+    $tenanturl = "https://" + $tenantname + "-admin.sharepoint.com"
+    Write-host -ForegroundColor $processmessagecolor "SharePoint admin URL = $tenanturl"
+}
+catch {
+    Write-Host -ForegroundColor $errormessagecolor "[004] - Unable to determine SharePoint admin URL"
+    Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
+    if ($debug) {
+        Stop-Transcript | Out-Null
+    }
+    exit 4
+}
 
 # SharePoint Online module
 if (get-module -listavailable -name microsoft.online.sharepoint.powershell) {    ## Has the SharePOint Online PowerShell module been installed?
