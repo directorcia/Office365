@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M365 Secure Score Analysis - Foundry AI Report</title>
+    <style>
+        :root {
+            --primary-blue: #004578;
+            --primary-dark: #003050;
+            --success-green: #107c10;
+            --warning-orange: #f7630c;
+            --error-red: #d13438;
+            --bg-light: #faf9f8;
+            --bg-card: #ffffff;
+            --border-color: #e1dfdd;
+            --text-primary: #323130;
+            --text-secondary: #605e5c;
+            --shadow-sm: 0 1.6px 3.6px rgba(0,0,0,0.08), 0 0.3px 0.9px rgba(0,0,0,0.06);
+            --shadow-md: 0 3.2px 7.2px rgba(0,0,0,0.1), 0 0.6px 1.8px rgba(0,0,0,0.08);
+            --shadow-lg: 0 6.4px 14.4px rgba(0,0,0,0.12), 0 1.2px 3.6px rgba(0,0,0,0.1);
+        }
+        
+        * { box-sizing: border-box; }
+        
+        body { 
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', 'Helvetica Neue', Arial, sans-serif; 
+            margin: 0; 
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 32px 24px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 48px 24px;
+            border-radius: 16px;
+            box-shadow: var(--shadow-lg);
+            margin-bottom: 32px;
+            text-align: center;
+        }
+        
+        .header h1 { 
+            margin: 0 0 16px 0;
+            font-size: 2.5em;
+            font-weight: 600;
+            color: #ffffff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header .subtitle {
+            font-size: 1.1em;
+            color: #ffffff;
+            opacity: 0.95;
+            font-weight: 400;
+        }
+        
+        .meta { 
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            padding: 16px 24px;
+            border-radius: 12px;
+            margin-top: 24px;
+            font-size: 0.95em;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 24px;
+        }
+        
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .meta-item strong {
+            opacity: 0.8;
+            font-weight: 500;
+        }
+        
+        .section { 
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-md);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .section:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        h2 { 
+            color: #ffffff;
+            background: linear-gradient(135deg, #004578 0%, #0d47a1 100%);
+            margin: 0 0 24px 0;
+            padding: 24px 32px;
+            border-bottom: none;
+            font-size: 1.75em;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        h2::before {
+            content: '📊';
+            font-size: 0.9em;
+        }
+        
+        h2.collapsible {
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.3s ease;
+        }
+        
+        h2.collapsible:hover {
+            background: linear-gradient(135deg, #003d71 0%, #0d47a1 100%);
+        }
+        
+        h2.collapsible::after {
+            content: '▼';
+            font-size: 0.6em;
+            margin-left: auto;
+            transition: transform 0.3s ease;
+            color: #ffffff;
+        }
+        
+        h2.collapsible.collapsed::after {
+            transform: rotate(-90deg);
+        }
+        
+        .collapsible-content {
+            max-height: 5000px;
+            overflow: hidden;
+            transition: max-height 0.4s ease, opacity 0.3s ease;
+            opacity: 1;
+        }
+        
+        .collapsible-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+        }
+        
+        table { 
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 0.95em;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        th { 
+            background: linear-gradient(135deg, #004578 0%, #0d47a1 100%);
+            color: #ffffff;
+            text-align: left;
+            padding: 14px 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--primary-blue);
+        }
+        
+        td { 
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: top;
+        }
+        
+        tr:last-child td {
+            border-bottom: none;
+        }
+        
+        tbody tr {
+            transition: background-color 0.2s;
+        }
+        
+        tbody tr:hover { 
+            background: #f8f9fa;
+        }
+        
+        .analysis { 
+            background: #ffffff;
+            padding: 0;
+            border-radius: 16px;
+            border: none;
+            line-height: 1.85;
+            box-shadow: var(--shadow-md);
+            font-size: 16px;
+            overflow: hidden;
+        }
+        
+        .analysis > *:first-child {
+            margin-top: 0 !important;
+        }
+        
+        .analysis h1 {
+            color: #ffffff;
+            background: linear-gradient(135deg, #004578 0%, #003050 100%);
+            font-size: 28px;
+            font-weight: 700;
+            margin: 0 0 0 0;
+            padding: 32px 48px;
+            border-radius: 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .analysis h2 {
+            color: #ffffff;
+            background: linear-gradient(135deg, #004578 0%, #0d47a1 100%);
+            font-size: 22px;
+            font-weight: 700;
+            margin: 48px 0 0 0;
+            padding: 24px 48px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .analysis h3 { 
+            color: #ffffff;
+            margin: 40px 48px 20px 48px;
+            font-size: 20px;
+            font-weight: 800;
+            padding: 16px 20px;
+            background: linear-gradient(135deg, #004578 0%, #0d47a1 100%);
+            border-left: none;
+            border-radius: 4px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .analysis h4 {
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 800;
+            margin: 32px 48px 16px 48px;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #0d47a1 0%, #1976d2 100%);
+            border-bottom: none;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .analysis h5 {
+            color: var(--text-primary);
+            font-size: 16px;
+            font-weight: 800;
+            margin: 24px 48px 12px 48px;
+            letter-spacing: 0.3px;
+        }
+        
+        .analysis h6 {
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 800;
+            margin: 20px 48px 10px 48px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        
+        .analysis p {
+            margin: 16px 48px;
+            line-height: 1.85;
+            color: var(--text-primary);
+            font-size: 16px;
+        }
+        
+        .analysis > p:first-of-type {
+            font-size: 18px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            margin: 32px 48px 24px 48px;
+        }
+        
+        .analysis ul, .analysis ol { 
+            margin: 20px 48px;
+            padding-left: 28px;
+            line-height: 1.85;
+        }
+        
+        .analysis li { 
+            margin: 14px 0;
+            padding-left: 12px;
+            color: var(--text-primary);
+            font-size: 16px;
+        }
+        
+        .analysis ul > li {
+            position: relative;
+            list-style: none;
+        }
+        
+        .analysis ul > li::before {
+            content: '●';
+            color: var(--primary-blue);
+            font-size: 10px;
+            position: absolute;
+            left: -20px;
+            top: 8px;
+        }
+        
+        .analysis ol > li {
+            padding-left: 8px;
+        }
+        
+        .analysis ol > li::marker {
+            color: var(--primary-blue);
+            font-weight: 700;
+            font-size: 17px;
+        }
+        
+        .analysis li > ul,
+        .analysis li > ol {
+            margin: 12px 0 12px 16px;
+            padding-left: 20px;
+        }
+        
+        .analysis li > ul > li::before {
+            content: '○';
+            font-size: 12px;
+            top: 7px;
+        }
+        
+        .analysis li p {
+            margin: 10px 0;
+        }
+        
+        .analysis li strong {
+            color: var(--primary-dark);
+            font-weight: 700;
+        }
+        
+        /* Style for special list items like "Prerequisites:", "Testing:", etc. */
+        .analysis li:has(strong:first-child) {
+            background: #f8f9fa;
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin: 16px 0;
+            border-left: 3px solid var(--primary-blue);
+        }
+        
+        .analysis blockquote {
+            margin: 28px 48px;
+            padding: 24px 28px;
+            background: linear-gradient(135deg, #fff9e6 0%, #fff5d6 100%);
+            border-left: 5px solid var(--warning-orange);
+            border-radius: 8px;
+            font-size: 16px;
+            color: #856404;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .analysis strong {
+            color: var(--primary-dark);
+            font-weight: 800;
+        }
+        
+        .analysis em {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+        
+        .analysis hr {
+            margin: 48px 48px;
+            border: none;
+            border-top: 3px solid #e1dfdd;
+            opacity: 0.5;
+        }
+        
+        .analysis table {
+            margin: 24px 48px;
+            width: calc(100% - 96px);
+            border-collapse: separate;
+            border-spacing: 0;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .analysis table th {
+            background: linear-gradient(135deg, #004578 0%, #003050 100%);
+            color: #ffffff;
+            padding: 16px 20px;
+            font-weight: 700;
+            font-size: 15px;
+            text-align: left;
+            letter-spacing: 0.3px;
+        }
+        
+        .analysis table td {
+            padding: 16px 20px;
+            border-bottom: 1px solid #e1dfdd;
+            background: white;
+            font-size: 15px;
+        }
+        
+        .analysis table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .analysis table tr:hover td {
+            background: #f8f9fa;
+        }
+        
+        .analysis code {
+            background: rgba(0,120,212,0.08);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            color: var(--primary-dark);
+        }
+        
+        .analysis pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .analysis pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-weight: 600;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        
+        .badge:hover {
+            transform: scale(1.05);
+        }
+        
+        a {
+            color: var(--primary-blue);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s, text-decoration 0.2s;
+        }
+        
+        a:hover {
+            color: var(--primary-dark);
+            text-decoration: underline;
+        }
+        
+        .mermaid {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            margin: 16px 0;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        small {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }
+        
+        strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+        
+        .header h1, .header h1 *, .header .subtitle, .header .subtitle *, .header .meta, .header .meta *, .meta-item, .meta-item * {
+            color: #ffffff !important;
+        }
+        
+        h2, h2 *, .analysis h1, .analysis h1 *, .analysis h2, .analysis h2 *, .analysis h3, .analysis h3 *, .analysis h4, .analysis h4 * {
+            color: #ffffff !important;
+        }
+        
+        @media (max-width: 768px) {
+            .container { padding: 16px; }
+            .header { padding: 32px 16px; }
+            .header h1 { font-size: 1.8em; }
+            .section { padding: 20px; }
+            h2 { font-size: 1.4em; }
+            .meta { flex-direction: column; gap: 12px; }
+            table { font-size: 0.85em; }
+            th, td { padding: 8px; }
+        }
+        
+        @media print {
+            body { background: white; }
+            .header { background: var(--primary-blue); }
+            .section { box-shadow: none; border: 1px solid var(--border-color); }
+            .section:hover { transform: none; }
+        }
+        
+        .rec-table th, .rec-table td { border: 1px solid #ddd; padding: 8px; }
+        .rec-table th { background: linear-gradient(135deg, #004578 0%, #0d47a1 100%); color: #ffffff; text-align: left; font-weight: 700; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({ startOnLoad: false, theme: 'default' });</script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ M365 Secure Score Analysis</h1>
+            <div class="subtitle">AI-Powered Security Posture Assessment</div>
+            <div class="meta">
+                <div class="meta-item"><strong>Tenant:</strong> ciaopslabs.onmicrosoft.com</div>
+                <div class="meta-item"><strong>Agent:</strong> Agent508new:47</div>
+                <div class="meta-item"><strong>Mode:</strong> Detailed</div>
+                <div class="meta-item"><strong>Generated:</strong> 2026-01-21 23:55:45Z</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Secure Score (Latest)</h2>
+            <table>
+                <thead>
+                    <tr><th>Date</th><th>Current</th><th>Max</th><th>Percent</th><th>Active Users</th><th>Licensed Users</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>01/21/2026 00:00:00</td><td>591.33</td><td>1184</td><td>49.94%</td><td>7</td><td>0 <span style='color:#f9ab00;' title='Licensed user count may be unreported by API in trial tenants'>⚠</span></td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2 class="collapsible" onclick="toggleCollapse(this)">Top Open Secure Score Controls <span style="font-size:0.6em;color:#605e5c;font-weight:400;margin-left:8px;">(Click to expand/collapse)</span></h2>
+            <div class="collapsible-content">
+                <table>
+                    <thead>
+                        <tr><th>Rank</th><th>Title</th><th>Category</th><th>State</th><th>Impact/Cost</th><th>Score</th><th>Threats</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>0</td><td><strong>Enable 'Local Machine Zone Lockdown Security'</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>5</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block Adobe Reader from creating child processes</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block Office communication application from creating child processes</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block untrusted and unsigned processes that run from USB</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block process creations originating from PSExec and WMI commands</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Use advanced protection against ransomware</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block executable files from running unless they meet a prevalence, age, or trusted list criterion</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block Win32 API calls from Office macros</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block execution of potentially obfuscated scripts</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block JavaScript or VBScript from launching downloaded executable content</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block Office applications from injecting code into other processes</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block Office applications from creating executable content</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block all Office applications from creating child processes</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block executable content from email client and webmail</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block abuse of exploited vulnerable signed drivers</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Block persistence through WMI event subscription</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>9</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Restrict anonymous users from starting Teams meetings</strong></td><td>Apps</td><td>Default</td><td>low</td><td>1</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Restrict anonymous users from joining meetings</strong></td><td>Apps</td><td>Default</td><td>low</td><td>1</td><td>Data Exfiltration, Account Breach</td></tr><tr><td>0</td><td><strong>Restrict dial-in users from bypassing a meeting lobby </strong></td><td>Apps</td><td>Default</td><td>low</td><td>1</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Limit external participants from having control in a Teams meeting</strong></td><td>Apps</td><td>Default</td><td>low</td><td>1</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Configure which users are allowed to present in Teams meetings</strong></td><td>Apps</td><td>Default</td><td>low</td><td>2</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Enable cloud-delivered protection</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>8</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Turn on Tamper Protection</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>8</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Only invited users should be automatically admitted to Teams meetings</strong></td><td>Apps</td><td>Default</td><td>low</td><td>2</td><td><span style='color:#999;'>Not specified</span></td></tr><tr><td>0</td><td><strong>Enable 'Network Protection'</strong></td><td>Device</td><td>Default</td><td>Unknown</td><td>8</td><td><span style='color:#999;'>Not specified</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="collapsible" onclick="toggleCollapse(this)">Conditional Access Policies <span style="font-size:0.6em;color:#605e5c;font-weight:400;margin-left:8px;">(Click to expand/collapse)</span></h2>
+            <div class="collapsible-content">
+                <table>
+                    <thead>
+                        <tr><th>Name</th><th>State</th><th>Scope (Users/Groups/Apps)</th><th>Controls</th><th>Last Modified</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>ASD - ADM - Limit admin sessions</td><td>enabledForReportingButNotEnforced</td><td>All</td><td></td><td></td></tr><tr><td>ASD - DEV - Block access from unapproved devices</td><td>enabledForReportingButNotEnforced</td><td>All<br/>All</td><td>compliantDevice, domainJoinedDevice</td><td></td></tr><tr><td>ASD - DEV - Require compliant devices</td><td>enabledForReportingButNotEnforced</td><td>All<br/>All</td><td>compliantDevice, domainJoinedDevice</td><td></td></tr><tr><td>ASD - DEV - Intune enrollment with strong auth</td><td>enabledForReportingButNotEnforced</td><td>All<br/>d4ebce55-015a-49b5-a083-c84d1797ae8c</td><td>mfa</td><td></td></tr><tr><td>ASD - GST - Block guests</td><td>enabledForReportingButNotEnforced</td><td>All</td><td>block</td><td></td></tr><tr><td>ASD - GST - Guest access with strong auth</td><td>enabledForReportingButNotEnforced</td><td>All</td><td>mfa</td><td></td></tr><tr><td>ASD - LOC - Block access from unapproved countries</td><td>disabled</td><td>All<br/>All</td><td>block</td><td></td></tr><tr><td>ASD - USR - Block legacy authentication</td><td>enabledForReportingButNotEnforced</td><td>All<br/>All</td><td>block</td><td></td></tr><tr><td>ASD - USR - Block high-risk sign-ins [REQUIRES ENTRA ID P2]</td><td>disabled</td><td>All<br/>All</td><td>block</td><td></td></tr><tr><td>ASD - USR - Block high-risk users [REQUIRES ENTRA ID P2]</td><td>disabled</td><td>All<br/>All</td><td>block</td><td></td></tr><tr><td>ASD - USR - Block elevated insider risk [REQUIRES PURVIEW]</td><td>disabled</td><td>All<br/>All</td><td>block</td><td></td></tr><tr><td>ASD - USR - Terms of use [CONFIGURE REQUIRED]</td><td>disabled</td><td>All<br/>All</td><td>mfa</td><td></td></tr><tr><td>ASD - USR - Register security info with strong auth</td><td>enabledForReportingButNotEnforced</td><td>All</td><td>mfa</td><td></td></tr><tr><td>ASD - USR - Require strong authentication for all users</td><td>enabledForReportingButNotEnforced</td><td>All<br/>All</td><td>mfa</td><td></td></tr><tr><td>ASD - USR - Risky sign-ins require MFA [REQUIRES ENTRA ID P2]</td><td>disabled</td><td>All<br/>All</td><td>mfa</td><td></td></tr><tr><td>ASD - USR - Limit user sessions</td><td>enabledForReportingButNotEnforced</td><td>All<br/>All</td><td></td><td></td></tr><tr><td>Microsoft-managed: Require phishing-resistant multifactor authentication for admins</td><td>disabled</td><td>All</td><td></td><td></td></tr><tr><td>Microsoft-managed: Block legacy authentication</td><td>disabled</td><td>All<br/>All</td><td>block</td><td></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>MFA Registration Summary</h2>
+            <table>
+                <thead>
+                    <tr><th>Total Users</th><th>Registered Users</th><th>Enabled Users</th><th>Methods Counted</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan='4'><em>No MFA summary data</em></td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>AI Analysis</h2>
+            <div id="analysis" class="analysis">Loading analysis...</div>
+        </div>
+
+        <div class="section" id="impl-guide-section" style="display:none;">
+            <h2>Implementation Guide</h2>
+            <div id="implementation-guide" class="analysis">Loading implementation guide...</div>
+        </div>
+    </div>    <script id='analysisScript' data-b64='IyBNaWNyb3NvZnQgMzY1IFNlY3VyaXR5IFBvc3R1cmUgUmVwb3J0ICAKKipUZW5hbnQ6KiogY2lhb3BzbGFicy5vbm1pY3Jvc29mdC5jb20gIAoKKipQcmVwYXJlZCBmb3I6KiogSVQgQWRtaW5pc3RyYXRvcnMgJiBTZWN1cml0eSBQcm9mZXNzaW9uYWxzICAKCi0tLQoKIyMgKipFeGVjdXRpdmUgU3VtbWFyeSoqCgojIyMgKipPdmVyYWxsIFNlY3VyaXR5IFBvc3R1cmUqKgpZb3VyICoqTWljcm9zb2Z0IFNlY3VyZSBTY29yZSoqIGlzICoqNTkxLjMzIC8gMTE4NCoqICgqKn41MCUqKikuICAKVGhpcyBtZWFucyB5b3UgaGF2ZSBpbXBsZW1lbnRlZCByb3VnaGx5ICoqaGFsZiBvZiB0aGUgcmVjb21tZW5kZWQgc2VjdXJpdHkgY29udHJvbHMqKiBNaWNyb3NvZnQgY29uc2lkZXJzIGVzc2VudGlhbCBmb3IgcHJvdGVjdGluZyBpZGVudGl0aWVzLCBkZXZpY2VzLCBhcHBsaWNhdGlvbnMsIGFuZCBkYXRhLiAgCgpXaGlsZSBtYW55IGVtYWlsIGFuZCBjb2xsYWJvcmF0aW9uIHByb3RlY3Rpb25zIGFyZSBpbiBwbGFjZSAoRGVmZW5kZXIgZm9yIE9mZmljZSAzNjUgcG9saWNpZXMsIFNhZmUgTGlua3MsIFNhZmUgQXR0YWNobWVudHMsIERMUCBpbiBUZWFtcyksICoqY3JpdGljYWwgaWRlbnRpdHkgYW5kIGRldmljZSBwcm90ZWN0aW9ucyBhcmUgbWlzc2luZyoqIOKAlCBsZWF2aW5nIHRoZSB0ZW5hbnQgZXhwb3NlZCB0byBhY2NvdW50IHRha2VvdmVyLCByYW5zb213YXJlLCBhbmQgZGF0YSBleGZpbHRyYXRpb24uCgotLS0KCiMjIyAqKlRvcCAzIENyaXRpY2FsIEZpbmRpbmdzKioKMS4gKipObyBNRkEgZm9yIGFueSB1c2VycywgaW5jbHVkaW5nIGFkbWluaXN0cmF0b3JzKiogIAogICAtICoqV2h5IGNyaXRpY2FsOioqIE1GQSBpcyB0aGUgc2luZ2xlIG1vc3QgZWZmZWN0aXZlIGNvbnRyb2wgYWdhaW5zdCBhY2NvdW50IGNvbXByb21pc2UuIFdpdGhvdXQgaXQsIHN0b2xlbiBwYXNzd29yZHMgZ3JhbnQgZnVsbCBhY2Nlc3MuICAKICAgLSAqKkJ1c2luZXNzIGltcGFjdDoqKiBBIHNpbmdsZSBwaGlzaGluZyBlbWFpbCBvciBjcmVkZW50aWFsIGxlYWsgY291bGQgYWxsb3cgYXR0YWNrZXJzIHRvIGFjY2VzcyBzZW5zaXRpdmUgZGF0YSwgc2VuZCBtYWxpY2lvdXMgZW1haWxzLCBvciBjaGFuZ2UgY29uZmlndXJhdGlvbnMuCgoyLiAqKkNvbmRpdGlvbmFsIEFjY2VzcyBwb2xpY2llcyBhcmUgaW4g4oCccmVwb3J0LW9ubHnigJ0gbW9kZSoqICAKICAgLSAqKldoeSBjcml0aWNhbDoqKiBQb2xpY2llcyB0byBibG9jayBsZWdhY3kgYXV0aGVudGljYXRpb24sIHJlcXVpcmUgY29tcGxpYW50IGRldmljZXMsIGFuZCBsaW1pdCBhZG1pbiBzZXNzaW9ucyBhcmUgbm90IGVuZm9yY2VkLiAgCiAgIC0gKipCdXNpbmVzcyBpbXBhY3Q6KiogQXR0YWNrZXJzIGNhbiBieXBhc3MgbW9kZXJuIGF1dGhlbnRpY2F0aW9uIGFuZCBNRkEgYnkgdXNpbmcgbGVnYWN5IHByb3RvY29scyAoSU1BUCwgUE9QLCBTTVRQKSwgb3Igc2lnbiBpbiBmcm9tIHVubWFuYWdlZCBkZXZpY2VzLgoKMy4gKipFbmRwb2ludCBwcm90ZWN0aW9uIGdhcHMg4oCUIERlZmVuZGVyIEFWLCBUYW1wZXIgUHJvdGVjdGlvbiwgTmV0d29yayBQcm90ZWN0aW9uIGRpc2FibGVkKiogIAogICAtICoqV2h5IGNyaXRpY2FsOioqIERldmljZXMgYXJlIG5vdCBlbmZvcmNpbmcgbWFsd2FyZSBwcm90ZWN0aW9uLCByYW5zb213YXJlIG1pdGlnYXRpb24sIG9yIGJsb2NraW5nIG1hbGljaW91cyBkb21haW5zLiAgCiAgIC0gKipCdXNpbmVzcyBpbXBhY3Q6KiogTWFsd2FyZSBjYW4gZXhlY3V0ZSB1bmRldGVjdGVkLCByYW5zb213YXJlIGNhbiBlbmNyeXB0IGZpbGVzLCBhbmQgcGhpc2hpbmcgc2l0ZXMgY2FuIGJlIGFjY2Vzc2VkIGZyZWVseS4KCi0tLQoKIyMjICoqQnVzaW5lc3MgSW1wYWN0IG9mIEN1cnJlbnQgR2FwcyoqCklmIHRoZXNlIGlzc3VlcyBhcmUgbm90IGFkZHJlc3NlZDoKLSAqKkFjY291bnQgVGFrZW92ZXIgUmlzazoqKiBXaXRob3V0IE1GQSBhbmQgZW5mb3JjZWQgQ0EgcG9saWNpZXMsIGF0dGFja2VycyBjYW4gbG9nIGluIHdpdGggc3RvbGVuIGNyZWRlbnRpYWxzIGZyb20gYW55d2hlcmUuCi0gKipEYXRhIEJyZWFjaCBSaXNrOioqIFVubWFuYWdlZCBkZXZpY2VzIGFuZCBsZWdhY3kgcHJvdG9jb2xzIGNhbiBiZSB1c2VkIHRvIGV4ZmlsdHJhdGUgc2Vuc2l0aXZlIGZpbGVzIHdpdGhvdXQgZGV0ZWN0aW9uLgotICoqT3BlcmF0aW9uYWwgRGlzcnVwdGlvbjoqKiBNYWx3YXJlIGFuZCByYW5zb213YXJlIGNhbiBzcHJlYWQgYWNyb3NzIGRldmljZXMsIGNhdXNpbmcgZG93bnRpbWUgYW5kIGNvc3RseSByZWNvdmVyeS4KLSAqKkNvbXBsaWFuY2UgRmFpbHVyZXM6KiogUmVndWxhdG9yeSByZXF1aXJlbWVudHMgKElTTyAyNzAwMSwgTklTVCwgR0RQUikgbWFuZGF0ZSBNRkEgYW5kIGVuZHBvaW50IHByb3RlY3Rpb24g4oCUIGN1cnJlbnQgcG9zdHVyZSBtYXkgZmFpbCBhdWRpdHMuCgotLS0KCiMjICoqU2VjdXJlIFNjb3JlIERlZXAgRGl2ZSoqCgojIyMgKipDdXJyZW50IFNjb3JlICYgVHJlbmQqKgotICoqQ3VycmVudDoqKiA1OTEuMzMgLyAxMTg0ICh+NTAlKSAgCi0gKipJbmR1c3RyeSBBdmVyYWdlIChzaW1pbGFyIHNlYXQgc2l6ZSk6KiogfjQ24oCTNTMlICAKLSAqKlRyZW5kOioqIFN0YWJsZSBvdmVyIGxhc3QgOTAgZGF5cyDigJQgbm8gbWFqb3IgaW1wcm92ZW1lbnRzLgoKKipJbnRlcnByZXRhdGlvbjoqKiAgCjUwJSBtZWFucyB5b3UgaGF2ZSBpbXBsZW1lbnRlZCAqKmFib3V0IDU5MSBwb2ludHMgd29ydGggb2YgY29udHJvbHMqKiBvdXQgb2YgYSBwb3NzaWJsZSAxMTg0LiBFYWNoIGNvbnRyb2wgaGFzIGEgd2VpZ2h0ZWQgc2NvcmUgYmFzZWQgb24gcmlzayByZWR1Y3Rpb24uIFRoZSBtaXNzaW5nIDUwJSByZXByZXNlbnRzICoqaGlnaC12YWx1ZSBwcm90ZWN0aW9ucyoqIHRoYXQgYXJlIG5vdCB5ZXQgaW4gcGxhY2UuCgotLS0KCiMjIyAqKkhpZ2hlc3QtSW1wYWN0IE9wZW4gQ29udHJvbHMqKgpCZWxvdyBhcmUgdGhlIG1vc3QgdmFsdWFibGUgY29udHJvbHMgc3RpbGwgb3Blbiwgd2l0aCBwbGFpbi1sYW5ndWFnZSBleHBsYW5hdGlvbnM6Cgp8IENvbnRyb2wgfCBQb2ludHMgfCBXaGF0IGl0IERvZXMgfCBUaHJlYXQgTWl0aWdhdGVkIHwgVGltZSB0byBJbXBsZW1lbnQgfAp8LS0tLS0tLS0tfC0tLS0tLS0tfC0tLS0tLS0tLS0tLS0tfC0tLS0tLS0tLS0tLS0tLS0tLXwtLS0tLS0tLS0tLS0tLS0tLS0tfAp8ICoqTUZBUmVnaXN0cmF0aW9uVjIqKiB8IDEwKyB8IFJlcXVpcmUgTUZBIGZvciBhbGwgdXNlcnMgfCBDcmVkZW50aWFsIHRoZWZ0LCBwaGlzaGluZyB8IDHigJMzIGRheXMgfAp8ICoqQWRtaW5NRkFWMioqIHwgMTArIHwgUmVxdWlyZSBNRkEgZm9yIGFkbWluIHJvbGVzIHwgUHJpdmlsZWdlZCBhY2NvdW50IHRha2VvdmVyIHwgMSBkYXkgfAp8ICoqQmxvY2tMZWdhY3lBdXRoZW50aWNhdGlvbioqIHwgNy4xMSB8IEJsb2NrIGluc2VjdXJlIHByb3RvY29scyB8IE1GQSBieXBhc3MsIGJydXRlIGZvcmNlIHwgMeKAkzIgZGF5cyB8CnwgKipUYW1wZXIgUHJvdGVjdGlvbioqIHwgOCB8IFByZXZlbnQgRGVmZW5kZXIgc2V0dGluZ3MgY2hhbmdlcyB8IE1hbHdhcmUgZGlzYWJsaW5nIEFWIHwgMSBkYXkgfAp8ICoqTmV0d29yayBQcm90ZWN0aW9uKiogfCA4IHwgQmxvY2sgbWFsaWNpb3VzIGRvbWFpbnMgfCBQaGlzaGluZywgZHJpdmUtYnkgZG93bmxvYWRzIHwgMSBkYXkgfAp8ICoqQ2xvdWQtZGVsaXZlcmVkIFByb3RlY3Rpb24qKiB8IDggfCBSZWFsLXRpbWUgQVYgaW50ZWxsaWdlbmNlIHwgWmVyby1kYXkgbWFsd2FyZSB8IDEgZGF5IHwKfCAqKkF0dGFjayBTdXJmYWNlIFJlZHVjdGlvbiBSdWxlcyoqIHwgOSBlYWNoIHwgQmxvY2sgY29tbW9uIG1hbHdhcmUgdGVjaG5pcXVlcyB8IFJhbnNvbXdhcmUsIG1hY3JvIGF0dGFja3MgfCAy4oCTNSBkYXlzIHwKCi0tLQoKIyMgKipJZGVudGl0eSAmIEFjY2VzcyBBbmFseXNpcyoqCgojIyMgKipDb25kaXRpb25hbCBBY2Nlc3MgUG9saWNpZXMqKgpZb3UgaGF2ZSAqKjE1IENBIHBvbGljaWVzKiosIGJ1dCAqKmFsbCBhcmUgaW4g4oCccmVwb3J0LW9ubHnigJ0gbW9kZSoqIOKAlCBtZWFuaW5nIHRoZXkgbG9nIGFjdGl2aXR5IGJ1dCBkbyBub3QgZW5mb3JjZSByZXN0cmljdGlvbnMuCgoqKktleSBHYXBzOioqCi0gKipNRkEgbm90IGVuZm9yY2VkKiogZm9yIGFkbWlucyBvciB1c2Vycy4KLSAqKkxlZ2FjeSBhdXRoZW50aWNhdGlvbioqIHBvbGljeSBleGlzdHMgYnV0IGlzIG5vdCBhY3RpdmUuCi0gKipEZXZpY2UgY29tcGxpYW5jZSoqIHBvbGljaWVzIGV4aXN0IGJ1dCBhcmUgbm90IGVuZm9yY2VkLgotICoqR3Vlc3QgYWNjZXNzIGNvbnRyb2xzKiogYXJlIG5vdCBlbmZvcmNlZC4KLSAqKkxvY2F0aW9uLWJhc2VkIGJsb2NraW5nKiogaXMgZGlzYWJsZWQuCgoqKkJlc3QgUHJhY3RpY2UgQ29tcGFyaXNvbjoqKiAgCk1pY3Jvc29mdCByZWNvbW1lbmRzICoqZW5mb3JjaW5nKiogQ0EgcG9saWNpZXMgZm9yOgotIE1GQSBmb3IgYWxsIHVzZXJzIChlc3BlY2lhbGx5IGFkbWlucykKLSBCbG9ja2luZyBsZWdhY3kgYXV0aAotIFJlc3RyaWN0aW5nIGFjY2VzcyBmcm9tIHVubWFuYWdlZCBkZXZpY2VzCi0gTGltaXRpbmcgc2lnbi1pbiBmcm9tIHJpc2t5IGxvY2F0aW9ucwoKLS0tCgojIyMgKipNRkEgJiBBdXRoZW50aWNhdGlvbioqCi0gKipNRkEgUmVnaXN0cmF0aW9uOioqIDAgb2YgOSB1c2VycyByZWdpc3RlcmVkLgotICoqQWRtaW4gTUZBOioqIDAgb2YgMiBhZG1pbnMgcmVnaXN0ZXJlZC4KLSAqKkF1dGhlbnRpY2F0aW9uIE1ldGhvZHM6KiogTm8gcGhpc2hpbmctcmVzaXN0YW50IE1GQSBpbiB1c2UuCi0gKipSaXNrIFBvbGljaWVzOioqIFNpZ24taW4gcmlzayBhbmQgdXNlciByaXNrIHBvbGljaWVzIGRpc2FibGVkLgoKKipSZWNvbW1lbmRhdGlvbjoqKiAgCkVuYWJsZSBNRkEgZm9yIGFsbCBhY2NvdW50cywgc3RhcnRpbmcgd2l0aCBhZG1pbnMsIHVzaW5nIENvbmRpdGlvbmFsIEFjY2Vzcy4gVXNlIGFwcC1iYXNlZCBhdXRoZW50aWNhdGlvbiBvciBGSURPMiBrZXlzIGZvciBwaGlzaGluZyByZXNpc3RhbmNlLgoKLS0tCgojIyMgKipTZWN1cml0eSBEZWZhdWx0cyoqCi0gKipTdGF0dXM6KiogRGlzYWJsZWQgIAotICoqSW1wYWN0OioqIFdpdGhvdXQgU2VjdXJpdHkgRGVmYXVsdHMsIGJhc2VsaW5lIHByb3RlY3Rpb25zIChNRkEgZm9yIGFkbWlucywgYmxvY2sgbGVnYWN5IGF1dGgpIGFyZSBub3QgYXV0b21hdGljYWxseSBlbmZvcmNlZC4KLSAqKlJlY29tbWVuZGF0aW9uOioqIEVpdGhlciBlbmFibGUgU2VjdXJpdHkgRGVmYXVsdHMgb3IgaW1wbGVtZW50IGVxdWl2YWxlbnQgQ0EgcG9saWNpZXMgaW4gZW5mb3JjZWQgbW9kZS4KCi0tLQoKIyMgKipUaHJlYXQgUHJvdGVjdGlvbiBBbmFseXNpcyoqCioqU3RyZW5ndGhzOioqCi0gRGVmZW5kZXIgZm9yIE9mZmljZSAzNjUgcG9saWNpZXMgZm9yIFNhZmUgTGlua3MsIFNhZmUgQXR0YWNobWVudHMsIFpBUCBhcmUgZW5hYmxlZC4KLSBETFAgaW4gVGVhbXMgaXMgYWN0aXZlLgoKKipXZWFrbmVzc2VzOioqCi0gTm8gU2FmZSBMaW5rcyBmb3IgT2ZmaWNlIGFwcHMuCi0gQW50aS1waGlzaGluZyBwb2xpY2llcyBub3QgdHVuZWQgKGltcGVyc29uYXRpb24gYWN0aW9ucyBtaXNzaW5nKS4KLSBCdWxrIHNwYW0gdGhyZXNob2xkIG5vdCBvcHRpbWl6ZWQuCi0gTm8gYmxvY2tpbmcgb2YgbWFpbCBmb3J3YXJkaW5nIHJ1bGVzLgoKLS0tCgojIyAqKkRldmljZSAmIERhdGEgUHJvdGVjdGlvbioqCioqU3RyZW5ndGhzOioqCi0gRExQIHBvbGljaWVzIGluIFRlYW1zIGFuZCBFeGNoYW5nZS4KLSBTZW5zaXRpdml0eSBsYWJlbHMgcHVibGlzaGVkLgoKKipXZWFrbmVzc2VzOioqCi0gTm8gYXV0by1sYWJlbGluZy4KLSBObyBlbmRwb2ludCBBViBlbmZvcmNlbWVudC4KLSBObyByYW5zb213YXJlIHByb3RlY3Rpb24gKEFTUiBydWxlcyBkaXNhYmxlZCkuCi0gQml0TG9ja2VyIG5vdCBlbmZvcmNlZCBvbiBhbGwgZGV2aWNlcy4KLSBGaXJld2FsbCBkaXNhYmxlZCBvbiBzb21lIHByb2ZpbGVzLgoKLS0tCgojIyAqKlJpc2sgQXNzZXNzbWVudCoqCioqT3ZlcmFsbCBSaXNrIFJhdGluZzoqKiAqKkNyaXRpY2FsKiogIAoqKkp1c3RpZmljYXRpb246KiogIAotIE5vIE1GQSDihpIgSGlnaCBsaWtlbGlob29kIG9mIGFjY291bnQgY29tcHJvbWlzZS4gIAotIENBIHBvbGljaWVzIG5vdCBlbmZvcmNlZCDihpIgRWFzeSBieXBhc3Mgb2YgcHJvdGVjdGlvbnMuICAKLSBFbmRwb2ludCBwcm90ZWN0aW9uIGRpc2FibGVkIOKGkiBIaWdoIGxpa2VsaWhvb2Qgb2YgbWFsd2FyZSBpbmZlY3Rpb24uICAKCioqVGhyZWF0IFNjZW5hcmlvczoqKgoxLiAqKlBoaXNoaW5nIOKGkiBDcmVkZW50aWFsIFRoZWZ0IOKGkiBBZG1pbiBBY2NvdW50IENvbXByb21pc2UqKiAgCiAgIExpa2VsaWhvb2Q6IEhpZ2ggfCBJbXBhY3Q6IFNldmVyZQoyLiAqKk1hbHdhcmUgdmlhIEVtYWlsIEF0dGFjaG1lbnQg4oaSIFJhbnNvbXdhcmUgU3ByZWFkKiogIAogICBMaWtlbGlob29kOiBNZWRpdW0gfCBJbXBhY3Q6IFNldmVyZQozLiAqKkxlZ2FjeSBBdXRoIEJydXRlIEZvcmNlIOKGkiBEYXRhIEV4ZmlsdHJhdGlvbioqICAKICAgTGlrZWxpaG9vZDogTWVkaXVtIHwgSW1wYWN0OiBIaWdoCgotLS0KCiMjICoqUHJpb3JpdGl6ZWQgUmVjb21tZW5kYXRpb25zKioKCiMjIyAqKjEuIEVuYWJsZSBNRkEgZm9yIEFsbCBVc2VycyoqCioqV2h5IEl0IE1hdHRlcnM6KiogU3RvcHMgOTklIG9mIGFjY291bnQgdGFrZW92ZXIgYXR0ZW1wdHMuICAKKipCdXNpbmVzcyBDb250ZXh0OioqIFByb3RlY3RzIGVtYWlsLCBmaWxlcywgVGVhbXMsIGFkbWluIHBvcnRhbHMuICAKKipJbXBsZW1lbnRhdGlvbiBTdGVwczoqKgoxLiBHbyB0byAqKkF6dXJlIEFEIOKGkiBTZWN1cml0eSDihpIgQ29uZGl0aW9uYWwgQWNjZXNzKiouCjIuIENyZWF0ZSBwb2xpY3k6ICpBbGwgdXNlcnMg4oaSIEFsbCBhcHBzIOKGkiBSZXF1aXJlIE1GQSouCjMuIEV4Y2x1ZGUgYnJlYWstZ2xhc3MgYWNjb3VudC4KNC4gVGVzdCB3aXRoIHBpbG90IGdyb3VwLgoqKlByZXJlcXVpc2l0ZXM6KiogQXp1cmUgQUQgUDEgb3IgU2VjdXJpdHkgRGVmYXVsdHMuICAKKipUZXN0aW5nOioqIFVzZSByZXBvcnQtb25seSBtb2RlIGZpcnN0LCBjaGVjayBzaWduLWluIGxvZ3MuICAKKipVc2VyIEltcGFjdDoqKiBNRkEgcHJvbXB0IGF0IGxvZ2luLiAgCioqUm9sbGJhY2s6KiogRGlzYWJsZSBwb2xpY3kuICAKKipTdWNjZXNzIE1ldHJpY3M6KiogMTAwJSBNRkEgcmVnaXN0cmF0aW9uLiAgCioqRXhwZWN0ZWQgSW1wYWN0OioqIEhpZ2ggfCBFZmZvcnQ6IExvdyB8ICoqUXVpY2sgV2luOioqIFllcwoKLS0tCgojIyMgKioyLiBCbG9jayBMZWdhY3kgQXV0aGVudGljYXRpb24qKgoqKldoeSBJdCBNYXR0ZXJzOioqIFByZXZlbnRzIGJ5cGFzcyBvZiBNRkEuICAKKipCdXNpbmVzcyBDb250ZXh0OioqIFN0b3BzIGJydXRlIGZvcmNlIHZpYSBJTUFQL1BPUC9TTVRQLiAgCioqSW1wbGVtZW50YXRpb24gU3RlcHM6KioKMS4gQ29uZGl0aW9uYWwgQWNjZXNzIOKGkiBDbGllbnQgQXBwcyDihpIgU2VsZWN0IGxlZ2FjeSBwcm90b2NvbHMuCjIuIEdyYW50IOKGkiBCbG9jayBhY2Nlc3MuCioqUHJlcmVxdWlzaXRlczoqKiBBenVyZSBBRCBQMS4gIAoqKlRlc3Rpbmc6KiogTW9uaXRvciBzaWduLWluIGxvZ3MgZm9yIGxlZ2FjeSBhdXRoIGF0dGVtcHRzLiAgCioqVXNlciBJbXBhY3Q6KiogT2xkIGNsaWVudHMgc3RvcCB3b3JraW5nLiAgCioqUm9sbGJhY2s6KiogRGlzYWJsZSBwb2xpY3kuICAKKipTdWNjZXNzIE1ldHJpY3M6KiogWmVybyBsZWdhY3kgYXV0aCBzaWduLWlucy4gIAoqKkV4cGVjdGVkIEltcGFjdDoqKiBIaWdoIHwgRWZmb3J0OiBMb3cgfCAqKlF1aWNrIFdpbjoqKiBZZXMKCi0tLQoKIyMjICoqMy4gRW5hYmxlIERlZmVuZGVyIEFWLCBUYW1wZXIgUHJvdGVjdGlvbiwgTmV0d29yayBQcm90ZWN0aW9uKioKKipXaHkgSXQgTWF0dGVyczoqKiBQcmV2ZW50cyBtYWx3YXJlIGRpc2FibGluZyBBViwgYmxvY2tzIG1hbGljaW91cyBkb21haW5zLiAgCioqQnVzaW5lc3MgQ29udGV4dDoqKiBTdG9wcyByYW5zb213YXJlLCBwaGlzaGluZyBzaXRlcy4gIAoqKkltcGxlbWVudGF0aW9uIFN0ZXBzOioqCjEuIEludHVuZSDihpIgRW5kcG9pbnQgU2VjdXJpdHkg4oaSIEFudGl2aXJ1cy4KMi4gRW5hYmxlIFRhbXBlciBQcm90ZWN0aW9uLgozLiBFbmFibGUgTmV0d29yayBQcm90ZWN0aW9uIGluIGJsb2NrIG1vZGUuCioqUHJlcmVxdWlzaXRlczoqKiBEZWZlbmRlciBmb3IgRW5kcG9pbnQuICAKKipUZXN0aW5nOioqIFVzZSBhdWRpdCBtb2RlIGZpcnN0LiAgCioqVXNlciBJbXBhY3Q6KiogTWFsaWNpb3VzIHNpdGVzIGJsb2NrZWQuICAKKipSb2xsYmFjazoqKiBTd2l0Y2ggdG8gYXVkaXQgbW9kZS4gIAoqKlN1Y2Nlc3MgTWV0cmljczoqKiBObyBtYWx3YXJlIGluY2lkZW50cy4gIAoqKkV4cGVjdGVkIEltcGFjdDoqKiBIaWdoIHwgRWZmb3J0OiBMb3cgfCAqKlF1aWNrIFdpbjoqKiBZZXMKCi0tLQoKIyMgKipSZW1lZGlhdGlvbiBSb2FkbWFwIChWaXN1YWwpKioKCmBgYG1lcm1haWQKZ3JhcGggVEQKICAgIEFbU3RhcnRdIC0tPiBCW1BoYXNlIDE6IFF1aWNrIFdpbnNdCiAgICBCIC0tPiBDW0VuYWJsZSBNRkFdCiAgICBCIC0tPiBEW0Jsb2NrIExlZ2FjeSBBdXRoXQogICAgQiAtLT4gRVtFbmFibGUgVGFtcGVyIFByb3RlY3Rpb25dCiAgICBDIC0tPiBGW1BoYXNlIDI6IE1lZGl1bSBUZXJtXQogICAgRCAtLT4gRgogICAgRSAtLT4gRgogICAgRiAtLT4gR1tFbmZvcmNlIENBIFBvbGljaWVzXQogICAgRiAtLT4gSFtFbmFibGUgTmV0d29yayBQcm90ZWN0aW9uXQogICAgRyAtLT4gSVtQaGFzZSAzOiBTdHJhdGVnaWNdCiAgICBIIC0tPiBJCiAgICBJIC0tPiBKW0RlcGxveSBBdXRvLWxhYmVsaW5nXQogICAgSSAtLT4gS1tGdWxsIEFTUiBSdWxlc10KICAgIEsgLS0+IExbQ29tcGxldGVdCmBgYAoKLS0tCgojIyAqKkltcGxlbWVudGF0aW9uIEd1aWRlKioKCiMjIyAqKlF1aWNrIFdpbnMgKFdlZWsgMSkqKgotICoqRW5hYmxlIE1GQSoqOiAgCiAgUG9ydGFsOiBBenVyZSBBRCDihpIgU2VjdXJpdHkg4oaSIENvbmRpdGlvbmFsIEFjY2VzcyDihpIgTmV3IFBvbGljeS4gIAogIFBvd2VyU2hlbGw6ICAKICBgYGBwb3dlcnNoZWxsCiAgQ29ubmVjdC1NZ0dyYXBoIC1TY29wZXMgIlBvbGljeS5SZWFkV3JpdGUuQ29uZGl0aW9uYWxBY2Nlc3MiCiAgIyBDcmVhdGUgcG9saWN5IEpTT04gYW5kIFBPU1QgdmlhIEdyYXBoIEFQSQogIGBgYAotICoqQmxvY2sgTGVnYWN5IEF1dGgqKjogIAogIFBvcnRhbDogQ29uZGl0aW9uYWwgQWNjZXNzIOKGkiBDbGllbnQgQXBwcyDihpIgTGVnYWN5IEF1dGgg4oaSIEJsb2NrLiAgCi0gKipFbmFibGUgVGFtcGVyIFByb3RlY3Rpb24qKjogIAogIEludHVuZSDihpIgRW5kcG9pbnQgU2VjdXJpdHkg4oaSIEFudGl2aXJ1cyDihpIgVGFtcGVyIFByb3RlY3Rpb24g4oaSIE9uLgoKLS0tCgojIyMgKiozMC1EYXkgUGxhbioqCi0gRW5mb3JjZSBDQSBwb2xpY2llcyBmb3IgZGV2aWNlIGNvbXBsaWFuY2UuCi0gRW5hYmxlIE5ldHdvcmsgUHJvdGVjdGlvbiBpbiBibG9jayBtb2RlLgotIFR1bmUgYW50aS1waGlzaGluZyBwb2xpY2llcyAoaW1wZXJzb25hdGlvbiBhY3Rpb25zKS4KLSBDb21tdW5pY2F0ZSBNRkEgcm9sbG91dCB0byB1c2Vycy4KCi0tLQoKIyMjICoqOTAtRGF5IFN0cmF0ZWdpYyBJbXByb3ZlbWVudHMqKgotIERlcGxveSBmdWxsIEFTUiBydWxlcy4KLSBFbmZvcmNlIEJpdExvY2tlci4KLSBJbXBsZW1lbnQgYXV0by1sYWJlbGluZyBmb3Igc2Vuc2l0aXZlIGRhdGEuCi0gRW5hYmxlIHBoaXNoaW5nLXJlc2lzdGFudCBNRkEgZm9yIGFkbWlucy4KCi0tLQoKIyMjICoqT25nb2luZyBNYWludGVuYW5jZSoqCi0gTW9udGhseSBTZWN1cmUgU2NvcmUgcmV2aWV3LgotIE1vbml0b3Igc2lnbi1pbiBsb2dzIGZvciByaXNreSBhY3Rpdml0eS4KLSBSZXZpZXcgZW5kcG9pbnQgY29tcGxpYW5jZSByZXBvcnRzLgoKLS0tCgojIyAqKktub3dsZWRnZSBUcmFuc2ZlcioqCi0gKipTZWN1cmUgU2NvcmUqKiBpcyBhIHdlaWdodGVkIG1lYXN1cmUgb2YgaW1wbGVtZW50ZWQgc2VjdXJpdHkgY29udHJvbHMuCi0gKipDb25kaXRpb25hbCBBY2Nlc3MqKiBpcyB0aGUgbWFpbiBlbmZvcmNlbWVudCB0b29sIGZvciBpZGVudGl0eS1iYXNlZCBwcm90ZWN0aW9ucy4KLSAqKlNlY3VyaXR5IERlZmF1bHRzKiogaXMgYSBiYXNlbGluZSDigJQgQ0EgcG9saWNpZXMgYWxsb3cgY3VzdG9taXphdGlvbi4KLSAqKk1GQSoqIGlzIHRoZSBtb3N0IGVmZmVjdGl2ZSBzaW5nbGUgY29udHJvbCBhZ2FpbnN0IGFjY291bnQgY29tcHJvbWlzZS4KCi0tLQoKIyMgKipSZWZlcmVuY2VzICYgUmVzb3VyY2VzKioKLSBbTWljcm9zb2Z0IFNlY3VyZSBTY29yZV0oaHR0cHM6Ly9sZWFybi5taWNyb3NvZnQuY29tL21pY3Jvc29mdC0zNjUvc2VjdXJpdHkvbXRwL21pY3Jvc29mdC1zZWN1cmUtc2NvcmUpCi0gW0NvbmRpdGlvbmFsIEFjY2VzcyBCZXN0IFByYWN0aWNlc10oaHR0cHM6Ly9sZWFybi5taWNyb3NvZnQuY29tL2F6dXJlL2FjdGl2ZS1kaXJlY3RvcnkvY29uZGl0aW9uYWwtYWNjZXNzL292ZXJ2aWV3KQotIFtEZWZlbmRlciBmb3IgRW5kcG9pbnQgQ29uZmlndXJhdGlvbl0oaHR0cHM6Ly9sZWFybi5taWNyb3NvZnQuY29tL21pY3Jvc29mdC0zNjUvc2VjdXJpdHkvZGVmZW5kZXItZW5kcG9pbnQvKQotIFtBdHRhY2sgU3VyZmFjZSBSZWR1Y3Rpb24gUnVsZXNdKGh0dHBzOi8vbGVhcm4ubWljcm9zb2Z0LmNvbS9taWNyb3NvZnQtMzY1L3NlY3VyaXR5L2RlZmVuZGVyLWVuZHBvaW50L2F0dGFjay1zdXJmYWNlLXJlZHVjdGlvbikKCi0tLQoKLS0tCgpXb3VsZCB5b3UgbGlrZSBtZSB0byAqKm1hcCBlYWNoIG1pc3NpbmcgU2VjdXJlIFNjb3JlIGNvbnRyb2wgdG8gYSBzcGVjaWZpYyBDb25kaXRpb25hbCBBY2Nlc3Mgb3IgSW50dW5lIHBvbGljeSoqIHNvIHlvdSBoYXZlIGEgb25lLXRvLW9uZSByZW1lZGlhdGlvbiBjaGVja2xpc3Q/IFRoYXQgd291bGQgbWFrZSBpbXBsZW1lbnRhdGlvbiBmYXN0ZXIu'></script>
+    <script id='referencesScript' data-refs='[
+  &quot;https://learn.microsoft.com/azure/active-directory/authentication/tutorial-enable-mfa&quot;,
+  &quot;https://learn.microsoft.com/azure/active-directory/conditional-access/block-legacy-authentication&quot;,
+  &quot;https://learn.microsoft.com/microsoft-365/security/defender-endpoint/tamper-protection&quot;,
+  &quot;https://learn.microsoft.com/microsoft-365/security/defender-endpoint/network-protection&quot;
+]'></script>
+    <script>
+    (function(){
+        var el = document.getElementById('analysis');
+        var scriptEl = document.getElementById('analysisScript');
+        if (!scriptEl) { el.innerHTML = '<em>Error: Analysis script element not found</em>'; return; }
+        var b64Text = scriptEl.getAttribute('data-b64');
+        if (!b64Text || b64Text.length === 0) { el.innerHTML = '<em>No AI analysis data available</em>'; return; }
+        try {
+            var decoded = atob(b64Text);
+            var text = decodeURIComponent(escape(decoded));
+            if (text && text.length > 0) {
+                if (typeof marked !== 'undefined' && marked.parse) { el.innerHTML = marked.parse(text); }
+                else { el.innerHTML = '<pre style="white-space:pre-wrap;">' + text + '</pre>'; }
+
+                function addColoredBadges() {
+                    var tables = el.querySelectorAll('table');
+                    tables.forEach(function(table) {
+                        var rows = table.querySelectorAll('tr');
+                        if (rows.length === 0) return;
+                        var headers = rows[0].querySelectorAll('th');
+                        var headerTexts = Array.from(headers).map(function(h) { return h.textContent.trim(); });
+                        
+                        // Look for various column name variations
+                        var riskRatingCol = headerTexts.indexOf('Risk Rating');
+                        var confidenceCol = headerTexts.indexOf('Confidence');
+                        var impactCol = Math.max(
+                            headerTexts.indexOf('Impact'),
+                            headerTexts.indexOf('Expected Impact')
+                        );
+                        var effortCol = headerTexts.indexOf('Effort');
+                        
+                        for (var i = 1; i < rows.length; i++) {
+                            var cells = rows[i].querySelectorAll('td');
+                            function styleBadge(colIndex) {
+                                if (colIndex >= 0 && colIndex < cells.length) {
+                                    var cell = cells[colIndex];
+                                    var value = cell.textContent.trim();
+                                    var color = '#808080';
+                                    if (value === 'High') color = '#d93025';
+                                    else if (value === 'Medium') color = '#f9ab00';
+                                    else if (value === 'Low') color = '#34a853';
+                                    cell.innerHTML = '<span class="badge" style="background:' + color + ';color:#fff;padding:4px 8px;border-radius:12px;">' + value + '</span>';
+                                }
+                            }
+                            styleBadge(riskRatingCol);
+                            styleBadge(confidenceCol);
+                            styleBadge(impactCol);
+                            styleBadge(effortCol);
+                        }
+                    });
+                }
+                addColoredBadges();
+
+                setTimeout(function() {
+                    // Comprehensive search for mermaid diagrams
+                    var foundMermaid = false;
+                    
+                    // Strategy 1: Look for proper language-tagged code blocks
+                    var mermaidElements = el.querySelectorAll('code.language-mermaid, code[class*="mermaid"]');
+                    
+                    // Strategy 2: Search all code blocks for mermaid syntax
+                    if (mermaidElements.length === 0) {
+                        var allCodeBlocks = el.querySelectorAll('pre code');
+                        allCodeBlocks.forEach(function(code) {
+                            var text = code.textContent.trim();
+                            if (text.startsWith('graph ') || text.startsWith('flowchart ') || text.startsWith('sequenceDiagram')) {
+                                code.classList.add('detected-mermaid');
+                                foundMermaid = true;
+                            }
+                        });
+                        if (foundMermaid) {
+                            mermaidElements = el.querySelectorAll('code.detected-mermaid');
+                        }
+                    }
+                    
+                    // Strategy 3: Look for plain text that contains mermaid keywords followed by graph syntax
+                    if (mermaidElements.length === 0) {
+                        var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+                        var textNodes = [];
+                        while(walker.nextNode()) textNodes.push(walker.currentNode);
+                        
+                        textNodes.forEach(function(node) {
+                            var text = node.textContent;
+                            // Check if text contains "mermaid" followed by graph syntax
+                            if (text.includes('mermaid') && (text.includes('graph ') || text.includes('flowchart '))) {
+                                // Extract just the mermaid code
+                                var match = text.match(/(?:mermaid\s+)?((?:graph|flowchart)\s+[\s\S]+)/);
+                                if (match && match[1]) {
+                                    var div = document.createElement('div');
+                                    div.className = 'mermaid';
+                                    div.style.background = '#f8f9fa';
+                                    div.style.padding = '24px';
+                                    div.style.borderRadius = '8px';
+                                    div.style.marginTop = '20px';
+                                    div.textContent = match[1].trim();
+                                    
+                                    // Replace the text node's parent with the mermaid div
+                                    var parent = node.parentElement;
+                                    if (parent) {
+                                        parent.replaceWith(div);
+                                        foundMermaid = true;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Process found mermaid code blocks
+                    if (mermaidElements.length > 0) {
+                        mermaidElements.forEach(function(code) {
+                            var pre = code.parentElement;
+                            var mermaidCode = code.textContent.trim();
+                            var div = document.createElement('div');
+                            div.className = 'mermaid';
+                            div.style.background = '#f8f9fa';
+                            div.style.padding = '24px';
+                            div.style.borderRadius = '8px';
+                            div.style.marginTop = '20px';
+                            div.textContent = mermaidCode;
+                            pre.replaceWith(div);
+                        });
+                        foundMermaid = true;
+                    }
+                    
+                    // Render all mermaid diagrams
+                    if (foundMermaid && typeof mermaid !== 'undefined') {
+                        mermaid.run().catch(function(err) { 
+                            console.error('Mermaid rendering error:', err);
+                            var errorDivs = el.querySelectorAll('.mermaid');
+                            errorDivs.forEach(function(div) {
+                                if (div.querySelector('svg') === null) {
+                                    div.innerHTML = '<div style="background:#fff9e6;border:2px solid #f9ab00;padding:20px;border-radius:8px;color:#856404;">' +
+                                        '<strong>⚠️ Diagram Generation Note:</strong><br>' +
+                                        'The AI generated a diagram that couldn\'t be rendered. The visualization has been skipped, but all recommendations and guidance remain valid.' +
+                                        '</div>';
+                                }
+                            });
+                        });
+                    }
+                }, 500);
+            } else {
+                el.innerHTML = '<em>Decoded text is empty</em>';
+            }
+        } catch(e) {
+            el.innerHTML = '<em>Decode error: ' + e.message + '</em><br><small>Base64 length: ' + b64Text.length + '</small>';
+        }
+    })();
+    </script>    <script id='implGuideScript' data-b64=''></script>
+    <script>
+    (function(){
+        var sectionEl = document.getElementById('impl-guide-section');
+        var contentEl = document.getElementById('implementation-guide');
+        var scriptEl = document.getElementById('implGuideScript');
+        if (!scriptEl) return;
+        var b64Text = scriptEl.getAttribute('data-b64');
+        if (!b64Text || b64Text.length === 0) { return; }
+        try {
+            var decoded = atob(b64Text);
+            var text = decodeURIComponent(escape(decoded));
+            if (text && text.length > 0) {
+                sectionEl.style.display = 'block';
+                if (typeof marked !== 'undefined' && marked.parse) { contentEl.innerHTML = marked.parse(text); }
+                else { contentEl.innerHTML = '<pre style="white-space:pre-wrap;">' + text + '</pre>'; }
+                
+                // Process Mermaid diagrams in implementation guide
+                setTimeout(function() {
+                    var foundMermaid = false;
+                    
+                    // Strategy 1: Look for proper language-tagged code blocks
+                    var mermaidElements = contentEl.querySelectorAll('code.language-mermaid, code[class*="mermaid"]');
+                    
+                    // Strategy 2: Search all code blocks for mermaid syntax
+                    if (mermaidElements.length === 0) {
+                        var allCodeBlocks = contentEl.querySelectorAll('pre code');
+                        allCodeBlocks.forEach(function(code) {
+                            var text = code.textContent.trim();
+                            if (text.startsWith('graph ') || text.startsWith('flowchart ') || text.startsWith('sequenceDiagram')) {
+                                code.classList.add('detected-mermaid');
+                                foundMermaid = true;
+                            }
+                        });
+                        if (foundMermaid) {
+                            mermaidElements = contentEl.querySelectorAll('code.detected-mermaid');
+                        }
+                    }
+                    
+                    // Strategy 3: Look for plain text that contains mermaid keywords
+                    if (mermaidElements.length === 0) {
+                        var walker = document.createTreeWalker(contentEl, NodeFilter.SHOW_TEXT, null, false);
+                        var textNodes = [];
+                        while(walker.nextNode()) textNodes.push(walker.currentNode);
+                        
+                        textNodes.forEach(function(node) {
+                            var text = node.textContent;
+                            if (text.includes('mermaid') && (text.includes('graph ') || text.includes('flowchart '))) {
+                                var match = text.match(/(?:mermaid\s+)?((?:graph|flowchart)\s+[\s\S]+)/);
+                                if (match && match[1]) {
+                                    var div = document.createElement('div');
+                                    div.className = 'mermaid';
+                                    div.style.background = '#f8f9fa';
+                                    div.style.padding = '24px';
+                                    div.style.borderRadius = '8px';
+                                    div.style.marginTop = '20px';
+                                    div.textContent = match[1].trim();
+                                    
+                                    var parent = node.parentElement;
+                                    if (parent) {
+                                        parent.replaceWith(div);
+                                        foundMermaid = true;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Process found mermaid code blocks
+                    if (mermaidElements.length > 0) {
+                        mermaidElements.forEach(function(code) {
+                            var pre = code.parentElement;
+                            var mermaidCode = code.textContent.trim();
+                            var div = document.createElement('div');
+                            div.className = 'mermaid';
+                            div.style.background = '#f8f9fa';
+                            div.style.padding = '24px';
+                            div.style.borderRadius = '8px';
+                            div.style.marginTop = '20px';
+                            div.textContent = mermaidCode;
+                            pre.replaceWith(div);
+                        });
+                        foundMermaid = true;
+                    }
+                    
+                    // Render all mermaid diagrams
+                    if (foundMermaid && typeof mermaid !== 'undefined') {
+                        mermaid.run().catch(function(err) { 
+                            console.error('Mermaid rendering error in implementation guide:', err);
+                            var errorDivs = contentEl.querySelectorAll('.mermaid');
+                            errorDivs.forEach(function(div) {
+                                if (div.querySelector('svg') === null) {
+                                    div.innerHTML = '<div style="background:#fff9e6;border:2px solid #f9ab00;padding:20px;border-radius:8px;color:#856404;">' +
+                                        '<strong>⚠️ Diagram Generation Note:</strong><br>' +
+                                        'The AI generated a diagram that couldn\'t be rendered. The visualization has been skipped, but all recommendations and guidance remain valid.' +
+                                        '</div>';
+                                }
+                            });
+                        });
+                    }
+                }, 500);
+            }
+        } catch(e) { console.error('Error rendering implementation guide:', e); }
+    })();
+    </script>    <div class="section">
+        <h2>AI-Generated References from Recommendations</h2>
+        <p><em>Documentation links identified by the analysis:</em></p>
+        <ul id="ai-generated-refs" style="display:none;"></ul>
+        <p id="ai-refs-placeholder"><em>References will populate from AI recommendations</em></p>
+    </div>
+
+    <script>
+    (function(){
+        var refEl = document.getElementById('ai-generated-refs');
+        var placeholderEl = document.getElementById('ai-refs-placeholder');
+        var refScript = document.getElementById('referencesScript');
+        if (!refScript) return;
+        var refsJson = refScript.getAttribute('data-refs');
+        if (!refsJson) return;
+        try {
+            var urls = JSON.parse(refsJson);
+            if (urls && Array.isArray(urls) && urls.length > 0) {
+                var uniqueUrls = Array.from(new Set(urls));
+                uniqueUrls.forEach(function(url) {
+                    if (url && url.trim()) {
+                        var li = document.createElement('li');
+                        li.innerHTML = '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>';
+                        refEl.appendChild(li);
+                    }
+                });
+                if (refEl.children.length > 0) { refEl.style.display = 'block'; placeholderEl.style.display = 'none'; }
+            }
+        } catch(e) { console.error('Error parsing references:', e); }
+    })();
+    </script>
+
+    <div class="section">
+        <h2>Foundry Agent Configuration</h2>
+        <p><strong>Agent ID:</strong> <code>Agent508new:47</code></p>
+        <p><strong>Mode:</strong> Detailed</p>
+        <p><strong>Model Used:</strong> <code>gpt-5-chat-2025-08-07</code> <em>(selected by model router)</em></p>
+        <p>The analysis above was generated using your Foundry Agent with configured knowledge sources.</p>
+    </div>
+
+    <div style="text-align:center;padding:32px 0;color:#ffffff;font-size:14px;background:linear-gradient(135deg, #0078d4 0%, #005a9e 100%);margin-top:48px;">
+        AI powered by <a href="https://www.ciaopspatron.com" target="_blank" style="color:#ffffff;text-decoration:none;font-weight:700;border-bottom:2px solid #ffffff;padding-bottom:2px;">www.ciaopspatron.com</a>
+    </div>
+
+    <script>
+    function toggleCollapse(header) {
+        var content = header.nextElementSibling;
+        header.classList.toggle('collapsed');
+        content.classList.toggle('collapsed');
+    }
+    </script>
+</body>
+</html>
