@@ -450,7 +450,7 @@ $compactFilePath = ""
 if ($Compact) {
     Write-Info "Creating compact/summarized data for AI processing..."
     try {
-        $summarizedData = Summarize-SecureScoreData -SecurityData $securityData
+        $summarizedData = Convert-SecureScoreDataSummary -SecurityData $securityData
         # Generate compact file path
         $compactFile = $DataFile -replace '\.json$', '_compact.json'
         Write-Info "Saving compact data to: $compactFile"
