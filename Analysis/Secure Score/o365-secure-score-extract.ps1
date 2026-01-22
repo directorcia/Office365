@@ -7,6 +7,8 @@
 #
 # Detailed comments and debug output added for clarity and troubleshooting.
 # ============================================================================
+#
+# Full documentation - https://github.com/directorcia/Office365/wiki/Extract-Microsoft-365-Secure-Score-information
 
 [CmdletBinding()]
 param(
