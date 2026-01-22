@@ -1,4 +1,3 @@
-
 # ============================================================================
 # o365-secure-score-extract.ps1
 #
@@ -18,10 +17,8 @@ param(
     [switch]$Compact # Optional: Also output a compact summary file for AI/analysis
 )
 
-
 # Script extracts Microsoft 365 security posture data (Secure Score, controls, CA policies, MFA adoption)
 # and saves to a JSON file for analysis or integration with other tools
-
 
 $ErrorActionPreference = "Stop" # Stop on all errors
 $ProgressPreference = "SilentlyContinue" # Suppress progress bars for cleaner output
@@ -127,6 +124,7 @@ function Invoke-GraphCollection {
     return $results
 }
 
+function Get-SecureScoreData {
     # Retrieves the latest Secure Score and history for the tenant
     Write-Debug "[Get-SecureScoreData] Collecting Secure Score data"
     $scores = Invoke-GraphCollection -Uri "https://graph.microsoft.com/beta/security/secureScores?`$top=5&`$orderby=createdDateTime%20desc" -UseMgGraph
@@ -137,6 +135,7 @@ function Invoke-GraphCollection {
     }
 }
 
+function Get-SecureScoreControls {
     # Retrieves all Secure Score controls and highlights open/important ones
     Write-Debug "[Get-SecureScoreControls] Collecting Secure Score control profiles"
     $controls = Invoke-GraphCollection -Uri "https://graph.microsoft.com/beta/security/secureScoreControlProfiles?`$top=200" -UseMgGraph
@@ -149,6 +148,8 @@ function Invoke-GraphCollection {
     }
 }
 
+
+function Get-ConditionalAccessPolicies {
     # Retrieves Conditional Access policies and strips verbose fields
     Write-Debug "[Get-ConditionalAccessPolicies] Collecting Conditional Access policies"
     $policies = Invoke-GraphCollection -Uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies?`$top=100" -UseMgGraph
@@ -167,6 +168,8 @@ function Invoke-GraphCollection {
     return $sanitized
 }
 
+
+function Get-SecurityDefaultsStatus {
     # Checks if Security Defaults are enabled for the tenant
     Write-Debug "[Get-SecurityDefaultsStatus] Checking security defaults status"
     try {
@@ -178,6 +181,8 @@ function Invoke-GraphCollection {
     }
 }
 
+
+function Get-MfaRegistrationSummary {
     # Retrieves MFA registration summary for the last 30 days
     Write-Debug "[Get-MfaRegistrationSummary] Collecting MFA registration summary"
     try {
@@ -190,6 +195,8 @@ function Invoke-GraphCollection {
     }
 }
 
+
+function Get-TenantInfoFromGraph {
     # (Unused) Helper to get tenant info from Graph
     param([string]$GraphToken)
     if ([string]::IsNullOrWhiteSpace($GraphToken)) {
@@ -208,9 +215,10 @@ function Invoke-GraphCollection {
     return $null
 }
 
-    # Summarizes the full security data object for compact output (AI, reporting)
+
+function Convert-SecureScoreDataSummary {
     param([object]$SecurityData)
-    Write-Debug "[Summarize-SecureScoreData] Summarizing security data for compact output"
+    Write-Debug "[Convert-SecureScoreDataSummary] Summarizing security data for compact output"
     # Summarize to reduce payload size from MB to KB for AI processing
     $summarized = [pscustomobject]@{
         Tenant = $SecurityData.Tenant
