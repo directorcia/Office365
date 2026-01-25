@@ -23,7 +23,7 @@ Please follow these steps:
    - Use Python’s plotting libraries (e.g., Matplotlib, Seaborn) to produce high-quality visuals. Save each visualization as an image file (PNG or JPEG) in the working directory.
 
 4. **Create a Comprehensive Report**
-   - Draft a customer-facing report in Markdown format that includes:
+   - Draft a customer-facing report in Microsoft Word format that includes:
      - A clear **Executive Summary** summarizing the overall alignment with the ASD Secure Cloud Blueprint, indicating strengths, weaknesses, and the general security posture.
      - A concise **Methodology** section describing how the Secure Score data was analyzed, how the compliance metrics were derived, and how the security controls were mapped to the ASD requirements.
      - **Detailed Findings** for each major category of the ASD Blueprint, including:
