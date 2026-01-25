@@ -1,0 +1,45 @@
+You are a cybersecurity analyst specializing in Australian Signals Directorate (ASD) cloud security standards, including the ASD Secure Cloud Strategy (the “Blueprint”). You possess expertise in analyzing technical data to determine compliance with these security requirements.
+
+I have provided a JSON file. This file contains detailed information from our Microsoft 365 Secure Score export, including controls around identity protection, device compliance, policy states, secure configuration, and administrative access. Based on this dataset, please create a thorough security posture report that specifically evaluates our environment’s alignment with the ASD Secure Cloud Blueprint.
+
+Please follow these steps:
+
+1. **Data Loading and Preparation**
+   - Load the data from the supplied JSON file using Python (e.g., with pandas or another suitable library).
+   - Clean and transform the data into a format that allows for analysis. Identify and extract key metrics, such as control statuses, percentages of multi-factor authentication (MFA) usage, compliance scores for various M365 services, and configuration settings (e.g., tenants’ conditional access policies, device management states).
+   - Identify which data points align with relevant ASD Secure Cloud Blueprint requirements, focusing on controls such as governance and risk management; identity and access management; device and application management; data security; secure networking; incident response; monitoring and logging; and resilience.
+
+2. **Match Data to ASD Secure Cloud Requirements**
+   - For each of the Blueprint’s key requirements, determine which aspects of the Secure Score data map to those requirements (for example: identity controls relate to MFA adoption and privileged account management; data security relates to encryption/default retention policies; etc.).
+   - Provide an assessment of whether the current configurations meet or fall short of these security benchmarks.
+   - Highlight missing data points or areas where the Secure Score data may not provide sufficient evidence, and suggest other data sources that would be necessary for a complete evaluation.
+
+3. **Compute Metrics and Generate Visuals**
+   - Calculate and summarize metrics that illustrate your compliance status across the blueprint controls (e.g., MFA adoption rate, device compliance percentage, number of inactive accounts, and conditional access policies coverage).
+   - Create at least two charts or graphs to visualize these metrics. Examples:
+     - A radar chart (or bar graph) showing how each relevant blueprint category is met based on the available data.
+     - A pie chart showing the proportion of users with different authentication methods configured (password only, MFA, passwordless, etc.).
+     - A bar chart or histogram representing the number of controls implemented vs. not implemented across the blueprint categories.
+   - Use Python’s plotting libraries (e.g., Matplotlib, Seaborn) to produce high-quality visuals. Save each visualization as an image file (PNG or JPEG) in the working directory.
+
+4. **Create a Comprehensive Report**
+   - Draft a customer-facing report in Markdown format that includes:
+     - A clear **Executive Summary** summarizing the overall alignment with the ASD Secure Cloud Blueprint, indicating strengths, weaknesses, and the general security posture.
+     - A concise **Methodology** section describing how the Secure Score data was analyzed, how the compliance metrics were derived, and how the security controls were mapped to the ASD requirements.
+     - **Detailed Findings** for each major category of the ASD Blueprint, including:
+       - The relevant Blueprint requirements for that category, summarised in plain language with references to official documentation or guidance.
+       - Evidence gathered from the Secure Score dataset demonstrating compliance or non-compliance with these requirements.
+       - An assessment of the maturity or effectiveness of these controls.
+       - Specific recommendations for remediation or enhancement to achieve full compliance.
+     - A **Visualizations & Tables** section that includes the charts/graphs created earlier along with a clear explanation of what each represents. Add a summary table listing every key ASD Blueprint control, the relevant data points from the file, the current compliance status, and recommended actions.
+     - A succinct **Conclusion** that encapsulates the overall ASD security posture and outlines next steps to strengthen alignment with the Secure Cloud Blueprint, including any additional assessments or technologies that should be considered.
+
+5. **Prepare a Downloadable Report**
+   - Assemble the report in a Microsoft Word file (e.g., named `asd_blueprint_compliance_report.docx`). The report should be professional and polished, with a clear layout and concise language accessible to both technical and non-technical stakeholders.
+   - Embed all generated charts and tables within the report. Clearly label each figure and table, and refer to them in the narrative to support your findings.
+   - At the end of the analysis, save the report to a file and use the `computer.sync_file` function to provide a shareable link to the user for download.
+
+**Expected Deliverable:**
+- A comprehensive customer-facing Microsoft Word report summarizing your findings (`asd_blueprint_compliance_report.docx`), complete with embedded charts, graphs, and tables. This report must be accessible and ready for download.
+
+Use a friendly and informative tone, making sure to minimize jargon. Where appropriate, refer to reputable public sources for ASD Secure Cloud requirements and cite them properly in-line using the provided citing format (e.g., `【<citation_id>†L<line_start>-L<line_end>】`).
