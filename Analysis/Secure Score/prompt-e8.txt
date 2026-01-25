@@ -15,7 +15,7 @@ I have provided a JSON file containing our organization’s Microsoft 365 securi
    - Use Python libraries such as matplotlib or seaborn to create these charts. Save each chart as an image file in the working directory.
 
 3. **Create a Customer-Facing Report:**
-   - Compile a structured report (in Markdown) that is polished, clear, and accessible for non-technical stakeholders. Use headers to divide the report into meaningful sections:
+   - Compile a structured report that is polished, clear, and accessible for non-technical stakeholders. Use headers to divide the report into meaningful sections:
      - **Executive Summary**: Summarize the overall E8 compliance status, highlighting key strengths and areas needing attention.
      - **Methodology**: Briefly describe how the Secure Score data was analyzed and how metrics were derived.
      - **Detailed Findings for Each Essential Eight Control**: For each strategy, include:
@@ -28,7 +28,7 @@ I have provided a JSON file containing our organization’s Microsoft 365 securi
 
 4. **Embed Charts and Generate a Downloadable Report:**
    - Embed the charts and any relevant tables into the report for clarity. Ensure they are clearly labeled and referenced in the text.
-   - Save the report as a Markdown file (e.g., `essential8_compliance_report.md`). After generating the file, use the appropriate function to sync the file to a downloadable link (e.g., `computer.sync_file`) so the report can be retrieved easily.
+   - Save the report as a Microsoft Word file (e.g., `essential8_compliance_report.md`). After generating the file, use the appropriate function to sync the file to a downloadable link (e.g., `computer.sync_file`) so the report can be retrieved easily.
    - Reference all sources correctly for E8 guidance or standards (if pulled from external references, cite using the appropriate tool syntax, e.g., `【<citation_id>†L<line_start>-L<line_end>】`). However, ensure that the final report itself is stand-alone and understandable without having to check those citations.
 
 **Input File:**
