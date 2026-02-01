@@ -1,0 +1,80 @@
+Goal
+Analyse this Exchange Online tenant configuration and mailbox data to identify:
+
+	1. Security posture (e.g. legacy authentication, external access, auditing, message recall, mailbox protections).
+	2. Compliance and data governance posture (e.g. retention, holds, archiving, eDiscovery‑related settings).
+	3. Hygiene and operational risks (e.g. “break glass” accounts, over‑provisioned quotas, misconfigurations, legacy features still enabled).
+	4. Any obvious configuration gaps compared to modern Microsoft 365 best practices.
+
+Context
+
+The data you are analysing is the content of the provided JSON file
+It includes tenant‑wide settings under OrganizationConfig and a list of mailboxes under Mailboxes, with properties such as:
+
+	- Authentication and protocol settings (e.g. BasicAuthBlockedApps, OAuth2ClientProfileEnabled, EwsEnabled, MapiHttpEnabled, POP/IMAP/OWA/HTTP flags).
+	- Security and privacy settings (AuditEnabled, AuditLogAgeLimit, MessageRecall*, InformationBarriers*, ExternalCloudAccessEnabled, AllowToAddGuests, GuestsEnabled, ReadTrackingEnabled, etc.).
+	- Retention, litigation hold, and archiving (RetentionPolicy, LitigationHoldEnabled, SingleItemRecoveryEnabled, AutoArchivingEnabled, AutoExpandingArchiveEnabled).
+	- Mailbox capacity and limits (send/receive size, quotas, RecipientLimits).
+	- Special accounts such as break‑glass or admin mailboxes 
+
+
+Tasks
+
+	1. High‑level summary
+
+	- Provide a short overview of the tenant:
+		○ When it was created (from WhenCreated / WhenCreatedUTC in OrganizationConfig).
+		○ Key service characteristics (e.g. ReleaseTrack, DefaultAuthenticationPolicy, PublicFoldersEnabled, GroupsCreationEnabled, GuestsEnabled, DefaultGroupAccessType).
+	- List the total number of user mailboxes, shared/resource mailboxes (if distinguishable), and any clearly special accounts.
+
+	2. Security & access analysis
+
+Comment on:
+
+	- Legacy or risky access methods (POP/IMAP, basic auth, MAPI over HTTP disabled/enabled, EWS policies, BasicAuthBlockedApps, etc.).
+	- External collaboration and guest access (AllowToAddGuests, GuestsEnabled, GroupsUsageGuidelinesLink, DefaultGroupAccessType).
+	- Tenant‑wide audit configuration (AuditDisabled, AuditEnabled on mailboxes, AuditLogAgeLimit, DefaultAuditSet).
+	- Use of elevated or break‑glass accounts, including:
+		○ How any breakglass account is configured (e.g. quotas, forwarding, auditing, holds, account disabled or not).
+	- Highlight specific values from the JSON that indicate good security practice or potential risk.
+
+
+Compliance & data governance
+
+	- Analyse retention and archive configuration:
+		○ Default retention policy (e.g. RetentionPolicy = “Default MRM Policy”) and whether mailboxes are using database defaults.
+		○ Usage of litigation hold, single item recovery, and delay holds (LitigationHoldEnabled, SingleItemRecoveryEnabled, RetentionHoldEnabled, LitigationHoldDuration).
+		○ Archive status and quotas (ArchiveStatus, ArchiveState, AutoExpandingArchiveEnabled, ArchiveQuota, ArchiveWarningQuota).
+	- Describe whether the current settings are broadly aligned with modern compliance recommendations and call out any obvious gaps (e.g. no holds, short retention for deleted items, limited audit log retention).
+
+
+Hygiene & configuration quality
+
+	- Identify signs of:
+		○ Excessively high quotas or limits (e.g. 99–100 GB mailbox quotas, very high RecipientLimits).
+		○ Inconsistent protocol settings across mailboxes.
+		○ Mailboxes with unexpected forwarding, especially to external addresses (ForwardingSmtpAddress, DeliverToMailboxAndForward).
+		○ Features left in legacy states (e.g. PublicFoldersEnabled = Local but migration flags not complete, or InformationBarriers* all disabled while MaxInformationBarrierSegments is high).
+	- Point out any notable tenant‑level feature flags (e.g. SharedDomainEmailAddressFlowEnabled, HybridRSVPEnabled, CustomerLockboxEnabled, BookingsEnabled, ConnectorsEnabled*) that might be relevant for governance and change management.
+
+
+Recommendations
+
+	- Provide a prioritized list (high, medium, low) of actionable recommendations, for example:
+		○ Security improvements (e.g. disable legacy protocols, tighten external access, enforce modern auth and mailbox auditing).
+		○ Compliance improvements (e.g. enable or refine retention policies, consider litigation hold or preservation for critical mailboxes, extend audit log retention if needed).
+		○ Operational hygiene (e.g. standardize mailbox limits, confirm configuration of break‑glass accounts, review public folders and guest access).
+	- For each recommendation, briefly explain why it matters and which fields in the JSON led you to that conclusion.
+
+Expectations & format
+
+	- Work only from the data in this file; do not invent settings that are not present.
+	- If something cannot be determined from the JSON, say so explicitly.
+	- Structure your answer with clear headings:
+		○ Tenant Overview
+		○ Security & Access
+		○ Compliance & Data Governance
+		○ Hygiene & Configuration Quality
+		○ Recommendations
+	- Use bullet points for lists and keep technical wording precise and concise.
+	- Assume the reader is a Microsoft 365 administrator who understands Exchange Online concepts but wants a clear, opinionated assessment with specific, practical actions.
