@@ -14,6 +14,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$TenantDomain, # The primary domain of the target Microsoft 365 tenant
     [string]$DataFile = "", # Optional: Output file path for JSON data
+    [ValidateRange(1, 90)]
     [int]$ScoreHistoryCount = 5, # Optional: Number of historical Secure Score records to retrieve (default 5)
     [switch]$Compact # Optional: Also output a compact summary file for AI/analysis
 )
@@ -30,6 +31,30 @@ function Write-Info($msg) { Write-Host "[INFO] $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "[WARN] $msg" -ForegroundColor Yellow }
 function Write-Err($msg) { Write-Host "[ERROR] $msg" -ForegroundColor Red }
 
+function Get-OutputPathWithSuffix {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Suffix
+    )
+
+    # Build sibling path safely even when extension is missing or not .json
+    $parent = [System.IO.Path]::GetDirectoryName($Path)
+    if ([string]::IsNullOrWhiteSpace($parent)) {
+        $parent = (Get-Location).Path
+    }
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($Path)
+    if ([string]::IsNullOrWhiteSpace($baseName)) {
+        $baseName = "security-data"
+    }
+    $ext = [System.IO.Path]::GetExtension($Path)
+    if ([string]::IsNullOrWhiteSpace($ext)) {
+        $ext = ".json"
+    }
+    return (Join-Path $parent ("{0}{1}{2}" -f $baseName, $Suffix, $ext))
+}
+
 # Helper to save partial data as checkpoint (enables recovery from mid-run failures)
 # Overwrites a single _partial.json file on each stage; deleted on successful completion
 function Save-PartialData {
@@ -43,7 +68,7 @@ function Save-PartialData {
     )
     
     try {
-        $checkpointFile = $OutputPath -replace '\.json$', "_partial.json"
+        $checkpointFile = Get-OutputPathWithSuffix -Path $OutputPath -Suffix "_partial"
         $SecurityData | ConvertTo-Json -Depth 10 | Out-File -FilePath $checkpointFile -Encoding UTF8 -Force
         $fileSize = (Get-Item $checkpointFile).Length
         $fileSizeKB = [math]::Round($fileSize / 1KB, 2)
@@ -78,9 +103,25 @@ function Invoke-MgGraphRequestWithRetry {
             $errorMessage = $_.Exception.Message
 
             # Try to extract HTTP status code
-            if ($_.Exception.Response) {
-                $httpStatusCode = [int]$_.Exception.Response.StatusCode
-                Write-Debug "[Invoke-MgGraphRequestWithRetry] HTTP Status Code: $httpStatusCode"
+            if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+                try {
+                    $httpStatusCode = [int]$_.Exception.Response.StatusCode
+                } catch {
+                    $httpStatusCode = $null
+                }
+                if ($httpStatusCode) {
+                    Write-Debug "[Invoke-MgGraphRequestWithRetry] HTTP Status Code: $httpStatusCode"
+                }
+            }
+
+            if (-not $httpStatusCode -and $_.ErrorDetails.Message) {
+                try {
+                    $errorObj = $_.ErrorDetails.Message | ConvertFrom-Json
+                    if ($errorObj.error.code -eq "TooManyRequests") { $httpStatusCode = 429 }
+                    if ($errorObj.error.code -eq "ServiceUnavailable") { $httpStatusCode = 503 }
+                } catch {
+                    # Keep fallback behavior on parse failures
+                }
             }
 
             # Determine if error is transient
@@ -93,11 +134,20 @@ function Invoke-MgGraphRequestWithRetry {
                 # Check for Retry-After header on 429 (throttling)
                 $retryAfterParsed = $false
                 $backoffSec = $null
-                if ($httpStatusCode -eq 429 -and $_.Exception.Response.Headers['Retry-After']) {
-                    $retryAfter = $_.Exception.Response.Headers['Retry-After']
-                    if ([int]::TryParse($retryAfter, [ref]$backoffSec)) {
-                        Write-Host "     Using API-provided Retry-After: ${backoffSec}s" -ForegroundColor Magenta
-                        $retryAfterParsed = $true
+                if ($httpStatusCode -eq 429 -and $_.Exception.Response -and $_.Exception.Response.Headers) {
+                    $retryAfterHeader = $null
+                    try {
+                        $retryAfterHeader = $_.Exception.Response.Headers['Retry-After']
+                    } catch {
+                        $retryAfterHeader = $null
+                    }
+
+                    if ($retryAfterHeader) {
+                        $retryAfter = [string]$retryAfterHeader
+                        if ([int]::TryParse($retryAfter, [ref]$backoffSec)) {
+                            Write-Host "     Using API-provided Retry-After: ${backoffSec}s" -ForegroundColor Magenta
+                            $retryAfterParsed = $true
+                        }
                     }
                 }
                 # Fall back to exponential backoff if no Retry-After header
@@ -128,7 +178,8 @@ function Invoke-GraphCollection {
     param(
         [string]$Uri, # The Graph API endpoint to call
         [int]$MaxRetries = 3, # Maximum retry attempts for transient failures
-        [int]$InitialBackoffMs = 1000 # Initial backoff in milliseconds (exponential)
+        [int]$InitialBackoffMs = 1000, # Initial backoff in milliseconds (exponential)
+        [switch]$AllowPartialResults # Return partial data on page failure; default behavior is fail-fast
     )
 
     $results = @()
@@ -182,7 +233,12 @@ function Invoke-GraphCollection {
             Write-Host "================================" -ForegroundColor Red
             Write-Host ""
             Write-Err "Failed URI: $next"
-            $next = $null # Exit pagination loop
+            if ($AllowPartialResults) {
+                Write-Warn "Returning partial collection with $($results.Count) items due to -AllowPartialResults"
+                $next = $null # Exit pagination loop
+            } else {
+                throw
+            }
         }
     }
 
@@ -327,6 +383,13 @@ if (-not $DataFile) {
     if (-not $outputDir) { $outputDir = $PSScriptRoot }
     $DataFile = Join-Path $outputDir "${sanitizedDomain}_ss_${timestamp}.json"
     Write-Debug "[Main] Auto-generated data file path: $DataFile"
+}
+
+# Ensure output directory exists before collection starts
+$outputDirectory = [System.IO.Path]::GetDirectoryName($DataFile)
+if (-not [string]::IsNullOrWhiteSpace($outputDirectory) -and -not (Test-Path $outputDirectory)) {
+    New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
+    Write-Debug "[Main] Created output directory: $outputDirectory"
 }
 
 
@@ -531,7 +594,7 @@ if ($Compact) {
     try {
         $summarizedData = Convert-SecureScoreDataSummary -SecurityData $securityData
         # Generate compact file path
-        $compactFile = $DataFile -replace '\.json$', '_compact.json'
+        $compactFile = Get-OutputPathWithSuffix -Path $DataFile -Suffix '_compact'
         Write-Info "Saving compact data to: $compactFile"
         $summarizedData | ConvertTo-Json -Depth 10 | Out-File -FilePath $compactFile -Encoding UTF8 -Force
         $compactSize = (Get-Item $compactFile).Length
@@ -574,7 +637,7 @@ Write-Host "══════════════════════�
 Write-Host ""
 
 # Clean up temporary partial data file on successful completion
-$partialFile = $DataFile -replace '\.json$', "_partial.json"
+$partialFile = Get-OutputPathWithSuffix -Path $DataFile -Suffix "_partial"
 if (Test-Path $partialFile) {
     Remove-Item $partialFile -Force -ErrorAction SilentlyContinue
     Write-Debug "[Main] Cleaned up temporary recovery file: $partialFile"

@@ -41,9 +41,11 @@ param(
     [string]$TenantDomain,
     [string]$OutputFolder,
     [switch]$Compact,
+    [ValidateRange(1, 10)]
     [int]$MaxRetries = 3,
     [switch]$SkipConnection,
     [PSCredential]$Credential,
+    [ValidateRange(1, 10)]
     [int]$ConnectionRetries = 3,
     [ValidateRange(4, 200)]
     [int]$JsonDepth = 64
@@ -80,10 +82,9 @@ function Invoke-WithRetry {
         [string]$Category = "",
         [switch]$Critical
     )
+    if ($MaxAttempts -lt 1) { $MaxAttempts = 1 }
+
     $attempt = 0
-    # Exponential backoff delays in seconds: supports up to 5 retry attempts
-    # If $MaxAttempts is increased beyond 5, ensure $delays array is extended accordingly
-    $delays = @(2,4,6,8,10)
     $lastError = $null
     while ($attempt -lt $MaxAttempts) {
         try {
@@ -95,8 +96,9 @@ function Invoke-WithRetry {
             $lastError = $_.Exception.Message
             $retryable = ($lastError -match 'timeout|temporarily|rate limit|network|transient|unavailable|throttl|server busy|try again')
             if ($retryable -and $attempt -lt $MaxAttempts) {
+                $delaySeconds = Get-RetryDelaySeconds -Attempt $attempt
                 Write-Warn "${Category}: Attempt $attempt failed (retryable) - $lastError"
-                Start-Sleep -Seconds $delays[$attempt-1]
+                Start-Sleep -Seconds $delaySeconds
             } else {
                 Write-Err "${Category}: Attempt $attempt failed (non-retryable) - $lastError"
                 break
@@ -170,6 +172,18 @@ function Format-TimeSpan {
     if ($ts.TotalSeconds -lt 60) { return "{0:N1}s" -f $ts.TotalSeconds }
     elseif ($ts.TotalMinutes -lt 60) { return "{0:N1}m" -f $ts.TotalMinutes }
     else { return "{0:N1}h" -f $ts.TotalHours }
+}
+
+# Helper: Compute bounded linear retry delay
+function Get-RetryDelaySeconds {
+    param(
+        [int]$Attempt,
+        [int]$BaseSeconds = 2,
+        [int]$MaxSeconds = 30
+    )
+
+    if ($Attempt -lt 1) { $Attempt = 1 }
+    return [Math]::Min(($BaseSeconds * $Attempt), $MaxSeconds)
 }
 #endregion
 
@@ -318,9 +332,9 @@ function Connect-ExchangeOnlineWithRetry {
         [PSCredential]$Credential,
         [int]$MaxAttempts = 3
     )
+    if ($MaxAttempts -lt 1) { $MaxAttempts = 1 }
     
     $attempt = 0
-    $delays = @(2, 5, 10)
     
     while ($attempt -lt $MaxAttempts) {
         try {
@@ -352,8 +366,9 @@ function Connect-ExchangeOnlineWithRetry {
         } catch {
             $lastError = $_.Exception.Message
             if ($attempt -lt $MaxAttempts) {
-                Write-Warn "Connection attempt $attempt failed: $lastError. Retrying in $($delays[$attempt-1]) seconds..."
-                Start-Sleep -Seconds $delays[$attempt - 1]
+                $delaySeconds = Get-RetryDelaySeconds -Attempt $attempt
+                Write-Warn "Connection attempt $attempt failed: $lastError. Retrying in $delaySeconds seconds..."
+                Start-Sleep -Seconds $delaySeconds
             } else {
                 Write-Err "Failed to connect to Exchange Online after $MaxAttempts attempts: $lastError"
             }
@@ -675,21 +690,21 @@ Write-Stat "  Total Categories Collected: $total"
 # ERRORS & WARNINGS FILTERING (define before use)
 $uniqueErrors = $global:ErrorList | Select-Object -Unique
 $actionableErrors = $uniqueErrors | Where-Object {
-    $_ -notmatch 'CRITICAL: .+ collection failed after \d+ attempts\.' -and
-    $_ -notmatch 'NON-CRITICAL: .+ collection failed after \d+ attempts\.' -and
+    $_ -notmatch 'CRITICAL: .+ collection failed after \d+ attempts[:\.]' -and
+    $_ -notmatch 'NON-CRITICAL: .+ collection failed after \d+ attempts[:\.]' -and
     $_ -ne 'Errors encountered during extraction:'
 }
 $genericErrors = $uniqueErrors | Where-Object {
-    $_ -match 'CRITICAL: .+ collection failed after \d+ attempts\.' -or
-    $_ -match 'NON-CRITICAL: .+ collection failed after \d+ attempts\.'
+    $_ -match 'CRITICAL: .+ collection failed after \d+ attempts[:\.]' -or
+    $_ -match 'NON-CRITICAL: .+ collection failed after \d+ attempts[:\.]'
 }
 $uniqueWarnings = $global:WarningList | Select-Object -Unique
 $actionableWarnings = $uniqueWarnings | Where-Object {
-    $_ -notmatch 'NON-CRITICAL: .+ collection failed after \d+ attempts\.' -and
+    $_ -notmatch 'NON-CRITICAL: .+ collection failed after \d+ attempts[:\.]' -and
     $_ -ne 'Warnings encountered during extraction:'
 }
 $genericWarnings = $uniqueWarnings | Where-Object {
-    $_ -match 'NON-CRITICAL: .+ collection failed after \d+ attempts\.'
+    $_ -match 'NON-CRITICAL: .+ collection failed after \d+ attempts[:\.]'
 }
 
 # ERRORS SECTION
