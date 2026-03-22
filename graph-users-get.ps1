@@ -30,66 +30,162 @@ $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
 $outputFile = "..\graph-users.csv"
+$scriptFailed = $false
 
 if ($debug) {
-    # create a log file of process if option enabled
-    write-host "Script activity logged at .\graph-users-get.txt"
-    start-transcript ".\graph-users-get.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
+    Write-Host "Script activity logged at .\graph-users-get.txt"
+    try {
+        Start-Transcript ".\graph-users-get.txt" | Out-Null
+    }
+    catch {
+        Write-Host -ForegroundColor $warningmessagecolor "Unable to start transcript logging: $($_.Exception.Message)"
+    }
 }
 
-Clear-Host
-write-host -foregroundcolor $systemmessagecolor "Tenant user report script - Started`n"
-write-host -foregroundcolor $processmessagecolor "Connect to MS Graph"
-$scopes = "User.ReadBasic.All, User.Read.All, User.ReadWrite.All, Directory.Read.All, Directory.ReadWrite.All"
-connect-mggraph -scopes $scopes -nowelcome | Out-Null
-$graphcontext = Get-MgContext
-write-host -foregroundcolor $processmessagecolor "Connected account =", $graphcontext.Account
-if ($prompt) {
-    do {
-        $response = read-host -Prompt "`nIs this correct? [Y/N]"
-    } until (-not [string]::isnullorempty($response))
-    if ($response -ne "Y" -and $response -ne "y") {
-        Disconnect-MgGraph | Out-Null
-        write-host -foregroundcolor $warningmessagecolor "`n[001] Disconnected from current Graph environment. Re-run script to login to desired environment"
-        exit 1
+function Invoke-WithRetry {
+    param (
+        [scriptblock]$ScriptBlock,
+        [int]$MaxRetries = 3,
+        [int]$InitialBackoffSeconds = 2
+    )
+
+    $retryCount = 0
+    while ($retryCount -lt $MaxRetries) {
+        try {
+            return & $ScriptBlock
+        }
+        catch {
+            $retryCount++
+            if ($retryCount -ge $MaxRetries) {
+                throw
+            }
+
+            $backoffSeconds = $InitialBackoffSeconds * [Math]::Pow(2, $retryCount - 1)
+            Write-Host -ForegroundColor $warningmessagecolor "Attempt $retryCount failed. Retrying in $backoffSeconds seconds..."
+            Start-Sleep -Seconds $backoffSeconds
+        }
+    }
+}
+
+function Test-GraphContextHasScopes {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$RequiredScopes,
+        $Context
+    )
+
+    if ($null -eq $Context -or [string]::IsNullOrWhiteSpace($Context.Account)) {
+        return $false
+    }
+
+    $currentScopes = @($Context.Scopes)
+    if ($currentScopes.Count -eq 0) {
+        return $false
+    }
+
+    foreach ($scope in $RequiredScopes) {
+        if ($scope -notin $currentScopes) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+try {
+    Clear-Host
+    Write-Host -ForegroundColor $systemmessagecolor "Tenant user report script - Started`n"
+
+    if (-not (Get-Command -Name Connect-MgGraph -ErrorAction SilentlyContinue)) {
+        throw "Microsoft Graph PowerShell SDK is not installed. Install-Module Microsoft.Graph -Scope CurrentUser"
+    }
+
+    $requiredScopes = @("User.Read.All")
+    $graphcontext = Get-MgContext
+
+    if (Test-GraphContextHasScopes -RequiredScopes $requiredScopes -Context $graphcontext) {
+        Write-Host -ForegroundColor $processmessagecolor "Using existing MS Graph connection"
     }
     else {
-        write-host
+        Write-Host -ForegroundColor $processmessagecolor "Connect to MS Graph"
+        Connect-MgGraph -Scopes $requiredScopes -NoWelcome | Out-Null
+        $graphcontext = Get-MgContext
     }
-}
-If ($prompt) { Read-Host -Prompt "`n[PROMPT] -- Press Enter to continue" }
 
+    Write-Host -ForegroundColor $processmessagecolor "Connected account =", $graphcontext.Account
 
-# Get all devices
-# https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
-$Url = "https://graph.microsoft.com/beta/users?&`$top=999" 
-write-host -foregroundcolor $processmessagecolor "Make Graph request for all users"
-try {
-    $results = (Invoke-MgGraphRequest -Uri $Url -Method GET).value
+    if ($prompt) {
+        do {
+            $response = Read-Host -Prompt "`nIs this correct? [Y/N]"
+        } until (-not [string]::IsNullOrWhiteSpace($response))
+
+        if ($response -notmatch '^[Yy]$') {
+            Disconnect-MgGraph | Out-Null
+            Write-Host -ForegroundColor $warningmessagecolor "`n[001] Disconnected from current Graph environment. Re-run script to login to desired environment"
+            exit 1
+        }
+
+        Read-Host -Prompt "`n[PROMPT] -- Press Enter to continue" | Out-Null
+    }
+
+    # Get all users (paged)
+    # https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
+    $selectFields = "displayName,userPrincipalName,accountEnabled,userType"
+    $url = "https://graph.microsoft.com/v1.0/users?`$select=$selectFields&`$top=999"
+    Write-Host -ForegroundColor $processmessagecolor "Make Graph request for all users"
+
+    $userSummary = [System.Collections.Generic.List[object]]::new()
+    $pageCount = 0
+    $totalRecords = 0
+
+    do {
+        $pageCount++
+        $response = Invoke-WithRetry -ScriptBlock {
+            Invoke-MgGraphRequest -Uri $url -Method GET
+        }
+
+        $results = @($response.value)
+        $totalRecords += $results.Count
+
+        foreach ($result in $results) {
+            $null = $userSummary.Add([pscustomobject]@{
+                DisplayName       = $result.displayName
+                UserPrincipalName = $result.userPrincipalName
+                AccountEnabled    = $result.accountEnabled
+                UserType          = $result.userType
+            })
+        }
+
+        Write-Host -ForegroundColor $processmessagecolor "Retrieved page $pageCount with $($results.Count) records"
+        $url = $response.'@odata.nextLink'
+    } while ($url)
+
+    Write-Host -ForegroundColor $processmessagecolor "Retrieved $totalRecords total user records across $pageCount pages"
+
+    # Output the users
+    $userSummary | Sort-Object DisplayName | Format-Table DisplayName, UserPrincipalName, AccountEnabled, UserType
+
+    if ($csv) {
+        Write-Host -ForegroundColor $processmessagecolor "`nOutput to CSV", $outputFile
+        $userSummary | Export-Csv $outputFile -NoTypeInformation -Encoding UTF8
+    }
+
+    Write-Host -ForegroundColor $systemmessagecolor "`nGraph users script - Finished"
 }
 catch {
-    Write-Host -ForegroundColor $errormessagecolor "`n"$_.Exception.Message
-    exit (0)
+    $scriptFailed = $true
+    Write-Host -ForegroundColor $errormessagecolor "`n$($_.Exception.Message)"
 }
-$usersummary = @()
-foreach ($result in $results) {
-    $userSummary += [pscustomobject]@{                                                  ## Build array item
-        Displayname       = $result.displayname
-        UserPrincipalName = $result.userPrincipalName
-        AccountEnabled    = $result.accountEnabled
-        UserType          = $result.userType
+finally {
+    if ($debug) {
+        try {
+            Stop-Transcript | Out-Null
+        }
+        catch {
+        }
     }
 }
 
-# Output the devices
-$usersummary | sort-object displayname | Format-Table DisplayName, UserPrincipalName, AccountEnabled, UserType
-
-if ($csv) {
-    write-host -foregroundcolor $processmessagecolor "`nOutput to CSV", $outputFile
-    $usersummary | export-csv $outputFile -NoTypeInformation
-}
-
-write-host -foregroundcolor $systemmessagecolor "`nGraph devices script - Finished"
-if ($debug) {
-    Stop-Transcript | Out-Null      
+if ($scriptFailed) {
+    exit 1
 }
