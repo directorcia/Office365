@@ -26,6 +26,42 @@ $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
 
+function Invoke-GraphRequestWithRetry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("GET", "POST", "PATCH", "PUT", "DELETE")]
+        [string]$Method,
+        [Parameter(Mandatory = $true)]
+        [string]$Uri,
+        [object]$Body,
+        [string]$ContentType = "application/json",
+        [int]$MaxRetries = 3
+    )
+
+    for ($i = 0; $i -lt $MaxRetries; $i++) {
+        try {
+            if ($PSBoundParameters.ContainsKey('Body')) {
+                return Invoke-MgGraphRequest -Method $Method -Uri $Uri -Body $Body -ContentType $ContentType -OutputType PSObject -ErrorAction Stop
+            }
+
+            return Invoke-MgGraphRequest -Method $Method -Uri $Uri -OutputType PSObject -ErrorAction Stop
+        }
+        catch {
+            $isRateLimited = $_.Exception.Message -match "429|TooManyRequests|throttle"
+            $isRetryable = $_.Exception.Message -match "500|502|503|504|ServiceUnavailable|GatewayTimeout"
+
+            if (($isRateLimited -or $isRetryable) -and $i -lt ($MaxRetries - 1)) {
+                $waitTime = [math]::Pow(2, $i) * 5
+                Write-Host -ForegroundColor $warningmessagecolor "Graph API transient error detected. Waiting $waitTime seconds before retry"
+                Start-Sleep -Seconds $waitTime
+            }
+            else {
+                throw
+            }
+        }
+    }
+}
+
 ## If you have running scripts that don't have a certificate, run this command once to disable that level of security
 ## set-executionpolicy -executionpolicy bypass -scope currentuser -force
 
@@ -48,20 +84,20 @@ write-host -foregroundcolor $processmessagecolor "[Info] = Checking PowerShell v
 $ps = $PSVersionTable.PSVersion
 Write-host -foregroundcolor $processmessagecolor "- Detected supported PowerShell version: $($ps.Major).$($ps.Minor)"
 
-# Microsoft Online Module
-if (get-module -listavailable -name Microsoft.Graph.Identity.DirectoryManagement) {    ## Has the Microsoft Online PowerShell module been installed?
-    write-host -ForegroundColor $processmessagecolor "Microsoft Graph PowerShell module installed"
+# Microsoft Graph Authentication module
+if (get-module -listavailable -name Microsoft.Graph.Authentication) {
+    write-host -ForegroundColor $processmessagecolor "Microsoft.Graph.Authentication module installed"
 }
 else {
-    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[001] - Microsoft Graph PowerShell module not installed`n"
+    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[001] - Microsoft.Graph.Authentication module not installed`n"
     if (-not $noprompt) {
         do {
-            $response = read-host -Prompt "`nDo you wish to install the Microsoft Graph PowerShell module (Y/N)?"
+            $response = read-host -Prompt "`nDo you wish to install the Microsoft.Graph.Authentication module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
         if ($result -eq 'Y' -or $result -eq 'y') {
-            write-host -foregroundcolor $processmessagecolor "Installing Microsoft Graph PowerShell module - Administration escalation required"
-            Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Force -confirm:$false" -wait -WindowStyle Hidden
-            write-host -foregroundcolor $processmessagecolor "Microsoft Graph PowerShell module installed"
+            write-host -foregroundcolor $processmessagecolor "Installing Microsoft.Graph.Authentication module - Administration escalation required"
+            Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name Microsoft.Graph.Authentication -Force -confirm:$false" -wait -WindowStyle Hidden
+            write-host -foregroundcolor $processmessagecolor "Microsoft.Graph.Authentication module installed"
         }
         else {
             write-host -foregroundcolor $processmessagecolor "Terminating script"
@@ -72,17 +108,17 @@ else {
         }
     }
     else {
-        write-host -foregroundcolor $processmessagecolor "Installing Microsoft Graph module - Administration escalation required"
-        Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Force -confirm:$false" -wait -WindowStyle Hidden
-        write-host -foregroundcolor $processmessagecolor "Microsoft Graph module installed"    
+        write-host -foregroundcolor $processmessagecolor "Installing Microsoft.Graph.Authentication module - Administration escalation required"
+        Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name Microsoft.Graph.Authentication -Force -confirm:$false" -wait -WindowStyle Hidden
+        write-host -foregroundcolor $processmessagecolor "Microsoft.Graph.Authentication module installed"
     }
 }
 if (-not $noupdate) {
-    write-host -foregroundcolor $processmessagecolor "Check whether newer version of Microsoft Graph PowerShell module is available"
+    write-host -foregroundcolor $processmessagecolor "Check whether newer version of Microsoft.Graph.Authentication module is available"
     #get version of the module (selects the first if there are more versions installed)
-    $version = (Get-InstalledModule -name Microsoft.Graph.Identity.DirectoryManagement) | Sort-Object Version -Descending  | Select-Object Version -First 1
+    $version = (Get-InstalledModule -name Microsoft.Graph.Authentication) | Sort-Object Version -Descending  | Select-Object Version -First 1
     #get version of the module in psgallery
-    $psgalleryversion = Find-Module -Name Microsoft.Graph.Identity.DirectoryManagement | Sort-Object Version -Descending | Select-Object Version -First 1
+    $psgalleryversion = Find-Module -Name Microsoft.Graph.Authentication | Sort-Object Version -Descending | Select-Object Version -First 1
     #convert to string for comparison
     $stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
     $a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
@@ -99,107 +135,38 @@ if (-not $noupdate) {
         write-host -foregroundcolor $warningmessagecolor "Update recommended"
         if (-not $noprompt) {
             do {
-                $response = read-host -Prompt "`nDo you wish to update the Microsoft Graph PowerShell module (Y/N)?"
+                $response = read-host -Prompt "`nDo you wish to update the Microsoft.Graph.Authentication module (Y/N)?"
             } until (-not [string]::isnullorempty($response))
             if ($response -eq 'Y' -or $response -eq 'y') {
-                write-host -foregroundcolor $processmessagecolor "Updating Microsoft Graph PowerShell module - Administration escalation required"
-                Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Force -confirm:$false" -wait -WindowStyle Hidden
-                write-host -foregroundcolor $processmessagecolor "Microsoft Graph PowerShell module - updated"
+                write-host -foregroundcolor $processmessagecolor "Updating Microsoft.Graph.Authentication module - Administration escalation required"
+                Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name Microsoft.Graph.Authentication -Force -confirm:$false" -wait -WindowStyle Hidden
+                write-host -foregroundcolor $processmessagecolor "Microsoft.Graph.Authentication module updated"
             }
             else {
-                write-host -foregroundcolor $processmessagecolor "Microsoft Graph PowerShell module - not updated"
+                write-host -foregroundcolor $processmessagecolor "Microsoft.Graph.Authentication module not updated"
             }
         }
         else {
-        write-host -foregroundcolor $processmessagecolor "Microsoft Graph PowerShell module - Administration escalation required" 
-        Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Force -confirm:$false" -wait -WindowStyle Hidden
-        write-host -foregroundcolor $processmessagecolor "Microsoft Graph PowerShell module - updated"
+        write-host -foregroundcolor $processmessagecolor "Updating Microsoft.Graph.Authentication module - Administration escalation required"
+        Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name Microsoft.Graph.Authentication -Force -confirm:$false" -wait -WindowStyle Hidden
+        write-host -foregroundcolor $processmessagecolor "Microsoft.Graph.Authentication module updated"
         }
     }
 }
 
-write-host -foregroundcolor $processmessagecolor "Microsoft Graph PowerShell module loading"
-
-$RequiredModules = @("Microsoft.Graph.Authentication", "Microsoft.Graph.Identity.DirectoryManagement")
-
-# Check if the assembly is already loaded in the .NET AppDomain to avoid conflicts
-$LoadedAssembly = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -eq "Microsoft.Graph.Authentication" } | Select-Object -First 1
-$TargetVersion = $null
-
-if ($LoadedAssembly) {
-    $LoadedVersion = $LoadedAssembly.GetName().Version
-    # Map assembly version to module version (Major.Minor.Build)
-    $TargetVersion = [Version]"$($LoadedVersion.Major).$($LoadedVersion.Minor).$($LoadedVersion.Build)"
-    Write-Warning "Microsoft.Graph.Authentication assembly $TargetVersion is already loaded. Locking to this version."
+write-host -foregroundcolor $processmessagecolor "Microsoft.Graph.Authentication module loading"
+try {
+    Import-Module Microsoft.Graph.Authentication -Force -ErrorAction Stop
 }
-else {
-    # Attempt to clear existing Graph modules to prevent version conflicts
-    Get-Module Microsoft.Graph* | Remove-Module -Force -ErrorAction SilentlyContinue
-
-    # Find the highest common version available for all required modules
-    Write-Host -ForegroundColor $processmessagecolor "Resolving module versions..."
-    $CommonVersions = $null
-    foreach ($Name in $RequiredModules) {
-        $Available = Get-Module -ListAvailable $Name
-        if ($null -eq $Available) {
-            Write-Host -ForegroundColor $errormessagecolor "[002] - Required module $Name is not installed.`n"
-            if ($debug) {
-                Stop-Transcript | Out-Null
-            }
-            exit 2
-        }
-        $Versions = $Available.Version
-        if ($null -eq $CommonVersions) {
-            $CommonVersions = $Versions
-        } else {
-            $CommonVersions = $CommonVersions | Where-Object { $_ -in $Versions }
-        }
+catch {
+    Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Microsoft.Graph.Authentication module`n"
+    Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
+    if ($debug) {
+        Stop-Transcript | Out-Null
     }
-    $TargetVersion = $CommonVersions | Sort-Object -Descending | Select-Object -First 1
+    exit 2
 }
-
-if ($TargetVersion) {
-    Write-Host -ForegroundColor $processmessagecolor "Targeting Microsoft Graph version: $TargetVersion"
-    foreach ($Name in $RequiredModules) {
-        try {
-            # Find the specific module file for this version
-            $ModuleInfo = Get-Module -ListAvailable $Name | Where-Object Version -eq $TargetVersion | Select-Object -First 1
-            if ($ModuleInfo) {
-                Import-Module $ModuleInfo.Path -Force -ErrorAction Stop
-            }
-            else {
-                throw "Module path not found for $Name version $TargetVersion"
-            }
-        }
-        catch {
-            Write-Host -ForegroundColor $errormessagecolor "[002] - Failed to load $Name version $TargetVersion`n"
-            Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
-            Write-Warning "A restart of the PowerShell session is likely required to clear loaded assemblies."
-            if ($debug) {
-                Stop-Transcript | Out-Null
-            }
-            exit 2
-        }
-    }
-}
-else {
-    Write-Warning "Could not find a common version for all modules. Attempting to load latest available..."
-    foreach ($Module in $RequiredModules) {
-        try {
-            Import-Module $Module -Force -ErrorAction Stop
-        }
-        catch {
-            Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Microsoft Graph PowerShell module`n"
-            Write-Host -ForegroundColor $errormessagecolor $_.Exception.Message
-            if ($debug) {
-                Stop-Transcript | Out-Null
-            }
-            exit 2
-        }
-    }
-}
-
-write-host -foregroundcolor $processmessagecolor "Microsoft Graph PowerShell module loaded"
+write-host -foregroundcolor $processmessagecolor "Microsoft.Graph.Authentication module loaded"
 
 ## Connect to Office 365 admin service
 write-host -foregroundcolor $processmessagecolor "Connecting to Microsoft 365 Admin service"
@@ -295,39 +262,11 @@ try {
         }
     }
     
-    # Method 2: Use Graph cmdlet to get organization details
-    if (-not $tenantname) {
-        try {
-            Write-Host -ForegroundColor $processmessagecolor "Querying organization using Get-MgOrganization..."
-            
-            # Need to import the Organizations module if not already loaded
-            if (-not (Get-Module -Name Microsoft.Graph.Identity.DirectoryManagement)) {
-                $ModuleInfo = Get-Module -ListAvailable Microsoft.Graph.Identity.DirectoryManagement | Where-Object Version -eq $TargetVersion | Select-Object -First 1
-                if ($ModuleInfo) {
-                    Import-Module $ModuleInfo.Path -Force -ErrorAction Stop
-                }
-            }
-            
-            $org = Get-MgOrganization -ErrorAction Stop
-            if ($org.VerifiedDomains) {
-                $onmicrosoftDomain = $org.VerifiedDomains | Where-Object { $_.Name -like "*.onmicrosoft.com" -and $_.IsInitial -eq $true } | Select-Object -First 1
-                if ($onmicrosoftDomain) {
-                    $onname = $onmicrosoftDomain.Name.split(".")
-                    $tenantname = $onname[0]
-                    Write-Host -ForegroundColor $processmessagecolor "Tenant name from Get-MgOrganization: $tenantname"
-                }
-            }
-        }
-        catch {
-            Write-Host -ForegroundColor $warningmessagecolor "Unable to get organization using cmdlet: $_"
-        }
-    }
-    
-    # Method 3: Use REST API to get organization details
+    # Method 2: Use REST API to get organization details
     if (-not $tenantname) {
         try {
             Write-Host -ForegroundColor $processmessagecolor "Querying organization via REST API..."
-            $orgResponse = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/organization" -ErrorAction Stop
+            $orgResponse = Invoke-GraphRequestWithRetry -Method GET -Uri "https://graph.microsoft.com/v1.0/organization"
             
             if ($orgResponse.value -and $orgResponse.value.Count -gt 0) {
                 $org = $orgResponse.value[0]
@@ -346,7 +285,7 @@ try {
         }
     }
     
-    # Method 4: Manual input as last resort
+    # Method 3: Manual input as last resort
     if (-not $tenantname) {
         if (-not $noprompt) {
             Write-Host -ForegroundColor $warningmessagecolor "`nUnable to auto-detect tenant name."
