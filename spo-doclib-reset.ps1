@@ -6,7 +6,8 @@ param(                          ## if no parameter used then login without MFA a
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 
 Description - Reset permissions in a SharePoint document library to all be inherit
-Source - https://github.com/directorcia/patron/blob/master/spo-doclib-reset.txt
+Source - https://github.com/directorcia/patron/blob/master/spo-doclib-reset.ps1
+Documentation - https://github.com/directorcia/Office365/wiki/Resets-the-permissions-on-every-item-in-a-SharePoint-document-library
 
 Prerequisites = 2
 1. Ensure connected to SharePoint PnP  - Use the script https://github.com/directorcia/Office365/blob/master/o365-connect-pnp.ps1
@@ -50,20 +51,25 @@ catch {
     exit 1
 }
 write-host -ForegroundColor $processmessagecolor "Select List"
-$result = $lists | select-object Title, Id | Sort-Object Title | Out-GridView -OutputMode Single -title "Select List"
+$selectedList = $lists | select-object Title, Id | Sort-Object Title | Out-GridView -OutputMode Single -title "Select List"
+if ($null -eq $selectedList) {
+    write-host -ForegroundColor $warningmessagecolor "No list selected. Exiting."
+    if ($debug) { Stop-Transcript | Out-Null }
+    exit 0
+}
 
 write-host -ForegroundColor $processmessagecolor "[Launch] = Read items (this may take some time depending on the number of items in the list)"
-$items=(Get-PnPListItem -List $result.id -pagesize 5000 -Fields "Title","GUID").FieldValues
+$items=(Get-PnPListItem -List $selectedList.id -pagesize 5000 -Fields "Title","GUID","FileRef").FieldValues
 write-host -ForegroundColor $processmessagecolor "[Finish] = Read items"
 Write-Host -ForegroundColor $processmessagecolor "Total Number of List Items: $($items.Count)`n"
 
 write-host -ForegroundColor $processmessagecolor "Reset all permissions on all items to inherit`n"
 if ($prompt) {
     do {
-        $result=read-host -Prompt "`nAre you sure [Y/N]"
-    } until (-not [string]::isnullorempty($result))
-    if ($result -eq 'N' -or $result -eq 'n') {
-        Stop-Transcript | Out-Null
+        $confirm = read-host -Prompt "`nAre you sure [Y/N]"
+    } until (-not [string]::isnullorempty($confirm))
+    if ($confirm -eq 'N' -or $confirm -eq 'n') {
+        if ($debug) { Stop-Transcript | Out-Null }
         exit 2
     }
 }
@@ -73,7 +79,7 @@ foreach ($item in $items) {
     ++$count
     write-host -nonewline "[$count of $totalitems] Id =",$item.ID,"FileRef =",$item.FileRef
     try {
-        Set-PnPListItemPermission -List $result.id -Identity $item.ID -InheritPermissions
+        Set-PnPListItemPermission -List $selectedList.id -Identity $item.ID -InheritPermissions
         write-host -foregroundcolor $processmessagecolor " - Success"
     }
     catch {
