@@ -143,8 +143,8 @@ param(
     Also offers comprehensive cleanup at the end of processing.
 
 .NOTES
-    Author: CIAOPS    Version: 2.11
-    Last Updated: November 2025
+    Author: CIAOPS    Version: 2.12
+    Last Updated: April 2026
     Requires: PowerShell 7.X or higher, Administrator privileges
     
     IMPORTANT: This version removes deprecated Azure AD and MSOnline modules in favor of Microsoft Graph PowerShell SDK
@@ -2511,69 +2511,75 @@ function Start-ModuleProcessing {
             Write-ColorOutput "  Current version: $($versionInfo.LocalVersion)" -Type Info
             if ($versionInfo.MultipleVersionsInstalled) {
                 Write-ColorOutput "  ⚠️ Multiple versions installed" -Type Warning
-                
-                # Offer cleanup option for multiple versions
-                if (-not $CheckOnly -and $SkipVersionCleanup -and $Prompt -and -not $Script:SkipCleanupPrompts) {
+
+                # Always inspect installed versions when duplicates are detected
+                $allVersions = Get-InstalledModule -Name $module.Name -AllVersions -ErrorAction SilentlyContinue |
+                              Sort-Object Version -Descending
+
+                if ($allVersions -and $allVersions.Count -gt 1) {
+                    Write-ColorOutput "  📋 Installed versions: $($allVersions.Version -join ', ')" -Type Info
+                }
+
+                # Default behavior: enforce latest-only maintenance immediately
+                if (-not $CheckOnly -and -not $SkipVersionCleanup) {
+                    Write-ColorOutput "  🧹 Enforcing latest-only cleanup for $($module.Name)..." -Type Process
+                    $cleanupResult = Remove-OldModuleVersions -ModuleName $module.Name -KeepLatestOnly
+
+                    if ($cleanupResult.Success -and $cleanupResult.RemovedCount -gt 0) {
+                        Write-ColorOutput "  ✅ Removed $($cleanupResult.RemovedCount) old version(s) - only the latest version remains" -Type Process
+                        Write-ColorOutput "  📋 Kept version: $($cleanupResult.KeptVersions -join ', ')" -Type Info
+                        $versionInfo.MultipleVersionsInstalled = $false
+                    } elseif ($cleanupResult.Success) {
+                        Write-ColorOutput "  ℹ️ No old versions were removed (module may currently be in use)" -Type Info
+                    } else {
+                        Write-ColorOutput "  ⚠️ Cleanup failed: $($cleanupResult.ErrorMessage)" -Type Warning
+                    }
+                }
+                elseif (-not $CheckOnly -and $SkipVersionCleanup -and $Prompt -and -not $Script:SkipCleanupPrompts) {
                     Write-ColorOutput "  💡 Multiple versions detected for $($module.Name)" -Type Info
-                    
-                    # Get all installed versions for display
-                    $allVersions = Get-InstalledModule -Name $module.Name -AllVersions -ErrorAction SilentlyContinue | 
-                                  Sort-Object Version -Descending
-                    
+
                     if ($allVersions -and $allVersions.Count -gt 1) {
-                        Write-ColorOutput "  📋 Installed versions:" -Type Info
-                        foreach ($version in $allVersions) {
-                            $indicator = if ($version.Version -eq $versionInfo.LocalVersion) { " (current)" } else { "" }
-                            Write-ColorOutput "    • $($version.Version)$indicator" -Type Info
-                        }
-                        
                         # Interactive prompt for cleanup
                         $cleanupChoice = $null
-                        if (-not $Prompt) {
-                            # Auto-cleanup mode - inform user but don't prompt
-                            Write-ColorOutput "  🔧 Automatic cleanup will remove old versions after any updates" -Type Info
-                        } else {
-                            # Interactive mode - ask user
-                            Write-ColorOutput "  🧹 Would you like to clean up old versions now?" -Type Warning
-                            Write-ColorOutput "     This will keep only the latest version ($($versionInfo.LocalVersion))" -Type Info
-                            
-                            do {
-                                $cleanupChoice = Read-Host "  Clean up old versions? (Y/N/S for Skip all prompts)"
-                                $cleanupChoice = $cleanupChoice.Trim().ToUpper()
-                                
-                                if ($cleanupChoice -eq 'S') {
-                                    # Skip all future prompts for this session
-                                    Write-ColorOutput "  ⏭️ Skipping cleanup prompts for remaining modules" -Type Warning
-                                    $Script:SkipCleanupPrompts = $true
-                                    break
-                                }
-                            } while ($cleanupChoice -notin @('Y', 'N', 'S'))
-                            
-                            # Perform cleanup if requested
-                            if ($cleanupChoice -eq 'Y') {
-                                Write-ColorOutput "  🧹 Cleaning up old versions of $($module.Name)..." -Type Process
-                                $cleanupResult = Remove-OldModuleVersions -ModuleName $module.Name -KeepLatestOnly
-                                
-                                if ($cleanupResult.Success -and $cleanupResult.RemovedCount -gt 0) {
-                                    Write-ColorOutput "  ✅ Removed $($cleanupResult.RemovedCount) old version(s)" -Type Process
-                                    Write-ColorOutput "  📋 Kept version: $($cleanupResult.KeptVersions -join ', ')" -Type Info
-                                } elseif ($cleanupResult.Success) {
-                                    Write-ColorOutput "  ℹ️ No old versions were removed (may be in use)" -Type Info
-                                } else {
-                                    Write-ColorOutput "  ⚠️ Cleanup failed: $($cleanupResult.ErrorMessage)" -Type Warning
-                                }
-                            } elseif ($cleanupChoice -eq 'N') {
-                                Write-ColorOutput "  ⏭️ Keeping all versions as requested" -Type Info
+                        Write-ColorOutput "  🧹 Would you like to clean up old versions now?" -Type Warning
+                        Write-ColorOutput "     This will keep only the latest version ($($versionInfo.LocalVersion))" -Type Info
+
+                        do {
+                            $cleanupChoice = Read-Host "  Clean up old versions? (Y/N/S for Skip all prompts)"
+                            $cleanupChoice = $cleanupChoice.Trim().ToUpper()
+
+                            if ($cleanupChoice -eq 'S') {
+                                # Skip all future prompts for this session
+                                Write-ColorOutput "  ⏭️ Skipping cleanup prompts for remaining modules" -Type Warning
+                                $Script:SkipCleanupPrompts = $true
+                                break
                             }
+                        } while ($cleanupChoice -notin @('Y', 'N', 'S'))
+
+                        # Perform cleanup if requested
+                        if ($cleanupChoice -eq 'Y') {
+                            Write-ColorOutput "  🧹 Cleaning up old versions of $($module.Name)..." -Type Process
+                            $cleanupResult = Remove-OldModuleVersions -ModuleName $module.Name -KeepLatestOnly
+
+                            if ($cleanupResult.Success -and $cleanupResult.RemovedCount -gt 0) {
+                                Write-ColorOutput "  ✅ Removed $($cleanupResult.RemovedCount) old version(s)" -Type Process
+                                Write-ColorOutput "  📋 Kept version: $($cleanupResult.KeptVersions -join ', ')" -Type Info
+                            } elseif ($cleanupResult.Success) {
+                                Write-ColorOutput "  ℹ️ No old versions were removed (may be in use)" -Type Info
+                            } else {
+                                Write-ColorOutput "  ⚠️ Cleanup failed: $($cleanupResult.ErrorMessage)" -Type Warning
+                            }
+                        } elseif ($cleanupChoice -eq 'N') {
+                            Write-ColorOutput "  ⏭️ Keeping all versions as requested" -Type Info
                         }
                     }
                 } elseif ($CheckOnly) {
                     # In check-only mode, just show the versions
-                    $allVersions = Get-InstalledModule -Name $module.Name -AllVersions -ErrorAction SilentlyContinue | 
-                                  Sort-Object Version -Descending
                     if ($allVersions -and $allVersions.Count -gt 1) {
                         Write-ColorOutput "  📋 Installed versions: $($allVersions.Version -join ', ')" -Type Info
                     }
+                } else {
+                    Write-ColorOutput "  ⏭️ Version cleanup skipped by parameter - multiple versions will be preserved" -Type Warning
                 }
             }
         } else {
@@ -2660,6 +2666,19 @@ function Start-ModuleProcessing {
         }
         
         Write-ColorOutput ""
+    }
+
+    # Final pass to ensure processed modules are maintained in a latest-only state
+    if (-not $CheckOnly -and -not $SkipVersionCleanup) {
+        Write-ColorOutput "" 
+        Write-ColorOutput "🧹 Final latest-only cleanup verification..." -Type System
+
+        foreach ($module in $Script:FilteredModuleList) {
+            $finalCleanupResult = Remove-OldModuleVersions -ModuleName $module.Name -KeepLatestOnly
+            if (-not $finalCleanupResult.Success) {
+                Write-ColorOutput "  ⚠️ Final cleanup could not fully complete for $($module.Name): $($finalCleanupResult.ErrorMessage)" -Type Warning
+            }
+        }
     }
     
     # Display summary
