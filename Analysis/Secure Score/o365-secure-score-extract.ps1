@@ -250,6 +250,10 @@ function Get-SecureScoreData {
     param([int]$HistoryCount = 5) # Number of historical records to retrieve
     Write-Debug "[Get-SecureScoreData] Collecting Secure Score data (retrieving $HistoryCount historical records)"
     $scores = Invoke-GraphCollection -Uri "https://graph.microsoft.com/beta/security/secureScores?`$top=$HistoryCount&`$orderby=createdDateTime%20desc"
+    if (-not $scores -or @($scores).Count -eq 0) {
+        Write-Warn "No Secure Score data returned from Graph API"
+        return [pscustomobject]@{ Latest = $null; History = @() }
+    }
     $latest = $scores | Sort-Object createdDateTime -Descending | Select-Object -First 1
     return [pscustomobject]@{
         Latest = $latest
@@ -262,10 +266,12 @@ function Get-SecureScoreControls {
     Write-Debug "[Get-SecureScoreControls] Collecting Secure Score control profiles"
     $controls = Invoke-GraphCollection -Uri "https://graph.microsoft.com/beta/security/secureScoreControlProfiles?`$top=200"
     # Flag likely gaps so they can be prioritized
-    # Note: Check if ANY controlStateUpdates have state "completed"; if none, control is open
+    # A control is "open" only when it has no state updates marking it as addressed in any way.
+    # Exclude: completed, ignored, thirdParty, riskAccepted, alternativeMitigation
+    $addressedStates = @("completed", "ignored", "thirdParty", "riskAccepted", "alternativeMitigation")
     $openControls = $controls | Where-Object {
         $_.tier -ne "informational" -and
-        ($_.controlStateUpdates | Where-Object { $_.state -eq "completed" }).Count -eq 0
+        ($_.controlStateUpdates | Where-Object { $_.state -in $addressedStates }).Count -eq 0
     }
     return [pscustomobject]@{
         All = $controls
@@ -309,14 +315,15 @@ function Get-SecurityDefaultsStatus {
 
 
 function Get-MfaRegistrationSummary {
-    # Retrieves MFA registration summary for the last 30 days
+    # Retrieves MFA registration activity for the last 30 days with full pagination support.
     # NOTE: This endpoint is currently only available in beta API, not v1.0
     Write-Debug "[Get-MfaRegistrationSummary] Collecting MFA registration summary"
     try {
         # API requires a period argument (d1, d7, d30 supported)
         # Endpoint: /reports/authenticationMethods/userRegistrationActivity(period='{period}')
-        $summary = Invoke-MgGraphRequestWithRetry -Uri "https://graph.microsoft.com/beta/reports/authenticationMethods/userRegistrationActivity(period='d30')"
-        return $summary.value
+        # Use Invoke-GraphCollection to follow @odata.nextLink for large tenants
+        $records = Invoke-GraphCollection -Uri "https://graph.microsoft.com/beta/reports/authenticationMethods/userRegistrationActivity(period='d30')" -AllowPartialResults
+        return $records
     } catch {
         Write-Warn "Could not retrieve MFA registration summary: $($_.Exception.Message)"
         return @()
@@ -575,7 +582,7 @@ Write-Debug "[Main] Security data object finalized with collection timestamp"
 
 # Save full data file
 Write-Info "Saving full data to: $DataFile"
-$securityData | ConvertTo-Json -Depth 10 | Out-File -FilePath $DataFile -Encoding UTF8
+$securityData | ConvertTo-Json -Depth 10 | Out-File -FilePath $DataFile -Encoding UTF8 -Force
 $fileSize = (Get-Item $DataFile).Length
 $fileSizeKB = [math]::Round($fileSize / 1KB, 2)
 Write-Debug "[Main] Full data file saved: $DataFile ($fileSizeKB KB)"
@@ -599,7 +606,7 @@ if ($Compact) {
         $summarizedData | ConvertTo-Json -Depth 10 | Out-File -FilePath $compactFile -Encoding UTF8 -Force
         $compactSize = (Get-Item $compactFile).Length
         $compactSizeKB = [math]::Round($compactSize / 1KB, 2)
-        $reductionPercent = [math]::Round((1 - ($compactSize / $fileSize)) * 100, 1)
+        $reductionPercent = if ($fileSize -gt 0) { [math]::Round((1 - ($compactSize / $fileSize)) * 100, 1) } else { 0 }
         Write-Debug "[Main] Compact data file saved: $compactFile ($compactSizeKB KB, $reductionPercent% smaller)"
         Write-Host ""
         Write-Host "✓ Compact data file saved" -ForegroundColor Green

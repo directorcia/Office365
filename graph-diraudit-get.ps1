@@ -1,8 +1,42 @@
-param(
-    [switch]$debug = $false, ## if -debug parameter, log transcript
+<#
+.SYNOPSIS
+    Retrieves and reports directory audit records from a Microsoft 365 tenant using Microsoft Graph API.
 
-    [switch]$csv = $false, ## export to CSV
-    [switch]$prompt = $false, ## if -prompt parameter used user prompted for input
+.DESCRIPTION
+    Connects to Microsoft Graph and retrieves directory audit logs. Displays results in a formatted table
+    and optionally exports to CSV. Handles pagination automatically for large result sets.
+
+.PARAMETER Debug
+    If specified, logs script activity to a transcript file.
+
+.PARAMETER Csv
+    If specified, exports audit records to a CSV file.
+
+.PARAMETER Prompt
+    If specified, prompts user to confirm the connected account before proceeding.
+
+.PARAMETER PageSize
+    Number of records to retrieve per API call. Default is 1000 (maximum).
+
+.PARAMETER OutputFile
+    Path to the output CSV file. Default is "..\graph-diraudit.csv".
+
+.EXAMPLE
+    .\graph-diraudit-get.ps1 -Csv -Debug
+
+.NOTES
+    Prerequisites: MS Graph PowerShell module must be installed
+    Requires: AuditLog.Read.All and Directory.Read.All scopes
+#>
+
+param(
+    [switch]$debug = $false,
+
+    [switch]$csv = $false,
+    [switch]$prompt = $false,
+
+    [ValidateRange(1, 1000)]
+    [int]$PageSize = 1000,
 
     [ValidateNotNullOrEmpty()]
     [string]$OutputFile = "..\graph-diraudit.csv"
@@ -37,6 +71,15 @@ $warningmessagecolor = "yellow"
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+## Validate output file path if CSV export is requested
+if ($csv) {
+    $outputDir = Split-Path -Path $OutputFile -Parent
+    if (-not (Test-Path -Path $outputDir -PathType Container)) {
+        Write-Host -ForegroundColor $errormessagecolor "Output directory does not exist: $outputDir"
+        exit 1
+    }
+}
+
 function Confirm-YesResponse {
     param(
         [Parameter(Mandatory = $true)]
@@ -60,7 +103,7 @@ try {
     Connect-MgGraph -Scopes $scopes -NoWelcome | Out-Null
 
     $graphcontext = Get-MgContext
-    write-host -foregroundcolor $processmessagecolor "Connected account =", $graphcontext.Account
+    write-host -foregroundcolor $processmessagecolor "Connected account = $($graphcontext.Account)"
 
     if ($prompt) {
         do {
@@ -78,22 +121,30 @@ try {
 
     # Get all records from directory audit
     # https://learn.microsoft.com/en-us/graph/api/directoryaudit-list?view=graph-rest-1.0&tabs=http
-    $url = "https://graph.microsoft.com/v1.0/auditLogs/directoryAudits?`$top=1000"
+    $url = "https://graph.microsoft.com/v1.0/auditLogs/directoryAudits?`$top=$PageSize"
     $results = [System.Collections.ArrayList]::new()
-    write-host -foregroundcolor $processmessagecolor "Make Graph request for audit records"
+    $pageCount = 0
+    write-host -foregroundcolor $processmessagecolor "Retrieving directory audit records (page size: $PageSize)...`n"
 
     while ($null -ne $url) {
-        $response = Invoke-MgGraphRequest -Uri $url -Method GET
-        foreach ($item in @($response.value)) {
-            [void]$results.Add($item)
-        }
+        try {
+            $pageCount++
+            $response = Invoke-MgGraphRequest -Uri $url -Method GET -ErrorAction Stop
+            $pageResultCount = @($response.value).Count
+            $results.AddRange([object[]]$response.value)
+            write-host -foregroundcolor $processmessagecolor "[Page $pageCount] Retrieved $pageResultCount records (Total: $($results.Count))"
 
-        $nextLinkProperty = $response.PSObject.Properties['@odata.nextLink']
-        if ($null -ne $nextLinkProperty -and -not [string]::IsNullOrWhiteSpace([string]$nextLinkProperty.Value)) {
-            $url = [string]$nextLinkProperty.Value
+            $nextLinkProperty = $response.PSObject.Properties['@odata.nextLink']
+            if ($null -ne $nextLinkProperty -and -not [string]::IsNullOrWhiteSpace([string]$nextLinkProperty.Value)) {
+                $url = [string]$nextLinkProperty.Value
+            }
+            else {
+                $url = $null
+            }
         }
-        else {
-            $url = $null
+        catch {
+            Write-Host -ForegroundColor $errormessagecolor "Error retrieving page $pageCount from Graph API: $($_.Exception.Message)"
+            throw
         }
     }
 
@@ -101,6 +152,8 @@ try {
         Write-Host -ForegroundColor $warningmessagecolor "No directory audit records returned."
     }
     else {
+        write-host -foregroundcolor $processmessagecolor "`nProcessing $($results.Count) audit records...`n"
+        
         # Output the directory audit records sorted by newest first.
         $sortedResults = $results | Sort-Object ActivityDateTime -Descending
         $sortedResults |
@@ -108,20 +161,25 @@ try {
             Format-Table -AutoSize
 
         if ($csv) {
-            write-host -foregroundcolor $processmessagecolor "`nOutput to CSV", $OutputFile
-            $sortedResults | Export-Csv $OutputFile -NoTypeInformation -Encoding UTF8
+            write-host -foregroundcolor $processmessagecolor "Exporting $($results.Count) records to CSV: $OutputFile"
+            $sortedResults | Export-Csv $OutputFile -NoTypeInformation -Encoding UTF8 -Force
+            write-host -foregroundcolor $processmessagecolor "CSV export completed successfully"
         }
     }
 
     write-host -foregroundcolor $systemmessagecolor "`nGraph directory audit script - Finished"
 }
 catch {
-    Write-Host -ForegroundColor $errormessagecolor "`n$($_.Exception.Message)"
+    Write-Host -ForegroundColor $errormessagecolor "`nError occurred during script execution:"
+    Write-Host -ForegroundColor $errormessagecolor "  Exception: $($_.Exception.GetType().Name)"
+    Write-Host -ForegroundColor $errormessagecolor "  Message: $($_.Exception.Message)"
+    Write-Host -ForegroundColor $errormessagecolor "  Line: $($_.InvocationInfo.ScriptLineNumber)"
     exit 1
 }
 finally {
     try {
         Disconnect-MgGraph | Out-Null
+        write-host -foregroundcolor $processmessagecolor "Disconnected from Graph"
     }
     catch {
         # Ignore disconnect failures so script can complete with original error state.

@@ -53,12 +53,12 @@ param(
 #endregion
 #region Script Defaults & Globals
 Write-Host "Initializing Exchange Online extraction script..." -ForegroundColor Green
-if (-not $global:ErrorCount) { $global:ErrorCount = 0 }
-if (-not $global:WarningCount) { $global:WarningCount = 0 }
-if (-not $global:ErrorList) { $global:ErrorList = @() }
-if (-not $global:WarningList) { $global:WarningList = @() }
-if (-not $global:CategoryTimings) { $global:CategoryTimings = @{} }
-if (-not $global:ExportMetadata) { $global:ExportMetadata = @{} }
+$global:ErrorCount = 0
+$global:WarningCount = 0
+$global:ErrorList = [System.Collections.Generic.List[string]]::new()
+$global:WarningList = [System.Collections.Generic.List[string]]::new()
+$global:CategoryTimings = @{}
+$global:ExportMetadata = @{}
 #endregion
 #region Helper Functions
 function Invoke-WithRetry {
@@ -124,7 +124,7 @@ function Write-Warn {
     param([Parameter(Mandatory)][string]$Message)
     Write-Warning $Message
     $global:WarningCount++
-    $global:WarningList += $Message
+    $global:WarningList.Add($Message)
     Write-Debug "[Write-Warn] $Message"
 }
 
@@ -150,7 +150,7 @@ function Write-Err {
     param([Parameter(Mandatory)][string]$Message)
     Write-Error $Message
     $global:ErrorCount++
-    $global:ErrorList += $Message
+    $global:ErrorList.Add($Message)
     Write-Debug "[Write-Err] $Message"
 }
 
@@ -413,7 +413,7 @@ Write-Host "MaxRetries: $MaxRetries" -ForegroundColor Cyan
 Write-Host "" 
 Write-Host "Categories to collect:"
 foreach ($cat in @(
-    "Organization config", "Mailboxes", "Mailbox permissions", "Transport rules", "Retention policies", "Retention policy tags", "Mobile device policies", "Inbound connectors", "Outbound connectors", "Accepted domains", "Remote domains", "Journaling rules", "Anti-spam policies", "Anti-malware policies", "Safe Links policies", "Safe Attachments policies", "Sharing policies", "Email address policies", "OWA policies", "Anti-phishing policies", "ATP policies", "Distribution groups", "Unified groups"
+    "Organization config", "Mailboxes", "Mailbox permissions", "Transport rules", "Retention policies", "Retention policy tags", "Mobile device policies", "Inbound connectors", "Outbound connectors", "Accepted domains", "Remote domains", "Journaling rules", "Anti-spam policies", "Anti-malware policies", "Safe Links policies", "Safe Attachments policies", "Sharing policies", "Email address policies", "OWA policies", "Anti-phishing policies", "ATP policies", "Distribution groups", "Unified groups", "DKIM signing config", "Connection filter policy", "Outbound spam policy", "Admin audit log config", "Transport config", "IRM configuration", "CAS mailbox settings", "Role groups"
 )) { Write-Host "  - $cat" -ForegroundColor Yellow }
 Write-Host "" 
 #endregion
@@ -445,7 +445,15 @@ $categories = @(    # NOTE: Some operations below use N+1 query patterns (like M
     @{ Name = "Anti-phishing policies";   Cmd = { Get-AntiPhishPolicy }; Desc = "Anti-phishing policies."; Critical = $true },
     @{ Name = "ATP policies";             Cmd = { Get-AtpPolicyForO365 }; Desc = "ATP (Advanced Threat Protection) policies for O365."; Critical = $true },
     @{ Name = "Distribution groups";      Cmd = { Get-DistributionGroup | ForEach-Object { $group = $_; [PSCustomObject]@{ Group = $group; Members = Get-DistributionGroupMember -Identity $group.Identity } } }; Desc = "Distribution groups with members (N+1 query - may be slow for large tenants)."; Critical = $false },
-    @{ Name = "Unified groups";           Cmd = { Get-UnifiedGroup | ForEach-Object { $group = $_; [PSCustomObject]@{ Group = $group; Members = Get-UnifiedGroupLinks -Identity $group.Identity -LinkType Members } } }; Desc = "Unified groups (Microsoft 365 Groups) with members."; Critical = $false }
+    @{ Name = "Unified groups";           Cmd = { Get-UnifiedGroup | ForEach-Object { $group = $_; [PSCustomObject]@{ Group = $group; Members = Get-UnifiedGroupLinks -Identity $group.Identity -LinkType Members } } }; Desc = "Unified groups (Microsoft 365 Groups) with members."; Critical = $false },
+    @{ Name = "DKIM signing config";      Cmd = { Get-DkimSigningConfig }; Desc = "DKIM signing configuration for all domains."; Critical = $true },
+    @{ Name = "Connection filter policy"; Cmd = { Get-HostedConnectionFilterPolicy }; Desc = "IP allow/block lists for inbound mail."; Critical = $true },
+    @{ Name = "Outbound spam policy";     Cmd = { Get-HostedOutboundSpamFilterPolicy }; Desc = "Outbound spam filter policies."; Critical = $true },
+    @{ Name = "Admin audit log config";   Cmd = { Get-AdminAuditLogConfig }; Desc = "Admin audit log settings."; Critical = $true },
+    @{ Name = "Transport config";         Cmd = { Get-TransportConfig }; Desc = "Global transport/mail flow configuration."; Critical = $true },
+    @{ Name = "IRM configuration";        Cmd = { Get-IRMConfiguration }; Desc = "Information Rights Management (IRM/AIP) settings."; Critical = $false },
+    @{ Name = "CAS mailbox settings";     Cmd = { Get-CASMailbox -ResultSize Unlimited }; Desc = "Client Access Settings per mailbox (protocols, ActiveSync, OWA, etc.)."; Critical = $false },
+    @{ Name = "Role groups";              Cmd = { Get-RoleGroup | ForEach-Object { $rg = $_; [PSCustomObject]@{ RoleGroup = $rg; Members = Get-RoleGroupMember -Identity $rg.Identity -ErrorAction SilentlyContinue } } }; Desc = "Exchange RBAC role groups with members."; Critical = $true }
 )
 
 $results = @{}
@@ -519,6 +527,16 @@ $emailAddrPolicies  = $results["Email address policies"]
 $owaPolicies        = $results["OWA policies"]
 $antiPhishingPolicies = $results["Anti-phishing policies"]
 $atpPolicies        = $results["ATP policies"]
+$distributionGroups = $results["Distribution groups"]
+$unifiedGroups      = $results["Unified groups"]
+$dkimConfig         = $results["DKIM signing config"]
+$connectionFilter   = $results["Connection filter policy"]
+$outboundSpam       = $results["Outbound spam policy"]
+$adminAuditLog      = $results["Admin audit log config"]
+$transportConfig    = $results["Transport config"]
+$irmConfig          = $results["IRM configuration"]
+$casMailboxes       = $results["CAS mailbox settings"]
+$roleGroups         = $results["Role groups"]
 #endregion
 
 
@@ -546,15 +564,23 @@ $summary = [pscustomobject]@{
     OWAPolicies = $owaPolicies # All properties, all items
     AntiPhishingPolicies = $antiPhishingPolicies # All properties, all items
     ATPPolicies = $atpPolicies # All properties, all items
-    DistributionGroups = $results['Distribution groups'] # All properties, all items
-    UnifiedGroups = $results['Unified groups'] # All properties, all items
+    DistributionGroups = $distributionGroups # All properties, all items
+    UnifiedGroups = $unifiedGroups # All properties, all items
+    DkimSigningConfig = $dkimConfig # All properties, all items
+    ConnectionFilterPolicy = $connectionFilter # All properties, all items
+    OutboundSpamPolicy = $outboundSpam # All properties, all items
+    AdminAuditLogConfig = $adminAuditLog # All properties, all items
+    TransportConfig = $transportConfig # All properties, all items
+    IRMConfiguration = $irmConfig # All properties, all items
+    CASMailboxSettings = $casMailboxes # All properties, all items
+    RoleGroups = $roleGroups # All properties, all items
     ErrorCount = $global:ErrorCount
     WarningCount = $global:WarningCount
     Timings = $global:CategoryTimings
     ExportMetadata = $global:ExportMetadata
     CollectionDate = (Get-Date).ToString('o')
     CollectedBy = $TenantDomain
-    ScriptVersion = "1.1"
+    ScriptVersion = "1.2"
 }
 $summaryFile = Join-Path $OutputDir ("exo_summary_{0}_{1}.json" -f $sanitizedDomain, $timestamp)
 Save-Json -Data $summary -FilePath $summaryFile -Category "Summary" -JsonDepth $JsonDepth
@@ -601,12 +627,26 @@ $compactSummary = [pscustomobject]@{
     AntiPhishingPolicies = $antiPhishingPolicies | Select-Object -First 25 Name,Enabled,Action,IsDefault,AuthenticationMethods
     ATPPolicies = $atpPolicies | Select-Object -First 25 Name,IsEnabled,Action,RedirectUrl,IsDefault
     DistributionGroupsSummary = [pscustomobject]@{
-        TotalCount = (Get-SafeCount $results['Distribution groups'])
-        Sample = ($results['Distribution groups'] | Select-Object -First 75 @{Name='GroupName';Expression={$_.Group.DisplayName}},@{Name='MemberCount';Expression={($_.Members | Measure-Object).Count}},@{Name='Members';Expression={($_.Members | Select-Object -First 10 DisplayName,PrimarySmtpAddress)}})
+        TotalCount = (Get-SafeCount $distributionGroups)
+        Sample = ($distributionGroups | Select-Object -First 75 @{Name='GroupName';Expression={$_.Group.DisplayName}},@{Name='MemberCount';Expression={($_.Members | Measure-Object).Count}},@{Name='Members';Expression={($_.Members | Select-Object -First 10 DisplayName,PrimarySmtpAddress)}})
     }
     UnifiedGroupsSummary = [pscustomobject]@{
-        TotalCount = (Get-SafeCount $results['Unified groups'])
-        Sample = ($results['Unified groups'] | Select-Object -First 75 @{Name='GroupName';Expression={$_.Group.DisplayName}},@{Name='MemberCount';Expression={($_.Members | Measure-Object).Count}},@{Name='Members';Expression={($_.Members | Select-Object -First 10 DisplayName,PrimarySmtpAddress)}})
+        TotalCount = (Get-SafeCount $unifiedGroups)
+        Sample = ($unifiedGroups | Select-Object -First 75 @{Name='GroupName';Expression={$_.Group.DisplayName}},@{Name='MemberCount';Expression={($_.Members | Measure-Object).Count}},@{Name='Members';Expression={($_.Members | Select-Object -First 10 DisplayName,PrimarySmtpAddress)}})
+    }
+    DkimSigningConfig = $dkimConfig | Select-Object -First 25 Domain,Enabled,Status,KeySize,Selector1PublicKey,Selector2PublicKey
+    ConnectionFilterPolicy = $connectionFilter | Select-Object -First 10 Name,IPAllowList,IPBlockList,EnableSafeList,AdminDisplayName
+    OutboundSpamPolicy = $outboundSpam | Select-Object -First 10 Name,IsDefault,ActionWhenThresholdReached,NotifyOutboundSpam,NotifyOutboundSpamRecipients
+    AdminAuditLogConfig = $adminAuditLog | Select-Object AdminAuditLogEnabled,AdminAuditLogCmdlets,AdminAuditLogParameters,UnifiedAuditLogIngestionEnabled
+    TransportConfig = $transportConfig | Select-Object MaxSendSize,MaxReceiveSize,MaxRecipientEnvelopeLimit,TLSReceiveDomainSecureList,TLSSendDomainSecureList,ExternalDsnSendHtml
+    IRMConfiguration = $irmConfig | Select-Object InternalLicensingEnabled,ExternalLicensingEnabled,AzureRMSLicensingEnabled,SearchEnabled,TransportDecryptionSetting
+    CASMailboxSummary = [pscustomobject]@{
+        TotalCount = (Get-SafeCount $casMailboxes)
+        Sample = ($casMailboxes | Select-Object -First 100 DisplayName,ActiveSyncEnabled,OWAEnabled,ImapEnabled,PopEnabled,MAPIEnabled,EWSEnabled)
+    }
+    RoleGroupsSummary = [pscustomobject]@{
+        TotalCount = (Get-SafeCount $roleGroups)
+        Sample = ($roleGroups | Select-Object -First 50 @{Name='RoleGroup';Expression={$_.RoleGroup.Name}},@{Name='MemberCount';Expression={($_.Members | Measure-Object).Count}},@{Name='Members';Expression={($_.Members | Select-Object -First 10 Name)}})
     }
     Timings = $global:CategoryTimings
 }
@@ -630,8 +670,10 @@ if ($Compact) {
             TotalMailboxes = (Get-SafeCount $mailboxes)
             TotalTransportRules = (Get-SafeCount $transportRules)
             TotalAcceptedDomains = (Get-SafeCount $acceptedDomains)
-            TotalDistributionGroups = (Get-SafeCount $results['Distribution groups'])
-            TotalUnifiedGroups = (Get-SafeCount $results['Unified groups'])
+            TotalDistributionGroups = (Get-SafeCount $distributionGroups)
+            TotalUnifiedGroups = (Get-SafeCount $unifiedGroups)
+            TotalRoleGroups = (Get-SafeCount $roleGroups)
+            DkimDomainsEnabled = @($dkimConfig | Where-Object { $_.Enabled }).Count
         }
         SecurityPolicies = @{
             AntiSpam = (Get-SafeCount $antiSpam)
@@ -639,12 +681,15 @@ if ($Compact) {
             SafeLinks = (Get-SafeCount $safeLinks)
             SafeAttachments = (Get-SafeCount $safeAttachments)
             AntiPhishing = (Get-SafeCount $antiPhishingPolicies)
+            OutboundSpam = (Get-SafeCount $outboundSpam)
         }
         CriticalCategories = @{
             OrganizationConfigured = ($null -ne $orgConfig)
             MailboxesCollected = ($null -ne $mailboxes)
             DomainsConfigured = (Get-SafeCount $acceptedDomains)
             SecurityPoliciesActive = @($antiSpam, $antiMalware, $antiPhishingPolicies, $atpPolicies | Where-Object { $null -ne $_ }).Count
+            AdminAuditLogEnabled = ($null -ne $adminAuditLog -and $adminAuditLog.AdminAuditLogEnabled)
+            UnifiedAuditEnabled = ($null -ne $adminAuditLog -and $adminAuditLog.UnifiedAuditLogIngestionEnabled)
         }
     }
     $ultraCompactFile = Join-Path $OutputDir ("exo_summary_{0}_{1}_ultra-compact.json" -f $sanitizedDomain, $timestamp)

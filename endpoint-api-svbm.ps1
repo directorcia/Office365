@@ -8,58 +8,97 @@ Documentation - https://blog.ciaops.com/2021/06/15/using-the-defender-for-endpoi
 
 Prerequisites = 1
 1. Azure AD app setup per - https://blog.ciaops.com/2019/04/17/using-interactive-powershell-to-access-the-microsoft-graph/
-2. Enter the Client Id, Tenant Id and Client Secret into the variable lines ebfore running
+2. Pass Client Id, Tenant Id and Client Secret as parameters when running the script
 
 More scripts available by joining http://www.ciaopspatron.com
 
 #>
 
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$ClientId,
+
+    [Parameter(Mandatory = $true)]
+    [string]$TenantId,
+
+    [Parameter(Mandatory = $true)]
+    [SecureString]$ClientSecret,
+
+    [Parameter(Mandatory = $false)]
+    [string]$CsvOutput
+)
+
 ## Variables
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
-
-# Application (client) ID, tenant ID and secret
-$clientid = "<Update>"
-$tenantid = "<Update>"
-$clientsecret = "<Update>"
+$errormessagecolor   = "red"
 
 Clear-Host
 
-write-host -foregroundcolor $systemmessagecolor "Script started`n"
+Write-Host -ForegroundColor $systemmessagecolor "Script started`n"
 
-# Construct URI
-$uri = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token"
+try {
+    # Decode the secure client secret for the token request body
+    $bstr          = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($ClientSecret)
+    $plainSecret   = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
 
-# Construct Body
-$body = @{
-    client_id     = $clientId
-    scope         = "https://api.securitycenter.microsoft.com/.default"
-    client_secret = $clientSecret
-    grant_type    = "client_credentials"
+    # Construct token URI and body
+    $tokenUri  = "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token"
+    $tokenBody = @{
+        client_id     = $ClientId
+        scope         = "https://api.securitycenter.microsoft.com/.default"
+        client_secret = $plainSecret
+        grant_type    = "client_credentials"
+    }
+
+    Write-Host -ForegroundColor $processmessagecolor "Getting OAuth 2.0 token"
+    $tokenResponse = Invoke-RestMethod -Method Post -Uri $tokenUri -ContentType "application/x-www-form-urlencoded" -Body $tokenBody -ErrorAction Stop
+    $token = $tokenResponse.access_token
+}
+catch {
+    Write-Host -ForegroundColor $errormessagecolor "Failed to acquire token: $($_.Exception.Message)"
+    exit 1
+}
+finally {
+    if ($bstr) { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
 }
 
-write-host -foregroundcolor $processmessagecolor "Get OAuth 2.0 Token"
-# Get OAuth 2.0 Token
-$tokenRequest = Invoke-WebRequest -Method Post -Uri $uri -ContentType "application/x-www-form-urlencoded" -Body $body -UseBasicParsing
+$headers    = @{ Authorization = "Bearer $token" }
+$apiUri     = "https://api.securitycenter.microsoft.com/api/machines/SoftwareVulnerabilitiesByMachine"
+$allResults = [System.Collections.Generic.List[object]]::new()
 
-# Access Token
-$token = ($tokenRequest.Content | ConvertFrom-Json).access_token
+try {
+    Write-Host -ForegroundColor $processmessagecolor "Querying Defender for Endpoint API (with pagination)"
 
-# Graph API call in PowerShell using obtained OAuth token (see other gists for more details)
+    do {
+        $response = Invoke-RestMethod -Method Get -Uri $apiUri -ContentType "application/json" -Headers $headers -ErrorAction Stop
+        if ($response.value) {
+            $allResults.AddRange($response.value)
+        }
+        $apiUri = $response.'@odata.nextLink'
+    } while ($apiUri)
+}
+catch {
+    Write-Host -ForegroundColor $errormessagecolor "API query failed: $($_.Exception.Message)"
+    exit 1
+}
 
-# Specify the URI to call and method
-$uri = "https://api.securitycenter.microsoft.com/api/machines/SoftwareVulnerabilitiesByMachine"
-$method = "GET"
+Write-Host -ForegroundColor $processmessagecolor "Total records returned: $($allResults.Count)"
 
-write-host -foregroundcolor $processmessagecolor "Run Graph API Query"
-# Run Graph API query 
-$query = Invoke-WebRequest -Method $method -Uri $uri -ContentType "application/json" -Headers @{Authorization = "Bearer $token" } -ErrorAction Stop -UseBasicParsing
+$selected = $allResults |
+    Select-Object DeviceName, CveId, LastSeenTimestamp, SoftwareName, SoftwareVendor, SoftwareVersion, VulnerabilitySeverityLevel |
+    Sort-Object DeviceName, LastSeenTimestamp
 
-## Screen output
+$selected | Format-Table -AutoSize
 
-write-host -foregroundcolor $processmessagecolor "Parse results"
-$ConvertedOutput = $query.content | ConvertFrom-Json
+if ($CsvOutput) {
+    try {
+        $selected | Export-Csv -Path $CsvOutput -NoTypeInformation -Encoding UTF8
+        Write-Host -ForegroundColor $processmessagecolor "Results exported to: $CsvOutput"
+    }
+    catch {
+        Write-Host -ForegroundColor $errormessagecolor "CSV export failed: $($_.Exception.Message)"
+    }
+}
 
-$ConvertedOutput.value | select-object Devicename, cveid,lastseentimestamp,softwarename,softwarevendor, softwareversion,vulnerabilityseveritylevel | Sort-Object devicename,lastseentimestamp | format-table
-
-write-host -foregroundcolor $systemmessagecolor "`nScript Completed`n"
+Write-Host -ForegroundColor $systemmessagecolor "`nScript Completed`n"

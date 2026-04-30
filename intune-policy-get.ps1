@@ -1,6 +1,7 @@
 param(
     [switch]$csv = $false,
     [switch]$debug = $false,
+    [ValidateScript({ Test-Path -Path (Split-Path -Path $_ -Parent) -PathType Container })]
     [string]$outputFile = "..\intune-policy-report.csv"
 )
 
@@ -35,6 +36,8 @@ if ($debug) {
 }
 
 function Invoke-WithRetry {
+    # Executes a script block with exponential backoff retry logic on failure
+    # Helps handle transient API errors and throttling
     param(
         [scriptblock]$ScriptBlock,
         [int]$MaxRetries = 3,
@@ -64,14 +67,20 @@ function Get-PolicyObjects {
         [Parameter(Mandatory = $true)]
         [string]$Category,
         [Parameter(Mandatory = $true)]
-        [scriptblock]$Query
+        [scriptblock]$Query,
+        [string]$Uri
     )
 
     $result = [System.Collections.Generic.List[object]]::new()
     $policies = @()
 
     try {
-        $policies = @(Invoke-WithRetry -ScriptBlock $Query)
+        if ($Uri) {
+            $policies = @(Invoke-WithRetry -ScriptBlock { & $Query -Uri $Uri })
+        }
+        else {
+            $policies = @(Invoke-WithRetry -ScriptBlock $Query)
+        }
     }
     catch {
         Write-Host -ForegroundColor $warningmessagecolor "Unable to retrieve ${Category}: $($_.Exception.Message)"
@@ -90,6 +99,7 @@ function Get-PolicyObjects {
 }
 
 function Test-GraphContextHasScopes {
+    # Validates that Graph context is active and has required scopes
     param(
         [Parameter(Mandatory = $true)]
         [string[]]$RequiredScopes,
@@ -115,6 +125,8 @@ function Test-GraphContextHasScopes {
 }
 
 function Get-GraphCollection {
+    # Retrieves paginated results from Microsoft Graph API
+    # Automatically follows @odata.nextLink for complete result sets
     param(
         [Parameter(Mandatory = $true)]
         [string]$Uri
@@ -165,41 +177,44 @@ try {
 
     $allPolicies = [System.Collections.Generic.List[object]]::new()
 
-    $compliancePolicies = Get-PolicyObjects -Category "Intune Compliance" -Query {
-        Get-GraphCollection -Uri "https://graph.microsoft.com/beta/deviceManagement/deviceCompliancePolicies?`$select=displayName"
-    }
-    foreach ($item in $compliancePolicies) { $null = $allPolicies.Add($item) }
+    # Define policy types to retrieve - reduces code repetition
+    $policyTypes = @(
+        @{ Name = "Intune Compliance"; Uri = "https://graph.microsoft.com/beta/deviceManagement/deviceCompliancePolicies?`$select=displayName" },
+        @{ Name = "Intune Configuration"; Uri = "https://graph.microsoft.com/beta/deviceManagement/deviceConfigurations?`$select=displayName" },
+        @{ Name = "Intune App Protection"; Uri = "https://graph.microsoft.com/beta/deviceAppManagement/managedAppPolicies?`$select=displayName" },
+        @{ Name = "Intune App Configuration (Targeted)"; Uri = "https://graph.microsoft.com/beta/deviceAppManagement/targetedManagedAppConfigurations?`$select=displayName" },
+        @{ Name = "Endpoint Policies"; Uri = "https://graph.microsoft.com/beta/deviceManagement/intents?`$select=displayName" }
+    )
 
-    $configurationPolicies = Get-PolicyObjects -Category "Intune Configuration" -Query {
-        Get-GraphCollection -Uri "https://graph.microsoft.com/beta/deviceManagement/deviceConfigurations?`$select=displayName"
+    # Retrieve all policy types
+    foreach ($policyType in $policyTypes) {
+        $policies = Get-PolicyObjects -Category $policyType.Name -Query {
+            param($Uri)
+            Get-GraphCollection -Uri $Uri
+        } -Uri $policyType.Uri
+        
+        foreach ($item in $policies) { 
+            $null = $allPolicies.Add($item) 
+        }
     }
-    foreach ($item in $configurationPolicies) { $null = $allPolicies.Add($item) }
 
-    $appProtectionPolicies = Get-PolicyObjects -Category "Intune App Protection" -Query {
-        Get-GraphCollection -Uri "https://graph.microsoft.com/beta/deviceAppManagement/managedAppPolicies?`$select=displayName"
-    }
-    foreach ($item in $appProtectionPolicies) { $null = $allPolicies.Add($item) }
-
-    $appConfigurationPolicies = Get-PolicyObjects -Category "Intune App Configuration (Targeted)" -Query {
-        Get-GraphCollection -Uri "https://graph.microsoft.com/beta/deviceAppManagement/targetedManagedAppConfigurations?`$select=displayName"
-    }
-    foreach ($item in $appConfigurationPolicies) { $null = $allPolicies.Add($item) }
-
-    $endpointIntentPolicies = Get-PolicyObjects -Category "Endpoint Policies" -Query {
-        Get-GraphCollection -Uri "https://graph.microsoft.com/beta/deviceManagement/intents?`$select=displayName"
-    }
-    foreach ($item in $endpointIntentPolicies) { $null = $allPolicies.Add($item) }
-
-    Write-Host -ForegroundColor $processmessagecolor "`nPolicy summary"
-    $allPolicies |
-        Sort-Object Category, Name |
-        Format-Table Category, Name
+    Write-Host -ForegroundColor $processmessagecolor "`nPolicy Summary"
+    $sortedPolicies = $allPolicies | Sort-Object Category, Name
+    $sortedPolicies | Format-Table -AutoSize Category, Name
+    
+    # Display counts by category
+    Write-Host -ForegroundColor $processmessagecolor "Policy Count by Category:"
+    $allPolicies | Group-Object -Property Category | 
+        Select-Object @{Name='Category'; Expression={$_.Name}}, @{Name='Count'; Expression={$_.Count}} |
+        Sort-Object Category |
+        Format-Table -AutoSize
+    
+    Write-Host -ForegroundColor $processmessagecolor "Total Policies: $($allPolicies.Count)`n"
 
     if ($csv) {
-        Write-Host -ForegroundColor $processmessagecolor "`nOutput to CSV $outputFile"
-        $allPolicies |
-            Sort-Object Category, Name |
-            Export-Csv $outputFile -NoTypeInformation -Encoding UTF8
+        Write-Host -ForegroundColor $processmessagecolor "Exporting to CSV: $outputFile"
+        $sortedPolicies | Export-Csv -Path $outputFile -NoTypeInformation -Encoding UTF8 -Force
+        Write-Host -ForegroundColor $processmessagecolor "Export complete"
     }
 
     Write-Host -ForegroundColor $systemmessagecolor "`nScript finished"

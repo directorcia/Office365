@@ -1,7 +1,39 @@
-param(                        
-    [switch]$debug = $false,    ## if -debug parameter don't prompt for input
-    [switch]$csv = $false,      ## export to CSV
-    [switch]$prompt = $false    ## if -prompt parameter used user prompted for input
+<#
+.SYNOPSIS
+    Retrieves and reports Microsoft 365 license information from a tenant using Microsoft Graph API.
+
+.DESCRIPTION
+    Connects to Microsoft Graph and retrieves subscribed SKU (license) information. Displays available,
+    assigned, and unassigned license counts. Optionally exports license data to CSV format.
+    Automatically retrieves product names from CIAOPS community repository.
+
+.PARAMETER Debug
+    If specified, logs script activity to a transcript file.
+
+.PARAMETER Csv
+    If specified, exports license data to a CSV file.
+
+.PARAMETER Prompt
+    If specified, prompts user to confirm the connected account before proceeding.
+
+.PARAMETER OutputFile
+    Path to the output CSV file. Default is "..\/graph-licenses.csv".
+
+.EXAMPLE
+    .\graph-licenses-get.ps1 -Csv -Debug
+
+.NOTES
+    Prerequisites: MS Graph PowerShell module must be installed
+    Requires: LicenseAssignment.Read.All scope
+#>
+
+param(
+    [switch]$debug = $false,
+    [switch]$csv = $false,
+    [switch]$prompt = $false,
+    
+    [ValidateNotNullOrEmpty()]
+    [string]$OutputFile = "..\graph-licenses.csv"
 )
 <#CIAOPS
 
@@ -29,77 +61,122 @@ $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warningmessagecolor = "yellow"
-$outputFile = "..\graph-licenses.csv"
 
-if ($debug) {
-    # create a log file of process if option enabled
-    write-host "Script activity logged at .\graph-licenses-get.txt"
-    start-transcript ".\graph-licenses-get.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
-}
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
 
-Clear-Host
-write-host -foregroundcolor $systemmessagecolor "Tenant license report script - Started`n"
-write-host -foregroundcolor $processmessagecolor "Connect to MS Graph"
-# https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
-$scopes = "LicenseAssignment.Read.All"
-connect-mggraph -scopes $scopes -nowelcome | Out-Null
-$graphcontext = Get-MgContext
-write-host -foregroundcolor $processmessagecolor "Connected account =", $graphcontext.Account
-if ($prompt) {
-    do {
-        $response = read-host -Prompt "`nIs this correct? [Y/N]"
-    } until (-not [string]::isnullorempty($response))
-    if ($response -ne "Y" -and $response -ne "y") {
-        Disconnect-MgGraph | Out-Null
-        write-host -foregroundcolor $warningmessagecolor "`n[001] Disconnected from current Graph environment. Re-run script to login to desired environment"
+## Validate output file path if CSV export is requested
+if ($csv) {
+    $outputDir = Split-Path -Path $OutputFile -Parent
+    if (-not (Test-Path -Path $outputDir -PathType Container)) {
+        Write-Host -ForegroundColor $errormessagecolor "Output directory does not exist: $outputDir"
         exit 1
     }
-    else {
-        write-host
-    }
-}
-If ($prompt) { Read-Host -Prompt "`n[PROMPT] -- Press Enter to continue" }
-
-# Make call out to CIAOPS BP repository to get a list of all the product codes and store in a variable called $skulist
-Write-host -ForegroundColor $processmessagecolor "Get Product codes via web request"
-try {
-    $query = invoke-webrequest -method GET -ContentType "application/json" -uri https://raw.githubusercontent.com/directorcia/bp/refs/heads/main/skus.json -UseBasicParsing
-}
-catch {
-    Write-Host -ForegroundColor $errormessagecolor "[001]", $_.Exception.Message
-}
-$skulist = $query.content | ConvertFrom-Json
-
-If ($prompt) { Read-Host -Prompt "`n[PROMPT] -- Press Enter to continue" }
-
-$Url = "https://graph.microsoft.com/beta/subscribedSkus"
-write-host -foregroundcolor $processmessagecolor "Make Graph request for all licenses"
-try {
-    $results = (Invoke-MgGraphRequest -Uri $Url -Method GET).value
-}
-catch {
-    Write-Host -ForegroundColor $errormessagecolor "`n"$_.Exception.Message
-    exit (0)
-}
-$licensesummary = @()
-foreach ($result in $results) {
-    $partnumber=$result.skupartnumber
-    $licenseSummary += [pscustomobject]@{                                                  ## Build array item
-        license   = $result.skupartnumber
-        name      = $skulist.$partnumber
-        available = $result.prepaidunits.enabled
-        assigned  = $result.consumedunits
-    }
 }
 
-$licenseSummary | sort-object skupartnumber | select-object License,Name,Available,Assigned | format-table
-
-if ($csv) {
-    write-host -foregroundcolor $processmessagecolor "`nOutput to CSV", $outputFile
-    $licenseSummary | export-csv $outputFile -NoTypeInformation
+function Confirm-YesResponse {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Value
+    )
+    return $Value.Trim() -match '^(?i:y|yes)$'
 }
 
-write-host -foregroundcolor $systemmessagecolor "`nGraph license script - Finished"
 if ($debug) {
-    Stop-Transcript | Out-Null      
+    write-host "Script activity logged at .\graph-licenses-get.txt"
+    start-transcript ".\graph-licenses-get.txt" | Out-Null
+}
+
+try {
+    Clear-Host
+    write-host -foregroundcolor $systemmessagecolor "Tenant license report script - Started`n"
+    write-host -foregroundcolor $processmessagecolor "Connect to MS Graph"
+    $scopes = "LicenseAssignment.Read.All"
+    Connect-MgGraph -Scopes $scopes -NoWelcome | Out-Null
+    $graphcontext = Get-MgContext
+    write-host -foregroundcolor $processmessagecolor "Connected account = $($graphcontext.Account)"
+    if ($prompt) {
+        do {
+            $response = Read-Host -Prompt "`nIs this correct? [Y/N]"
+        } until (-not [string]::IsNullOrWhiteSpace($response))
+
+        if (-not (Confirm-YesResponse -Value $response)) {
+            Disconnect-MgGraph | Out-Null
+            write-host -foregroundcolor $warningmessagecolor "`n[001] Disconnected from current Graph environment. Re-run script to login to desired environment"
+            exit 1
+        }
+
+        Read-Host -Prompt "`n[PROMPT] -- Press Enter to continue" | Out-Null
+    }
+
+    Write-host -ForegroundColor $processmessagecolor "Retrieving product codes from repository..."
+    try {
+        $query = Invoke-WebRequest -Method GET -ContentType "application/json" -Uri "https://raw.githubusercontent.com/directorcia/bp/refs/heads/main/skus.json" -UseBasicParsing -ErrorAction Stop
+        $skulist = $query.Content | ConvertFrom-Json
+        write-host -foregroundcolor $processmessagecolor "Product codes retrieved successfully"
+    }
+    catch {
+        Write-Host -ForegroundColor $errormessagecolor "Error retrieving product codes: $($_.Exception.Message)"
+        $skulist = @{}
+    }
+
+    if ($prompt) { Read-Host -Prompt "`n[PROMPT] -- Press Enter to continue" | Out-Null }
+
+    $url = "https://graph.microsoft.com/beta/subscribedSkus"
+    write-host -foregroundcolor $processmessagecolor "Retrieving license information from Graph API..."
+    
+    try {
+        $results = (Invoke-MgGraphRequest -Uri $url -Method GET -ErrorAction Stop).value
+        write-host -foregroundcolor $processmessagecolor "Retrieved $($results.Count) license(s)"
+    }
+    catch {
+        Write-Host -ForegroundColor $errormessagecolor "Error retrieving licenses: $($_.Exception.Message)"
+        throw
+    }
+
+    $licensesummary = @()
+    foreach ($result in $results) {
+        $partnumber = $result.skupartnumber
+        $unassigned = $result.prepaidunits.enabled - $result.consumedunits
+        
+        $licenseSummary += [pscustomobject]@{
+            License   = $result.skupartnumber
+            Name      = $skulist.$partnumber
+            Available = $result.prepaidunits.enabled
+            Assigned  = $result.consumedunits
+            Unassigned = $unassigned
+        }
+    }
+
+    write-host -foregroundcolor $processmessagecolor "`nProcessing $($licensesummary.Count) license records...`n"
+    
+    $licenseSummary | Sort-Object License | Select-Object License, Name, Available, Assigned, Unassigned | Format-Table
+
+    if ($csv) {
+        write-host -foregroundcolor $processmessagecolor "Exporting $($licensesummary.Count) licenses to CSV: $OutputFile"
+        $licenseSummary | Export-Csv $OutputFile -NoTypeInformation -Encoding UTF8 -Force
+        write-host -foregroundcolor $processmessagecolor "CSV export completed successfully"
+    }
+
+    write-host -foregroundcolor $systemmessagecolor "`nGraph license script - Finished"
+}
+catch {
+    Write-Host -ForegroundColor $errormessagecolor "`nError occurred during script execution:"
+    Write-Host -ForegroundColor $errormessagecolor "  Exception: $($_.Exception.GetType().Name)"
+    Write-Host -ForegroundColor $errormessagecolor "  Message: $($_.Exception.Message)"
+    Write-Host -ForegroundColor $errormessagecolor "  Line: $($_.InvocationInfo.ScriptLineNumber)"
+    exit 1
+}
+finally {
+    try {
+        Disconnect-MgGraph | Out-Null
+        write-host -foregroundcolor $processmessagecolor "Disconnected from Graph"
+    }
+    catch {
+        # Ignore disconnect failures
+    }
+
+    if ($debug) {
+        Stop-Transcript | Out-Null
+    }
 }
