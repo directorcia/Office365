@@ -36,7 +36,7 @@ param(
     [Parameter(HelpMessage = "Path for log file (default: current directory)")]
     [ValidateScript({
         if (-not (Test-Path $_ -PathType Container)) {
-            throw "LogPath must be a valid directory path"
+            throw "LogPath '$_' does not exist or is not a directory"
         }
         return $true
     })]
@@ -143,12 +143,41 @@ param(
     Also offers comprehensive cleanup at the end of processing.
 
 .NOTES
-    Author: CIAOPS    Version: 2.12
-    Last Updated: April 2026
+    Author: CIAOPS    Version: 2.13
+    Last Updated: May 2026
     Requires: PowerShell 7.X or higher, Administrator privileges
     
     IMPORTANT: This version removes deprecated Azure AD and MSOnline modules in favor of Microsoft Graph PowerShell SDK
     
+    Major Changes in v2.13 (5 May 2026):
+    - Added PS7 bundled-module detection to Get-ModuleVersionInfo
+      Get-InstalledModule only sees modules registered by PowerShellGet; modules that
+      ship inside the PS7 installation directory (e.g. PowerShellGet, PackageManagement)
+      are never registered there and were incorrectly reported as 'not installed'.
+      A second check via Get-Module -ListAvailable now detects these bundled modules by
+      confirming their ModuleBase path falls under $PSHOME\Modules.
+    - Added IsBundled flag to the version-info hashtable returned by Get-ModuleVersionInfo
+      so that downstream logic can distinguish bundled modules from uninstalled ones.
+    - Added skip-install guard in Start-ModuleProcessing
+      When a module is flagged as bundled and the resolved action is 'Install', the
+      script now skips the install entirely and reports the bundled version as current.
+      This eliminates the misleading 'version currently in use' WARNING messages that
+      appeared when attempting to install PowerShellGet / PackageManagement while those
+      same modules were already loaded from $PSHOME\Modules by the PS7 runtime.
+    - Fixed LogPath parameter ignored by implementation
+      The -LogPath parameter (default: current directory) was documented and defaulted
+      correctly but the log file creation code hardcoded $env:TEMP, meaning the parameter
+      had no effect and logs always appeared in the system temp folder regardless of what
+      the user specified. The implementation now uses $LogPath so logs are written to the
+      documented location.
+    - Restored ValidateScript on LogPath parameter
+      The path validator was lost when the above fix was applied. It has been restored
+      and the error message improved to include the supplied path value so users
+      immediately see which path was rejected if an invalid directory is provided.
+
+    Major Changes in v2.12:
+    - Note: #Requires directive still shows system error in PS5 (unavoidable)
+
     Major Changes in v2.11:
     - Note: #Requires directive still shows system error in PS5 (unavoidable)
     
@@ -2136,6 +2165,7 @@ function Get-ModuleVersionInfo {
     $versionInfo = @{
         ModuleName = $ModuleName
         IsInstalled = $false
+        IsBundled = $false
         LocalVersion = $null
         OnlineVersion = $null
         UpdateAvailable = $false
@@ -2146,13 +2176,31 @@ function Get-ModuleVersionInfo {
     }
     
     try {
-        # Check for installed versions
+        # Check for versions installed via PowerShellGet / Install-Module
         $installedModules = Get-InstalledModule -Name $ModuleName -AllVersions -ErrorAction SilentlyContinue
         
         if ($installedModules) {
             $versionInfo.IsInstalled = $true
             $versionInfo.LocalVersion = ($installedModules | Sort-Object Version -Descending | Select-Object -First 1).Version
             $versionInfo.MultipleVersionsInstalled = ($installedModules | Measure-Object).Count -gt 1
+        }
+        
+        # If not found via Get-InstalledModule, check for modules bundled with PS7 ($PSHOME\Modules).
+        # Bundled modules ship inside the PS7 installation directory and are never registered with
+        # PowerShellGet, so Get-InstalledModule cannot see them -- but they are fully functional.
+        if (-not $versionInfo.IsInstalled) {
+            $psHomeModulePath = Join-Path $PSHOME 'Modules'
+            $bundledModule = Get-Module -Name $ModuleName -ListAvailable -ErrorAction SilentlyContinue |
+                             Where-Object { $_.ModuleBase -like "$psHomeModulePath*" } |
+                             Sort-Object Version -Descending |
+                             Select-Object -First 1
+            
+            if ($bundledModule) {
+                $versionInfo.IsInstalled = $true
+                $versionInfo.IsBundled   = $true
+                $versionInfo.LocalVersion = $bundledModule.Version
+                Write-Verbose "Module '$ModuleName' found as PS7 bundled module v$($bundledModule.Version) at $($bundledModule.ModuleBase)"
+            }
         }
         
         # Check online version
@@ -2608,6 +2656,19 @@ function Start-ModuleProcessing {
             $action = 'Update'
         }
         
+        # Skip installation for modules that are already bundled with PS7.
+        # Bundled modules (e.g. PowerShellGet, PackageManagement) live inside $PSHOME\Modules
+        # and are loaded automatically. Installing the same version just produces confusing
+        # 'currently in use' warnings with no real benefit.
+        if ($action -eq 'Install' -and $versionInfo.IsBundled) {
+            $bundledVer = $versionInfo.LocalVersion
+            Write-ColorOutput "  + Bundled with PS7 (v$bundledVer in $PSHOME\Modules) - skipping install" -Type Process
+            Write-ColorOutput "    To get a standalone copy, run: Install-Module $($module.Name) -Force -AllowClobber -Scope AllUsers" -Type Info
+            $successCount++
+            Write-ColorOutput ""
+            continue
+        }
+        
         if ($action) {
             if ($Prompt) {
                 $response = Read-Host "  $action $($module.Name)? (Y/N)"
@@ -2858,7 +2919,7 @@ try {
 
     # Start transcript logging if requested
     if ($CreateLog) {
-        $logPath = Join-Path $env:TEMP "o365-update-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+        $logPath = Join-Path $LogPath "o365-update-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
         Start-Transcript -Path $logPath -Append
         Write-ColorOutput "📋 Logging to: $logPath" -Type System
     }
