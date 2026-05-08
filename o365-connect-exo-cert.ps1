@@ -445,7 +445,7 @@ function Set-ExoProfileMapEntry {
     $fullMapPath = [System.IO.Path]::GetFullPath($MapPath)
     $hashBytes = [System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($fullMapPath.ToLowerInvariant()))
     $hashHex = ([System.BitConverter]::ToString($hashBytes)).Replace('-', '')
-    $mutexName = "Global\\CIAOPS_EXO_PROFILEMAP_$hashHex"
+    $mutexName = "Global\CIAOPS_EXO_PROFILEMAP_$hashHex"
 
     $mutex = New-Object System.Threading.Mutex($false, $mutexName)
     $hasHandle = $false
