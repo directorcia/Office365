@@ -799,7 +799,7 @@ function Set-ExoEntraApplicationCertificate {
     }
     Write-Debug "Cert bytes: $($cerBytes.Length) | customKeyIdentifier: $customKeyIdBase64"
 
-    $existingApp = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/applications/$AppObjectId?`$select=keyCredentials"
+    $existingApp = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/applications/${AppObjectId}?`$select=keyCredentials"
     $existingKeys = @($existingApp.keyCredentials | Where-Object { $_.customKeyIdentifier -ne $customKeyIdBase64 })
     Write-Debug "Existing key credentials on app (excluding this thumbprint): $($existingKeys.Count)"
 
@@ -814,7 +814,7 @@ function Set-ExoEntraApplicationCertificate {
     $certPatch = @{ keyCredentials = @($existingKeys) + @($newKey) }
     Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Patch -Uri "$graphBase/applications/$AppObjectId" -Body $certPatch | Out-Null
 
-    $appVerify = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/applications/$AppObjectId?`$select=keyCredentials"
+    $appVerify = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/applications/${AppObjectId}?`$select=keyCredentials"
     $storedKey = $appVerify.keyCredentials | Where-Object { $_.customKeyIdentifier -eq $customKeyIdBase64 } | Select-Object -First 1
     if ($null -eq $storedKey) {
         $stored = ($appVerify.keyCredentials | ForEach-Object { $_.customKeyIdentifier }) -join ', '
