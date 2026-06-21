@@ -953,9 +953,9 @@ function Get-ModuleSpecificParams {
         'ExchangeOnlineManagement',
         'Az',
         'MicrosoftTeams',
-        'PnP.PowerShell',
         'Microsoft.Online.SharePoint.PowerShell'
         # REMOVED: Microsoft.Graph - it supports SkipPublisherCheck
+        # PnP.PowerShell is allowed to use SkipPublisherCheck to avoid publisher-signature conflicts during updates
     )
     
     # Note: Microsoft.PowerApps modules were removed from the exclusion lists above
@@ -967,7 +967,9 @@ function Get-ModuleSpecificParams {
     
     # Remove Install-only parameters for Update-Module operations
     # Update-Module doesn't support: AllowClobber, AcceptLicense, SkipPublisherCheck
-    if ($Operation -eq 'Update') {
+    # PnP.PowerShell is handled through Install-Module instead because it needs SkipPublisherCheck
+    # to update cleanly when the existing package is signed by Microsoft.
+    if ($Operation -eq 'Update' -and $ModuleName -ne 'PnP.PowerShell') {
         $installOnlyParams = @('AllowClobber', 'AcceptLicense', 'SkipPublisherCheck')
         foreach ($param in $installOnlyParams) {
             if ($moduleParams.ContainsKey($param)) {
@@ -1415,15 +1417,29 @@ function Install-ModuleWithProgress {
                     if ($isConstrainedLargeModule) {
                         "Status: Updating $ModuleName... | Phase: Update Starting" | Out-File $progressFile -Append
                     }
-                    # Create update-specific parameters (remove install-only parameters)
-                    $updateParams = $InstallParams.Clone()
-                    $installOnlyParams = @('AllowClobber', 'AcceptLicense', 'SkipPublisherCheck')
-                    foreach ($param in $installOnlyParams) {
-                        if ($updateParams.ContainsKey($param)) {
-                            $updateParams.Remove($param)
+                    if ($ModuleName -eq 'PnP.PowerShell') {
+                        $updateArgs = @{
+                            Name = $ModuleName
+                            Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
+                            Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
+                            ErrorAction = 'Stop'
                         }
+                        if ($InstallParams.ContainsKey('Scope')) { $updateArgs.Scope = $InstallParams.Scope }
+                        if ($InstallParams.ContainsKey('AllowClobber')) { $updateArgs.AllowClobber = $InstallParams.AllowClobber }
+                        if ($InstallParams.ContainsKey('AcceptLicense')) { $updateArgs.AcceptLicense = $InstallParams.AcceptLicense }
+                        if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $updateArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
+                        Install-Module @updateArgs
+                    } else {
+                        # Create update-specific parameters (remove install-only parameters)
+                        $updateParams = $InstallParams.Clone()
+                        $installOnlyParams = @('AllowClobber', 'AcceptLicense', 'SkipPublisherCheck')
+                        foreach ($param in $installOnlyParams) {
+                            if ($updateParams.ContainsKey($param)) {
+                                $updateParams.Remove($param)
+                            }
+                        }
+                        Update-Module -Name $ModuleName @updateParams
                     }
-                    Update-Module -Name $ModuleName @updateParams
                     if ($isConstrainedLargeModule) {
                         "Phase: Update Complete - Starting Verification | Status: Verification may take several minutes" | Out-File $progressFile -Append
                     }
@@ -1470,7 +1486,8 @@ function Install-ModuleWithProgress {
             $errorMessage = $_.Exception.Message
             if ($errorMessage -like "*already available*" -or 
                 $errorMessage -like "*AllowClobber*" -or 
-                $errorMessage -like "*may override the existing commands*") {
+                $errorMessage -like "*may override the existing commands*" -or
+                ($ModuleName -eq 'PnP.PowerShell' -and ($errorMessage -like "*publisher*" -or $errorMessage -like "*SkipPublisherCheck*" -or $errorMessage -like "*signed module*"))) {
                 
                 if ($progressFile -and (Test-Path $progressFile)) {
                     "Retry: Command conflict detected - retrying with AllowClobber at $(Get-Date -Format 'HH:mm:ss')" | Out-File $progressFile -Append
@@ -1478,9 +1495,14 @@ function Install-ModuleWithProgress {
                 
                 # Force AllowClobber for conflict resolution
                 try {
-                    if ($Operation -eq 'Install') {
+                    if ($Operation -eq 'Install' -or ($Operation -eq 'Update' -and $ModuleName -eq 'PnP.PowerShell')) {
                         $retryParams = $InstallParams.Clone()
-                        $retryParams.AllowClobber = $true
+                        if ($ModuleName -eq 'PnP.PowerShell') {
+                            $retryParams.SkipPublisherCheck = $true
+                            $retryParams.AllowClobber = $true
+                        } else {
+                            $retryParams.AllowClobber = $true
+                        }
                         Install-Module -Name $ModuleName @retryParams
                         
                         if ($progressFile -and (Test-Path $progressFile)) {
@@ -1558,18 +1580,34 @@ function Install-ModuleWithProgress {
                     Install-Module @installArgs
                 }
                 'Update' {
-                    # Use explicit parameter passing for constrained language mode compatibility
-                    # Note: Update-Module doesn't support AllowClobber, AcceptLicense, or SkipPublisherCheck
-                    $updateArgs = @{
-                        Name = $ModuleName
-                        Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
-                        Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
-                        ErrorAction = 'Stop'
+                    # Use explicit parameter passing for constrained language mode compatibility.
+                    # PnP.PowerShell needs Install-Module with SkipPublisherCheck to update past
+                    # Microsoft-signed versions without tripping the publisher check.
+                    if ($ModuleName -eq 'PnP.PowerShell') {
+                        $updateArgs = @{
+                            Name = $ModuleName
+                            Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
+                            Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
+                            ErrorAction = 'Stop'
+                        }
+                        if ($InstallParams.ContainsKey('Scope')) { $updateArgs.Scope = $InstallParams.Scope }
+                        if ($InstallParams.ContainsKey('AllowClobber')) { $updateArgs.AllowClobber = $InstallParams.AllowClobber }
+                        if ($InstallParams.ContainsKey('AcceptLicense')) { $updateArgs.AcceptLicense = $InstallParams.AcceptLicense }
+                        if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $updateArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
+                        Install-Module @updateArgs
+                    } else {
+                        # Update-Module doesn't support AllowClobber, AcceptLicense, or SkipPublisherCheck
+                        $updateArgs = @{
+                            Name = $ModuleName
+                            Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
+                            Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
+                            ErrorAction = 'Stop'
+                        }
+                        # Only add Scope if present (Update-Module supports this)
+                        if ($InstallParams.ContainsKey('Scope')) { $updateArgs.Scope = $InstallParams.Scope }
+                        
+                        Update-Module @updateArgs
                     }
-                    # Only add Scope if present (Update-Module supports this)
-                    if ($InstallParams.ContainsKey('Scope')) { $updateArgs.Scope = $InstallParams.Scope }
-                    
-                    Update-Module @updateArgs
                 }
                 default {
                     # Use explicit parameter passing for constrained language mode compatibility
@@ -1614,10 +1652,11 @@ function Install-ModuleWithProgress {
             $actualTime = ((Get-Date) - $startTime).TotalSeconds
             $errorMessage = $_.Exception.Message
             
-            # Enhanced error handling for AllowClobber conflicts
+            # Enhanced error handling for AllowClobber conflicts and publisher-signature conflicts
             if ($errorMessage -like "*already available*" -or 
                 $errorMessage -like "*AllowClobber*" -or 
-                $errorMessage -like "*may override the existing commands*") {
+                $errorMessage -like "*may override the existing commands*" -or
+                ($ModuleName -eq 'PnP.PowerShell' -and ($errorMessage -like "*publisher*" -or $errorMessage -like "*SkipPublisherCheck*" -or $errorMessage -like "*signed module*"))) {
                 Write-ColorOutput "    ⚠️ Command conflict detected for $ModuleName" -Type Warning
                 Write-ColorOutput "    💡 Retrying with enhanced conflict resolution..." -Type Info
                 
@@ -1625,13 +1664,18 @@ function Install-ModuleWithProgress {
                 try {
                     Write-ColorOutput "    🔄 Retry attempt with -AllowClobber..." -Type Process
                     
-                    if ($Operation -eq 'Install') {
+                    if ($Operation -eq 'Install' -or ($Operation -eq 'Update' -and $ModuleName -eq 'PnP.PowerShell')) {
                         $retryArgs = @{
                             Name = $ModuleName
                             Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
                             Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
-                            AllowClobber = $true
                             ErrorAction = 'Stop'
+                        }
+                        if ($ModuleName -eq 'PnP.PowerShell') {
+                            $retryArgs.SkipPublisherCheck = $true
+                            $retryArgs.AllowClobber = $true
+                        } else {
+                            $retryArgs.AllowClobber = $true
                         }
                         if ($InstallParams.ContainsKey('Scope')) { $retryArgs.Scope = $InstallParams.Scope }
                         if ($InstallParams.ContainsKey('AcceptLicense')) { $retryArgs.AcceptLicense = $InstallParams.AcceptLicense }
@@ -1707,18 +1751,34 @@ function Install-ModuleWithProgress {
                     Install-Module @installArgs
                 }
                 'Update' {
-                    # Use explicit parameter passing for constrained language mode compatibility
-                    # Note: Update-Module doesn't support AllowClobber, AcceptLicense, or SkipPublisherCheck
-                    $updateArgs = @{
-                        Name = $ModuleName
-                        Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
-                        Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
-                        ErrorAction = 'Stop'
+                    # Use explicit parameter passing for constrained language mode compatibility.
+                    # PnP.PowerShell needs Install-Module with SkipPublisherCheck to update past
+                    # Microsoft-signed versions without tripping the publisher check.
+                    if ($ModuleName -eq 'PnP.PowerShell') {
+                        $updateArgs = @{
+                            Name = $ModuleName
+                            Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
+                            Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
+                            ErrorAction = 'Stop'
+                        }
+                        if ($InstallParams.ContainsKey('Scope')) { $updateArgs.Scope = $InstallParams.Scope }
+                        if ($InstallParams.ContainsKey('AllowClobber')) { $updateArgs.AllowClobber = $InstallParams.AllowClobber }
+                        if ($InstallParams.ContainsKey('AcceptLicense')) { $updateArgs.AcceptLicense = $InstallParams.AcceptLicense }
+                        if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $updateArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
+                        Install-Module @updateArgs
+                    } else {
+                        # Update-Module doesn't support AllowClobber, AcceptLicense, or SkipPublisherCheck
+                        $updateArgs = @{
+                            Name = $ModuleName
+                            Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
+                            Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
+                            ErrorAction = 'Stop'
+                        }
+                        # Only add Scope if present (Update-Module supports this)
+                        if ($InstallParams.ContainsKey('Scope')) { $updateArgs.Scope = $InstallParams.Scope }
+                        
+                        Update-Module @updateArgs
                     }
-                    # Only add Scope if present (Update-Module supports this)
-                    if ($InstallParams.ContainsKey('Scope')) { $updateArgs.Scope = $InstallParams.Scope }
-                    
-                    Update-Module @updateArgs
                 }
                 default {
                     # Use explicit parameter passing for constrained language mode compatibility

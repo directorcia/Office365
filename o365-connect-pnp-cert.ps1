@@ -68,6 +68,123 @@ if ([string]::IsNullOrWhiteSpace($elevatedShellPath) -or -not (Test-Path -Litera
     throw "Unable to resolve current PowerShell host executable path for elevated module operations (PID $PID)."
 }
 
+function Get-ScriptInvocationArguments {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ScriptPath,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$BoundParameters,
+        [Parameter(Mandatory = $false)]
+        [string[]]$UnboundArguments = @()
+    )
+
+    $childArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath)
+    foreach ($paramName in $BoundParameters.Keys) {
+        $paramValue = $BoundParameters[$paramName]
+        if ($paramValue -is [switch]) {
+            if ($paramValue.IsPresent) {
+                $childArgs += "-$paramName"
+            }
+        }
+        elseif ($null -ne $paramValue) {
+            $childArgs += "-$paramName"
+            if ($paramValue -is [System.Array]) {
+                foreach ($arrayEntry in $paramValue) {
+                    $childArgs += [string]$arrayEntry
+                }
+            }
+            else {
+                $childArgs += [string]$paramValue
+            }
+        }
+    }
+
+    if ($UnboundArguments.Count -gt 0) {
+        $childArgs += $UnboundArguments
+    }
+
+    return $childArgs
+}
+
+$scriptInvocationArguments = Get-ScriptInvocationArguments -ScriptPath $PSCommandPath -BoundParameters $PSBoundParameters -UnboundArguments $args
+
+if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion.Major -lt 7) {
+    $pwshPath = Get-Command pwsh -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
+    if (-not [string]::IsNullOrWhiteSpace($pwshPath) -and (Test-Path -LiteralPath $pwshPath)) {
+        Write-Host -ForegroundColor $Colors.WarningMessage "Launching SharePoint connection in PowerShell 7 to avoid the legacy Windows PowerShell PnP assembly mismatch."
+        & $pwshPath @scriptInvocationArguments
+        exit $LASTEXITCODE
+    }
+
+    throw "This script requires PowerShell 7+. Please run it with 'pwsh'."
+}
+
+$pwshPath = (Get-Command pwsh -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1)
+if ([string]::IsNullOrWhiteSpace($pwshPath) -or -not (Test-Path -LiteralPath $pwshPath)) {
+    throw "PowerShell 7 executable 'pwsh' not found."
+}
+
+if ($env:O365_PNP_ISOLATED -ne '1') {
+    $loadedPnpModules = @(Get-Module -Name PnP.PowerShell -All -ErrorAction SilentlyContinue)
+    if ($loadedPnpModules.Count -gt 0) {
+        Write-Host -ForegroundColor $Colors.WarningMessage "PnP.PowerShell is already loaded in this session. Launching an isolated PowerShell 7 process to avoid the assembly collision."
+        $env:O365_PNP_ISOLATED = '1'
+        & $pwshPath @scriptInvocationArguments
+        exit $LASTEXITCODE
+    }
+}
+
+function Import-PnPModuleWithCompat {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Colors
+    )
+
+    # If the module is already loaded in this session, reuse it. Calling Import-Module
+    # -Force on an already-resident PnP.PowerShell causes a .NET assembly collision
+    # because the CLR AppDomain cannot unload an assembly once it is loaded.
+    $alreadyLoaded = Get-Module -Name PnP.PowerShell | Select-Object -First 1
+    if ($null -ne $alreadyLoaded) {
+        Write-Host -ForegroundColor $Colors.ProcessMessage "PnP.PowerShell $($alreadyLoaded.Version) already loaded in this session."
+        return $alreadyLoaded
+    }
+
+    $candidateModules = @(Get-Module -ListAvailable -Name PnP.PowerShell | Sort-Object Version -Descending)
+    if ($candidateModules.Count -eq 0) {
+        throw "PnP.PowerShell module is required."
+    }
+
+    $preferredModule = $candidateModules | Where-Object { $_.Path -notlike '*WindowsPowerShell\Modules*' } | Select-Object -First 1
+
+    if ($null -eq $preferredModule) {
+        Write-Host -ForegroundColor $Colors.WarningMessage "PnP.PowerShell is only installed under the Windows PowerShell module path. Installing a PowerShell 7 compatible copy to CurrentUser."
+        Install-Module -Name PnP.PowerShell -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop | Out-Null
+
+        $candidateModules = @(Get-Module -ListAvailable -Name PnP.PowerShell | Sort-Object Version -Descending)
+        $preferredModule = $candidateModules | Where-Object { $_.Path -notlike '*WindowsPowerShell\Modules*' } | Select-Object -First 1
+        if ($null -eq $preferredModule) {
+            throw "Unable to locate a PowerShell 7 compatible PnP.PowerShell installation."
+        }
+    }
+
+    Write-Host -ForegroundColor $Colors.ProcessMessage "Loading PnP.PowerShell from $($preferredModule.Path)"
+
+    # Import without -Force. Using -Force causes PowerShell to attempt to reload
+    # the DLL even when it is already resident in the AppDomain, which throws
+    # "assembly with same name is already loaded". Without -Force, the module is
+    # loaded once and subsequent calls simply reuse the already-resident assembly.
+    Import-Module -Name $preferredModule.Path -ErrorAction Stop | Out-Null
+
+    $loadedModule = Get-Module PnP.PowerShell | Select-Object -First 1
+    if ($null -eq $loadedModule) {
+        throw "PnP.PowerShell was not loaded successfully."
+    }
+
+    return $loadedModule
+}
+
 function Resolve-SpoCertificateProfile {
     <#
     .SYNOPSIS
@@ -1185,7 +1302,7 @@ try {
     }
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Loading PnP.PowerShell module"
-    Import-Module PnP.PowerShell -ErrorAction Stop | Out-Null
+    Import-PnPModuleWithCompat -Colors $Colors | Out-Null
 
     if ($GenerateLocalCertificate) {
         ## Resolve tenant before cert generation so the friendly name can include the tenant domain.
@@ -1279,7 +1396,22 @@ try {
     }
 
     ## Verify the certificate is present in the local store before attempting to connect.
-    $localCert = Get-Item "Cert:\CurrentUser\My\$CertificateThumbprint" -ErrorAction SilentlyContinue
+    $thumbprintLookup = $CertificateThumbprint.Trim()
+    $localCert = $null
+    try {
+        $localCert = Get-Item "Cert:\CurrentUser\My\$thumbprintLookup" -ErrorAction Stop
+    }
+    catch {
+        $localCert = $null
+    }
+
+    if ($null -eq $localCert) {
+        $storeCerts = @(Get-ChildItem Cert:\CurrentUser\My -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $thumbprintLookup })
+        if ($storeCerts.Count -gt 0) {
+            $localCert = $storeCerts[0]
+        }
+    }
+
     if ($null -eq $localCert) {
         throw "Certificate with thumbprint '$CertificateThumbprint' not found in Cert:\CurrentUser\My. Import the PFX or run -GenerateLocalCertificate -ProvisionEntraApp on this machine first."
     }
