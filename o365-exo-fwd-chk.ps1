@@ -14,118 +14,168 @@ More scripts available by joining http://www.ciaopspatron.com
 
 #>
 
+## Parameters
+[CmdletBinding()]
+param(
+    [string]$LogFile = (Join-Path -Path $PSScriptRoot -ChildPath "o365-exo-fwd-chk-log.txt"),
+    [switch]$VerboseOutput = $false                # Enable verbose output
+)
+
 ## Variables
 $systemmessagecolor = "cyan"
 $processmessagecolor = "green"
 $errormessagecolor = "red"
 $warnmessagecolor = "yellow"
 
-## Parameters
-param(
-    [string]$LogFile, # Log file for output
-    [switch]$VerboseOutput = $false                # Enable verbose output
-)
-
-## Fixing the invalid assignment expression error
-# The error might occur if the $LogFile variable is being used incorrectly elsewhere in the script.
-# Ensuring that $LogFile is properly initialized and used as a string path.
-
-# Correcting the initialization of $LogFile to use a full path for clarity
-$LogFile = "..\o365-exo-fwd-chk-log.txt"
-
-# Ensuring all references to $LogFile are valid and consistent throughout the script.
+$script:LogFile = $LogFile
 
 ## Functions
-function Log-Message {
+function Write-LogMessage {
     param (
         [string]$Message,
         [string]$Color = "White"
     )
+
+    $timestampedMessage = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message
     Write-Host -ForegroundColor $Color $Message
-    Add-Content -Path $LogFile -Value $Message
+    Add-Content -Path $script:LogFile -Value $timestampedMessage
+}
+
+function Get-ShortText {
+    param(
+        [AllowNull()]
+        [string]$Text,
+        [int]$MaxLength
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return "<blank>"
+    }
+
+    return $Text.Substring(0, [Math]::Min($MaxLength, $Text.Length))
 }
 
 ## Start Script
 Clear-Host
-Log-Message "Script started`n" $systemmessagecolor
+
+$logDirectory = Split-Path -Path $script:LogFile -Parent
+if ($logDirectory -and -not (Test-Path -Path $logDirectory)) {
+    New-Item -Path $logDirectory -ItemType Directory -Force | Out-Null
+}
+
+"" | Set-Content -Path $script:LogFile
+Write-LogMessage "Script started`n" $systemmessagecolor
 
 try {
-    # Ensure the user is connected to Exchange Online
-    if (-not (Get-Module -Name ExchangeOnlineManagement)) {
-        throw "The term 'Get-Mailbox' is not recognized as a name of a cmdlet. Please ensure you are connected to Exchange Online first. Use the 'Connect-ExchangeOnline' cmdlet to establish a connection."
+    if (-not (Get-Command -Name Get-Mailbox -ErrorAction SilentlyContinue)) {
+        throw "Exchange Online cmdlets are not available. Connect first by running Connect-ExchangeOnline."
     }
 
     ## Get all mailboxes
-    Log-Message "[INFO] Get all mailbox details - Start" $processmessagecolor
-    $mailboxes = Get-Mailbox -ResultSize Unlimited
-    Log-Message "[INFO] Get all mailbox details - Finish`n" $processmessagecolor
+    Write-LogMessage "[INFO] Get all mailbox details - Start" $processmessagecolor
+    $mailboxes = Get-Mailbox -ResultSize Unlimited -ErrorAction Stop
+    $mailboxCount = @($mailboxes).Count
+    Write-LogMessage "[INFO] Retrieved $mailboxCount mailbox entries" $processmessagecolor
+    Write-LogMessage "[INFO] Get all mailbox details - Finish`n" $processmessagecolor
+
+    $mailboxForwardEnabledCount = 0
+    $mailboxForwardDisabledCount = 0
+    $inboxForwardRuleCount = 0
+    $inboxRedirectRuleCount = 0
+    $inboxRuleErrorCount = 0
+    $sweepRuleCount = 0
+    $sweepRuleErrorCount = 0
 
     ## Check Mailbox Forwards
-    Log-Message "Check Mailbox Forwards - Start`n" $processmessagecolor
+    Write-LogMessage "Check Mailbox Forwards - Start`n" $processmessagecolor
 
     foreach ($mailbox in $mailboxes) {
-        $shortenedName = $mailbox.displayname.Substring(0, [Math]::Min(40, $mailbox.displayname.Length))
-        $shortenedUPN = $mailbox.UserPrincipalName.Substring(0, [Math]::Min(60, $mailbox.UserPrincipalName.Length))
-        Log-Message "Mailbox forwards for $shortenedName - $shortenedUPN" "Gray"
+        $shortenedName = Get-ShortText -Text $mailbox.DisplayName -MaxLength 40
+        $shortenedUPN = Get-ShortText -Text $mailbox.UserPrincipalName -MaxLength 60
+        if ($VerboseOutput) { Write-LogMessage "Mailbox forwards for $shortenedName - $shortenedUPN" "Gray" }
+
         if ($mailbox.DeliverToMailboxAndForward) {
-            Log-Message "    Forwarding enabled for $shortenedName - Forwarding = $($mailbox.delivertomailboxandforward)" $errormessagecolor
-            Log-Message "    Forwarding address = $($mailbox.forwardingsmtpaddress)" $errormessagecolor
+            $mailboxForwardEnabledCount++
+            Write-LogMessage "    Forwarding enabled for $shortenedName - Forwarding = $($mailbox.delivertomailboxandforward)" $errormessagecolor
+            Write-LogMessage "    Forwarding address = $($mailbox.forwardingsmtpaddress)" $errormessagecolor
         } elseif ($mailbox.forwardingsmtpaddress) {
-            Log-Message "    Forwarding address set but disabled for $shortenedName - Forwarding = $($mailbox.delivertomailboxandforward)" $warnmessagecolor
-            Log-Message "    Forwarding address = $($mailbox.forwardingsmtpaddress)" $warnmessagecolor
+            $mailboxForwardDisabledCount++
+            Write-LogMessage "    Forwarding address set but disabled for $shortenedName - Forwarding = $($mailbox.delivertomailboxandforward)" $warnmessagecolor
+            Write-LogMessage "    Forwarding address = $($mailbox.forwardingsmtpaddress)" $warnmessagecolor
         }
     }
 
-    Log-Message "`nCheck Mailbox Forwards - Finish`n" $processmessagecolor
+    Write-LogMessage "`nCheck Mailbox Forwards - Finish`n" $processmessagecolor
 
     ## Check Outlook Rule Forwards
-    Log-Message "Check Outlook Rule Forwards - Start`n" $processmessagecolor
+    Write-LogMessage "Check Outlook Rule Forwards - Start`n" $processmessagecolor
 
     foreach ($mailbox in $mailboxes) {
-        $shortenedName = $mailbox.displayname.Substring(0, [Math]::Min(40, $mailbox.displayname.Length))
-        $shortenedUPN = $mailbox.UserPrincipalName.Substring(0, [Math]::Min(60, $mailbox.UserPrincipalName.Length))
-        Log-Message "Outlook forwards for $shortenedName - $shortenedUPN" "Gray"
+        $shortenedName = Get-ShortText -Text $mailbox.DisplayName -MaxLength 40
+        $shortenedUPN = Get-ShortText -Text $mailbox.UserPrincipalName -MaxLength 60
+        if ($VerboseOutput) { Write-LogMessage "Outlook forwards for $shortenedName - $shortenedUPN" "Gray" }
+
         try {
-            $rules = Get-InboxRule -Mailbox $mailbox.UserPrincipalName
+            $rules = Get-InboxRule -Mailbox $mailbox.UserPrincipalName -ErrorAction Stop
             foreach ($rule in $rules) {
                 if ($rule.Enabled) {
-                    if ($rule.ForwardTo) { Log-Message "    Forward to: $($rule.ForwardTo -join ', ')" $errormessagecolor }
-                    if ($rule.RedirectTo) { Log-Message "    Redirect to: $($rule.RedirectTo -join ', ')" $errormessagecolor }
+                    if ($rule.ForwardTo) {
+                        $inboxForwardRuleCount++
+                        Write-LogMessage "    Forward to: $($rule.ForwardTo -join ', ')" $errormessagecolor
+                    }
+                    if ($rule.RedirectTo) {
+                        $inboxRedirectRuleCount++
+                        Write-LogMessage "    Redirect to: $($rule.RedirectTo -join ', ')" $errormessagecolor
+                    }
                 }
             }
         } catch {
-            Log-Message "    Error retrieving rules for $shortenedname $_" $errormessagecolor
+            $inboxRuleErrorCount++
+            Write-LogMessage "    Error retrieving rules for ${shortenedName}: $($_.Exception.Message)" $errormessagecolor
         }
     }
 
-    Log-Message "`nCheck Outlook Rule Forwards - Finish`n" $processmessagecolor
+    Write-LogMessage "`nCheck Outlook Rule Forwards - Finish`n" $processmessagecolor
 
     ## Check Sweep Rules
-    Log-Message "Check Sweep Rules - Start`n" $processmessagecolor
+    Write-LogMessage "Check Sweep Rules - Start`n" $processmessagecolor
 
     foreach ($mailbox in $mailboxes) {
-        $shortenedName = $mailbox.displayname.Substring(0, [Math]::Min(40, $mailbox.displayname.Length))
-        $shortenedUPN = $mailbox.UserPrincipalName.Substring(0, [Math]::Min(60, $mailbox.UserPrincipalName.Length))
-        Log-Message "Sweep forwards for $shortenedName - $shortenedUPN" "Gray"
+        $shortenedName = Get-ShortText -Text $mailbox.DisplayName -MaxLength 40
+        $shortenedUPN = Get-ShortText -Text $mailbox.UserPrincipalName -MaxLength 60
+        if ($VerboseOutput) { Write-LogMessage "Sweep forwards for $shortenedName - $shortenedUPN" "Gray" }
+
         try {
-            $rules = Get-SweepRule -Mailbox $mailbox.UserPrincipalName
+            $rules = Get-SweepRule -Mailbox $mailbox.UserPrincipalName -ErrorAction Stop
             foreach ($rule in $rules) {
                 if ($rule.Enabled) {
-                    Log-Message "    Sweep rule enabled for $shortenedName" $errormessagecolor
-                    Log-Message "    Name = $($rule.Name)" $errormessagecolor
-                    Log-Message "    Source Folder = $($rule.SourceFolder)" $errormessagecolor
-                    Log-Message "    Destination Folder = $($rule.DestinationFolder)" $errormessagecolor
+                    $sweepRuleCount++
+                    Write-LogMessage "    Sweep rule enabled for $shortenedName" $errormessagecolor
+                    Write-LogMessage "    Name = $($rule.Name)" $errormessagecolor
+                    Write-LogMessage "    Source Folder = $($rule.SourceFolder)" $errormessagecolor
+                    Write-LogMessage "    Destination Folder = $($rule.DestinationFolder)" $errormessagecolor
                 }
             }
         } catch {
-            Log-Message "    Error retrieving sweep rules for $shortenedName $_" $errormessagecolor
+            $sweepRuleErrorCount++
+            Write-LogMessage "    Error retrieving sweep rules for ${shortenedName}: $($_.Exception.Message)" $errormessagecolor
         }
     }
 
-    Log-Message "`nCheck Sweep Rules - Finish`n" $processmessagecolor
+    Write-LogMessage "`nCheck Sweep Rules - Finish`n" $processmessagecolor
+
+    Write-LogMessage "Summary" $systemmessagecolor
+    Write-LogMessage "    Mailbox forwarding enabled = $mailboxForwardEnabledCount" $systemmessagecolor
+    Write-LogMessage "    Mailbox forwarding address set but disabled = $mailboxForwardDisabledCount" $systemmessagecolor
+    Write-LogMessage "    Inbox rules with ForwardTo = $inboxForwardRuleCount" $systemmessagecolor
+    Write-LogMessage "    Inbox rules with RedirectTo = $inboxRedirectRuleCount" $systemmessagecolor
+    Write-LogMessage "    Inbox rule retrieval errors = $inboxRuleErrorCount" $warnmessagecolor
+    Write-LogMessage "    Sweep rules enabled = $sweepRuleCount" $systemmessagecolor
+    Write-LogMessage "    Sweep rule retrieval errors = $sweepRuleErrorCount" $warnmessagecolor
 
 } catch {
-    Log-Message "An error occurred: $_" $errormessagecolor
+    Write-LogMessage "An error occurred: $($_.Exception.Message)" $errormessagecolor
 } finally {
-    Log-Message "Script complete`n" $systemmessagecolor
+    Write-LogMessage "Script complete" $systemmessagecolor
+    Write-LogMessage "Log file: $script:LogFile`n" $processmessagecolor
 }

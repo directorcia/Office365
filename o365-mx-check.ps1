@@ -1,5 +1,5 @@
-param(                         ## if no parameters used then don't output to CSV
-    [switch]$csv = $false      ## if -csv parameter used then write to CSV to parent directory
+param(
+    [switch]$csv = $false
 )
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
@@ -12,181 +12,299 @@ Source - https://github.com/directorcia/Office365/blob/master/o365-mx-check.ps1
 Notes - You can extend many of the default limits at no additional cost
 
 Prerequisites = 1
-1. Connected to Exchange Online. Recommended script = https://github.com/directorcia/Office365/blob/master/o365-connect-exov2.ps1
+1. Connected to Exchange Online. Recommended script = https://github.com/directorcia/Office365/blob/master/o365-connect-exo.ps1
 
 More scripts available by joining http://www.ciaopspatron.com
 
 #>
 
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
 ## Variables
-$auditlogagelimitdefault = 90                   ## default days for mailbox audit log. You can extend beyond this for free
-$retaindeleteditemsmax = 30              ## default days for deleted items retention. You can extend beyond this for free
-$systemmessagecolor = "cyan"
-$processmessagecolor = "green"
-$errormessagecolor = "red"
-$version = "2.00"
+$auditlogagelimitdefault = 90
+$retaindeleteditemsmax = 30
+$systemmessagecolor = 'Cyan'
+$processmessagecolor = 'Green'
+$errormessagecolor = 'Red'
+$version = '2.10'
+$transcriptStarted = $false
 
-## If you have running scripts that don't have a certificate, run this command once to disable that level of security
-## set-executionpolicy -executionpolicy bypass -scope currentuser -force
+function Get-PreferredCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Names
+    )
 
-start-transcript "..\o365-mx-check.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
+    foreach ($name in $Names) {
+        $command = Get-Command -Name $name -ErrorAction SilentlyContinue
+        if ($command) {
+            return $command
+        }
+    }
 
-Clear-host
-
-write-host -foregroundcolor $systemmessagecolor "Script started. Version = $version`n"
-write-host -foregroundcolor cyan -backgroundcolor DarkBlue ">>>>>> Created by www.ciaops.com <<<<<<`n"
-write-host "--- Script to display mailbox settings ---`n"
-
-if ((get-module -listavailable -name ExchangeOnlineManagement) -or (get-module -listavailable -name msonline)) {    ## Has the Exchange Online PowerShell module been loaded?
-    write-host -ForegroundColor $processmessagecolor "Exchange Online PowerShell found"
-}
-else {              ## If Exchange Online PowerShell module not found
-    write-host -ForegroundColor yellow -backgroundcolor Red "`n[001] - Exchange Online PowerShell module not installed. Please install and re-run script`n"
-    write-host -ForegroundColor yellow -backgroundcolor red "Exception message:",$_.Exception.Message,"`n"
-    Stop-Transcript                 ## Terminate transcription
-    exit 1                          ## Terminate script
+    return $null
 }
 
-write-host -ForegroundColor $processmessagecolor "Getting Mailboxes"
+function Get-SafeDaysValue {
+    param(
+        [Parameter(Mandatory = $false)]
+        [object]$Value
+    )
 
-try {
-    $mailboxes=get-mailbox -ResultSize unlimited
-}
-catch {
-    write-host -ForegroundColor yellow -backgroundcolor Red "`n[002] - Exchange Online PowerShell module not installed. Please install and re-run script`n"
-    write-host -ForegroundColor yellow -backgroundcolor red "Exception message:",$_.Exception.Message,"`n"
-    Stop-Transcript                 ## Terminate transcription
-    exit 2                          ## Terminate script  
-}
-
-write-host -ForegroundColor $processmessagecolor "Start checking mailboxes`n"
-
-$results = @()
-foreach ($mailbox in $mailboxes) {
-    <#          ----- Truncate Long email addresses ----- #>
-    if ($mailbox.userprincipalname.length -gt 60) {
-        $upn = $mailbox.userprincipalname.substring(0,60)+"..."
-    }
-    else {
-        $upn = $mailbox.userprincipalname
-    }
-    if ($mailbox.PrimarySMTPAddress.length -gt 60) {
-        $primsmtp = $mailbox.PrimarySMTPAddress.substring(0,60)+"..."
-    }
-    else {
-        $primsmtp = $mailbox.PrimarySMTPAddress
-    }
-    write-host -foregroundcolor yellow -BackgroundColor Black "Mailbox =",$mailbox.displayname,"[",$upn,"]"
-    write-host -foregroundcolor Gray "  Primary SMTP address =",$primsmtp
-    write-host -foregroundcolor Gray "  Created =",$mailbox.whencreated
-
-## Mailboxes should have auditing enabled
-
-    if ($mailbox.auditenabled) {
-        write-host -foregroundcolor $processmessagecolor "  Audit enabled =",$mailbox.AuditEnabled
-    } else {
-        write-host -foregroundcolor $errormessagecolor "  Audit enabled =",$mailbox.AuditEnabled
+    if ($null -eq $Value) {
+        return $null
     }
 
-## Audit log limit for mailboxes should be extended from default
-
-    if ([timespan]::parse($mailbox.auditlogagelimit).days -gt $auditlogagelimitdefault) {
-        write-host -foregroundcolor $processmessagecolor "  Audit log limit (days) =",($mailbox.Auditlogagelimit).split('.')[0]
-    } else {
-        write-host -foregroundcolor $errormessagecolor "  Audit log limit (days) =",($mailbox.Auditlogagelimit).split('.')[0]
-    }
-
-## Mailboxes should have their retained deleted item retention period extended to 30 days
-
-    if ([timespan]::parse($mailbox.retaindeleteditemsfor).days -ge $retaindeleteditemsmax) {
-        write-host -foregroundcolor $processmessagecolor "  Retain Deleted items for (days) =",($mailbox.retaindeleteditemsfor).split('.')[0]
-    } else {
-        write-host -foregroundcolor $errormessagecolor "  Retain Deleted items for (days) =",($mailbox.retaindeleteditemsfor).split('.')[0]
-    }
-
-## Mailboxes should not be forwarding to other email addresses or mailboxes
-
-    if (-not [string]::IsNullOrEmpty($mailbox.forwardingaddress)){
-        write-host -foregroundcolor $errormessagecolor "  Forwarding address =",$mailbox.forwardingaddress
-    }
-    if (-not [string]::IsNullOrEmpty($mailbox.forwardingsmtpaddress)){
-        write-host -foregroundcolor $errormessagecolor "  Forwarding SMTP address =",$mailbox.forwardingsmtpaddress
-    }
-
-## Mailboxes should have litigation hold enabled
-
-    if ($mailbox.LitigationHoldEnabled) {
-        write-host -foregroundcolor $processmessagecolor "  Litigation hold =",$mailbox.litigationholdenabled
-    } else {
-        write-host -foregroundcolor $errormessagecolor "  Litigation hold =",$mailbox.litigationholdenabled
-    }
-
-## Mailboxes should have archive enabled
-
-    if ($mailbox.archivestatus -eq "active") {
-        Write-host -foregroundcolor $processmessagecolor "  Archive status =",$mailbox.archivestatus
-    } else {
-        Write-host -foregroundcolor $errormessagecolor "  Archive status =",$mailbox.archivestatus
-    }
-
-## Report mailbox maximum send and receive sizes
-
-    Write-host -foregroundcolor Gray "  Max send size =",$mailbox.maxsendsize
-    write-host -foregroundcolor Gray "  Max receive size =",$mailbox.maxreceivesize
-    try {               ## See if further details about mailbox are available
-        $extramailbox=get-casmailbox -Identity $mailbox.userprincipalname -erroraction stop
+    try {
+        return [TimeSpan]::Parse([string]$Value).Days
     }
     catch {
-        $extramailbox = $null
-        $reason = $_.Exception.Message
-    }    
+        return $null
+    }
+}
 
-## Mailboxes should not have POP3 enabled
+$transcriptPath = '..\o365-mx-check.txt'
+try {
+    Start-Transcript -Path $transcriptPath -ErrorAction Stop | Out-Null
+    $transcriptStarted = $true
+}
+catch {
+    Write-Host -ForegroundColor Yellow "Unable to start transcript at ${transcriptPath}: $($_.Exception.Message)"
+}
 
-    if (-not [string]::IsNullOrEmpty($extramailbox)){
-        if (-not $extramailbox.popenabled) {
-            write-host -foregroundcolor $processmessagecolor "  POP3 enabled =",$extramailbox.popenabled
-        } else {
-            write-host -foregroundcolor $errormessagecolor "  POP3 enabled =",$extramailbox.popenabled
+Clear-Host
+
+Write-Host -ForegroundColor $systemmessagecolor "Script started. Version = $version`n"
+Write-Host -ForegroundColor Cyan -BackgroundColor DarkBlue ">>>>>> Created by www.ciaops.com <<<<<<`n"
+Write-Host "--- Script to display mailbox settings ---`n"
+
+try {
+    $exchangeModule = Get-Module -ListAvailable -Name ExchangeOnlineManagement | Select-Object -First 1
+    if (-not $exchangeModule) {
+        throw 'ExchangeOnlineManagement module not installed. Please install and re-run script.'
+    }
+
+    Import-Module ExchangeOnlineManagement -ErrorAction Stop
+
+    $getMailboxCommand = Get-PreferredCommand -Names @('Get-EXOMailbox', 'Get-Mailbox')
+    if (-not $getMailboxCommand) {
+        throw 'Neither Get-EXOMailbox nor Get-Mailbox is available in this session.'
+    }
+
+    $getCasMailboxCommand = Get-PreferredCommand -Names @('Get-EXOCasMailbox', 'Get-CASMailbox')
+    if (-not $getCasMailboxCommand) {
+        throw 'Neither Get-EXOCasMailbox nor Get-CASMailbox is available in this session.'
+    }
+
+    $connectionCmdlet = Get-Command -Name Get-ConnectionInformation -ErrorAction SilentlyContinue
+    if ($connectionCmdlet) {
+        $connectionInfo = & $connectionCmdlet.Name -ErrorAction SilentlyContinue
+        if (-not $connectionInfo) {
+            throw 'Not connected to Exchange Online. Run Connect-ExchangeOnline first.'
+        }
+    }
+
+    Write-Host -ForegroundColor $processmessagecolor 'Exchange Online PowerShell found'
+}
+catch {
+    Write-Host -ForegroundColor Yellow -BackgroundColor Red "`n[001] - $($_.Exception.Message)`n"
+    if ($transcriptStarted) {
+        Stop-Transcript | Out-Null
+    }
+    exit 1
+}
+
+Write-Host -ForegroundColor $processmessagecolor 'Getting Mailboxes'
+
+try {
+    if ($getMailboxCommand.Name -eq 'Get-EXOMailbox') {
+        $mailboxes = & $getMailboxCommand.Name -ResultSize Unlimited -Properties AuditEnabled, AuditLogAgeLimit, RetainDeletedItemsFor, ForwardingAddress, ForwardingSmtpAddress, LitigationHoldEnabled, ArchiveStatus, MaxSendSize, MaxReceiveSize, UserPrincipalName, PrimarySmtpAddress, DisplayName, WhenCreated -ErrorAction Stop
+    }
+    else {
+        $mailboxes = & $getMailboxCommand.Name -ResultSize Unlimited -ErrorAction Stop
+    }
+}
+catch {
+    Write-Host -ForegroundColor Yellow -BackgroundColor Red "`n[002] - Unable to retrieve mailboxes. $($_.Exception.Message)`n"
+    if ($transcriptStarted) {
+        Stop-Transcript | Out-Null
+    }
+    exit 2
+}
+
+if (-not $mailboxes) {
+    Write-Host -ForegroundColor Yellow 'No mailboxes returned from Exchange Online.'
+    if ($transcriptStarted) {
+        Stop-Transcript | Out-Null
+    }
+    exit 0
+}
+
+Write-Host -ForegroundColor $processmessagecolor "Start checking mailboxes`n"
+
+$results = New-Object System.Collections.Generic.List[object]
+$compliantMailboxCount = 0
+
+foreach ($mailbox in $mailboxes) {
+    $mailboxCompliant = $true
+    $upn = [string]$mailbox.UserPrincipalName
+    $primarySmtp = [string]$mailbox.PrimarySmtpAddress
+
+    if ($upn.Length -gt 60) {
+        $upnDisplay = $upn.Substring(0, 60) + '...'
+    }
+    else {
+        $upnDisplay = $upn
+    }
+
+    if ($primarySmtp.Length -gt 60) {
+        $primarySmtpDisplay = $primarySmtp.Substring(0, 60) + '...'
+    }
+    else {
+        $primarySmtpDisplay = $primarySmtp
+    }
+
+    Write-Host -ForegroundColor Yellow -BackgroundColor Black "Mailbox = $($mailbox.DisplayName) [$upnDisplay]"
+    Write-Host -ForegroundColor Gray "  Primary SMTP address = $primarySmtpDisplay"
+    Write-Host -ForegroundColor Gray "  Created = $($mailbox.WhenCreated)"
+
+    if ($mailbox.AuditEnabled) {
+        Write-Host -ForegroundColor $processmessagecolor "  Audit enabled = $($mailbox.AuditEnabled)"
+    }
+    else {
+        $mailboxCompliant = $false
+        Write-Host -ForegroundColor $errormessagecolor "  Audit enabled = $($mailbox.AuditEnabled)"
+    }
+
+    $auditLogAgeLimitDays = Get-SafeDaysValue -Value $mailbox.AuditLogAgeLimit
+    if (($null -ne $auditLogAgeLimitDays) -and ($auditLogAgeLimitDays -gt $auditlogagelimitdefault)) {
+        Write-Host -ForegroundColor $processmessagecolor "  Audit log limit (days) = $auditLogAgeLimitDays"
+    }
+    else {
+        $mailboxCompliant = $false
+        Write-Host -ForegroundColor $errormessagecolor "  Audit log limit (days) = $auditLogAgeLimitDays"
+    }
+
+    $retainDeletedItemsDays = Get-SafeDaysValue -Value $mailbox.RetainDeletedItemsFor
+    if (($null -ne $retainDeletedItemsDays) -and ($retainDeletedItemsDays -ge $retaindeleteditemsmax)) {
+        Write-Host -ForegroundColor $processmessagecolor "  Retain Deleted items for (days) = $retainDeletedItemsDays"
+    }
+    else {
+        $mailboxCompliant = $false
+        Write-Host -ForegroundColor $errormessagecolor "  Retain Deleted items for (days) = $retainDeletedItemsDays"
+    }
+
+    if (-not [string]::IsNullOrEmpty([string]$mailbox.ForwardingAddress)) {
+        $mailboxCompliant = $false
+        Write-Host -ForegroundColor $errormessagecolor "  Forwarding address = $($mailbox.ForwardingAddress)"
+    }
+
+    if (-not [string]::IsNullOrEmpty([string]$mailbox.ForwardingSmtpAddress)) {
+        $mailboxCompliant = $false
+        Write-Host -ForegroundColor $errormessagecolor "  Forwarding SMTP address = $($mailbox.ForwardingSmtpAddress)"
+    }
+
+    if ($mailbox.LitigationHoldEnabled) {
+        Write-Host -ForegroundColor $processmessagecolor "  Litigation hold = $($mailbox.LitigationHoldEnabled)"
+    }
+    else {
+        $mailboxCompliant = $false
+        Write-Host -ForegroundColor $errormessagecolor "  Litigation hold = $($mailbox.LitigationHoldEnabled)"
+    }
+
+    if ([string]$mailbox.ArchiveStatus -eq 'Active') {
+        Write-Host -ForegroundColor $processmessagecolor "  Archive status = $($mailbox.ArchiveStatus)"
+    }
+    else {
+        $mailboxCompliant = $false
+        Write-Host -ForegroundColor $errormessagecolor "  Archive status = $($mailbox.ArchiveStatus)"
+    }
+
+    Write-Host -ForegroundColor Gray "  Max send size = $($mailbox.MaxSendSize)"
+    Write-Host -ForegroundColor Gray "  Max receive size = $($mailbox.MaxReceiveSize)"
+
+    $extraMailbox = $null
+    $casLookupReason = $null
+    try {
+        $extraMailbox = & $getCasMailboxCommand.Name -Identity $mailbox.UserPrincipalName -ErrorAction Stop
+    }
+    catch {
+        $casLookupReason = $_.Exception.Message
+    }
+
+    if ($null -ne $extraMailbox) {
+        if (-not $extraMailbox.PopEnabled) {
+            Write-Host -ForegroundColor $processmessagecolor "  POP3 enabled = $($extraMailbox.PopEnabled)"
+        }
+        else {
+            $mailboxCompliant = $false
+            Write-Host -ForegroundColor $errormessagecolor "  POP3 enabled = $($extraMailbox.PopEnabled)"
         }
 
-    ## Mailboxes should not have IMAP enabled
-
-        if (-not $extramailbox.ImapEnabled) {
-            write-host -foregroundcolor $processmessagecolor "  IMAP enabled =",$extramailbox.imapenabled
-        } else {
-            write-host -foregroundcolor $errormessagecolor "  IMAP enabled =",$extramailbox.imapenabled
+        if (-not $extraMailbox.ImapEnabled) {
+            Write-Host -ForegroundColor $processmessagecolor "  IMAP enabled = $($extraMailbox.ImapEnabled)"
+        }
+        else {
+            $mailboxCompliant = $false
+            Write-Host -ForegroundColor $errormessagecolor "  IMAP enabled = $($extraMailbox.ImapEnabled)"
         }
     }
     else {
-        write-host -ForegroundColor $errormessagecolor "  Further mailbox details not found -",$reason.substring(0,60),"..."
+        $mailboxCompliant = $false
+        if ([string]::IsNullOrWhiteSpace($casLookupReason)) {
+            $casLookupReason = 'Unknown error'
+        }
+        $trimmedReason = if ($casLookupReason.Length -gt 100) { $casLookupReason.Substring(0, 100) + '...' } else { $casLookupReason }
+        Write-Host -ForegroundColor $errormessagecolor "  Further mailbox details not found - $trimmedReason"
     }
-    $results+=[PSCustomObject]@{
-        Displayname = $mailbox.Displayname;
-        Userprincipalname = $mailbox.userprincipalname;
-        PrimarySMTPAddress = $mailbox.PrimarySMTPAddress;
-        WhenCreated = $mailbox.whencreated;
-        AuditEnabled = $mailbox.AuditEnabled;
-        Auditlogagelimit = $mailbox.Auditlogagelimit;
-        Retaindeleteditemsfor = $mailbox.Retaindeleteditemsfor;
-        Forwardingaddress = $mailbox.forwardingaddress;
-        Forwardingsmtpaddress = $mailbox.forwardingsmtpaddress;
-        LitigationHoldEnabled = $mailbox.LitigationHoldEnabled;
-        Archivestatus = $mailbox.Archivestatus;
-        PopEnabled = $extramailbox.Popenabled;
-        IMAPEnabled = $extramailbox.IMAPEnabled;
-        MaxSendSize = $mailbox.MaxSendSize;
-        MaxReceiveSize = $mailbox.MaxReceiveSize
+
+    if ($mailboxCompliant) {
+        $compliantMailboxCount++
     }
-    write-host 
+
+    $results.Add([PSCustomObject]@{
+            DisplayName = $mailbox.DisplayName
+            UserPrincipalName = $mailbox.UserPrincipalName
+            PrimarySMTPAddress = $mailbox.PrimarySmtpAddress
+            WhenCreated = $mailbox.WhenCreated
+            AuditEnabled = $mailbox.AuditEnabled
+            AuditLogAgeLimit = $mailbox.AuditLogAgeLimit
+            AuditLogAgeLimitDays = $auditLogAgeLimitDays
+            RetainDeletedItemsFor = $mailbox.RetainDeletedItemsFor
+            RetainDeletedItemsDays = $retainDeletedItemsDays
+            ForwardingAddress = $mailbox.ForwardingAddress
+            ForwardingSmtpAddress = $mailbox.ForwardingSmtpAddress
+            LitigationHoldEnabled = $mailbox.LitigationHoldEnabled
+            ArchiveStatus = $mailbox.ArchiveStatus
+            PopEnabled = if ($null -ne $extraMailbox) { $extraMailbox.PopEnabled } else { $null }
+            ImapEnabled = if ($null -ne $extraMailbox) { $extraMailbox.ImapEnabled } else { $null }
+            MaxSendSize = $mailbox.MaxSendSize
+            MaxReceiveSize = $mailbox.MaxReceiveSize
+            MailboxCompliant = $mailboxCompliant
+        })
+
+    Write-Host
 }
-if ($csv) {                                                     ## If CSV paramter set
-    write-host -foregroundcolor $processmessagecolor "Writing all output to file o365-mx-check$(get-date -f yyyyMMddHHmmss).csv in parent directory" 
-    $results | export-csv -path "..\o365-mx-check$(get-date -f yyyyMMddHHmmss).csv" -NoTypeInformation ## Export array results to CSV file
+
+$totalMailboxes = $results.Count
+$nonCompliantMailboxCount = $totalMailboxes - $compliantMailboxCount
+
+Write-Host -ForegroundColor $processmessagecolor "Summary: $compliantMailboxCount compliant, $nonCompliantMailboxCount non-compliant, $totalMailboxes total"
+
+if ($csv) {
+    $csvPath = "..\o365-mx-check$(Get-Date -Format yyyyMMddHHmmss).csv"
+    Write-Host -ForegroundColor $processmessagecolor "Writing all output to file $csvPath in parent directory"
+    $results | Export-Csv -Path $csvPath -NoTypeInformation
 }
-else {                                                          ## If CSV parameter not set
-    write-host -foregroundcolor $processmessagecolor "No CSV created"
+else {
+    Write-Host -ForegroundColor $processmessagecolor 'No CSV created'
 }
-write-host -ForegroundColor $processmessagecolor "Finish checking mailboxes"
-write-host
-write-host -foregroundcolor $systemmessagecolor "Script completed`n"
+
+Write-Host -ForegroundColor $processmessagecolor 'Finish checking mailboxes'
+Write-Host
+Write-Host -ForegroundColor $systemmessagecolor "Script completed`n"
+
+if ($transcriptStarted) {
+    Stop-Transcript | Out-Null
+}

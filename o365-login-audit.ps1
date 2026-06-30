@@ -1,5 +1,6 @@
 param(                         ## if no parameters used then get logs for 1 days, output successful and unsuccessful logins and don't output to CSV
     [switch]$days = $false,    ## if -days parameter prompt for number of days
+    [ValidateRange(1, 365)][int]$DaysBack = 0, ## optional non-interactive day range
     [switch]$fail = $false,    ## if -fail parameter only show failed logins
     [switch]$csv = $false      ## if -csv parameter used then write to CSV to parent directory
 )
@@ -31,8 +32,7 @@ $Results = @()                                          ## initialise array
 $displays = @()                                         ## initailise array
 $AuditOutput = @()                                      ## initialise array
 $currentoutput = @()                                    ## initialise array
-$strCurrentTimeZone = (Get-WmiObject win32_timezone).StandardName           ## determine current local timezone
-$TZ = [System.TimeZoneInfo]::FindSystemTimeZoneById($strCurrentTimeZone)    ## for Timezone calculations
+$TZ = Get-TimeZone                                                           ## determine current local timezone
 ## Valid record types = 
 ## AzureActiveDirectory, AzureActiveDirectoryAccountLogon,AzureActiveDirectoryStsLogon, ComplianceDLPExchange
 ## ComplianceDLPSharePoint, CRM, DataCenterSecurityCmdlet, Discovery, ExchangeAdmin, ExchangeAggregatedOperation
@@ -53,23 +53,47 @@ $operation="userloginfailed","userloggedin" ## use this line to report all login
 
 Clear-Host
 
-start-transcript "..\o365-login-audit.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
+function Stop-Script {
+    param(
+        [Parameter(Mandatory = $true)][int]$ExitCode
+    )
+
+    try {
+        if ($global:TRANSCRIPT) {
+            Stop-Transcript | Out-Null
+            $global:TRANSCRIPT = $false
+        }
+    }
+    catch {
+        # Ignore transcript stop failures so the script can still terminate cleanly.
+    }
+
+    exit $ExitCode
+}
+
+$global:TRANSCRIPT = $false
+Start-Transcript "..\o365-login-audit.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
+$global:TRANSCRIPT = $true
 
 write-host -foregroundcolor $systemmessagecolor "Script started. Version = $version`n"
 write-host -foregroundcolor cyan -backgroundcolor DarkBlue ">>>>>> Created by www.ciaops.com <<<<<<`n"
 write-host "--- Script to display user logins from Unified Audit log ---`n"
 
 write-host -foregroundcolor $processmessagecolor "Calculate day range"
-if (-not $days) {                                           ## If days parameter not specified 
+if ($DaysBack -gt 0) {
+    $numberdaysint = $DaysBack                              ## Use provided value to support non-interactive runs
+}
+elseif (-not $days) {                                       ## If days parameter not specified 
     $numberdays = 1                                         ## Set search to one day
+    $numberdaysint = [int]::Parse($numberdays)             ## Convert string to integer
 }
 else {                                                      ## If days parameter specified
     do{
         $numberdays = read-host -Prompt "`nEnter total number of previous days to check from now"       ## Prompt for number of days to check
-    } Until ((-not [string]::isnullorempty($numberdays)) -and ($numberdays -match "^\d+$"))             ## Keep prompting until not blank and numeric
+    } Until ((-not [string]::isnullorempty($numberdays)) -and ($numberdays -match "^[1-9]\d*$"))       ## Keep prompting until not blank and positive integer
     Write-Host
+    $numberdaysint = [int]::Parse($numberdays)             ## Convert string to integer
 }
-$numberdaysint = [int]::Parse($numberdays)                          ## Convert string to integer
 $startdatelocal = (get-date).adddays(-$numberdaysint)               ## Starting date for audit log search Local. Default = 1 day ago
 $startdate = $startdatelocal.touniversaltime()                      ## Convert local start time to UTC
 $enddate = (get-date).touniversaltime()                             ## Ending date for audit log search UTC. Default = current time
@@ -81,9 +105,7 @@ if ((get-module -listavailable -name ExchangeOnlineManagement) -or (get-module -
 }
 else {              ## If Exchange Online PowerShell module not found
     write-host -ForegroundColor yellow -backgroundcolor Red "`n[001] - Exchange Online PowerShell module not installed. Please install and re-run script`n"
-    write-host -ForegroundColor yellow -backgroundcolor red "Exception message:",$_.Exception.Message,"`n"
-    Stop-Transcript                 ## Terminate transcription
-    exit 1                          ## Terminate script
+    Stop-Script -ExitCode 1         ## Terminate script
 }
 
 # Search the defined date(s), SessionId + SessionCommand in combination with the loop will return and append 5000 object per iteration until all objects are returned (minimum limit is 50k objects)
@@ -96,12 +118,17 @@ do {
     catch {
         write-host -ForegroundColor yellow -backgroundcolor red "`n[002] - Search Unified Log error. Typically not connected to Exchange Online. Please connect and re-run script`n"
         write-host -ForegroundColor yellow -backgroundcolor red "Exception message:",$_.Exception.Message,"`n"
-        Stop-Transcript                 ## Terminate transcription
-        exit 2                          ## Terminate script     
+        Stop-Script -ExitCode 2         ## Terminate script
     }
     $AuditOutput += $currentoutput      ## Build total results array
     ++$count                            ## Increament page count
 } until ($currentoutput.count -eq 0)    ## Until there are no more logs in range to get
+
+if ($AuditOutput.Count -eq 0) {
+    Write-Host -ForegroundColor Yellow "No matching unified audit login events were found in the selected date range."
+    Write-Host -ForegroundColor $systemmessagecolor "Script Completed`n"
+    Stop-Script -ExitCode 0
+}
     
 # Select and expand the nested object (AuditData) as it holds relevant reporting data. Convert output format from default JSON to enable export to csv
 $ConvertedOutput = $AuditOutput | Select-Object -ExpandProperty AuditData | sort-object creationtime |  ConvertFrom-Json
@@ -143,4 +170,4 @@ foreach ($display in $displays){
 }
 write-host
 write-host -foregroundcolor $systemmessagecolor "Script Completed`n"
-Stop-Transcript | Out-Null          ## End transscript
+Stop-Script -ExitCode 0             ## End transcript and script cleanly
