@@ -33,6 +33,7 @@ Description - Simplified SharePoint Online admin center connect script with two 
 1. GenerateLocalCertificate: create/export local cert files.
 2. UseCertificateAuth: connect to SharePoint admin center with existing app/cert.
 Source - https://github.com/directorcia/Office365/blob/master/o365-connect-spo-cert.ps1
+Documentation - https://github.com/directorcia/Office365/wiki/Certificate-based-authentication-for-SharePoint-Online
 #>
 
 ## Resolve paths relative to the script file itself, not the caller's working directory.
