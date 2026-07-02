@@ -19,6 +19,9 @@ HARD RULES:
     and SharePoint Online Management Shell only where Graph is insufficient.
   - PowerShell 7+. Use [ordered] hashtables for all JSON sections.
 ================================================================================
+
+Documentation - https://github.com/directorcia/Office365/wiki/Microsoft-365-AI-Readiness-Export-%E2%80%90-Execution-and-Operations-Guide
+
 #>
 
 [CmdletBinding()]
@@ -183,6 +186,20 @@ function Get-DefaultGraphScopes {
         'https://graph.microsoft.com/AuditLog.Read.All',
         'https://graph.microsoft.com/ExternalConnection.Read.All',
         'https://graph.microsoft.com/InformationProtectionPolicy.Read.All'
+    )
+}
+
+function Get-RequiredGraphScopes {
+    # Baseline read-only permissions required for this script's core collectors.
+    return @(
+        'https://graph.microsoft.com/DeviceManagementManagedDevices.Read.All',
+        'https://graph.microsoft.com/Directory.Read.All',
+        'https://graph.microsoft.com/ExternalConnection.Read.All',
+        'https://graph.microsoft.com/Group.Read.All',
+        'https://graph.microsoft.com/InformationProtectionPolicy.Read.All',
+        'https://graph.microsoft.com/Organization.Read.All',
+        'https://graph.microsoft.com/Policy.Read.All',
+        'https://graph.microsoft.com/Reports.Read.All'
     )
 }
 
@@ -988,6 +1005,7 @@ function Connect-Services {
                 $script:GraphAccessToken = $existingToken
                 $script:GraphAccessTokenExpiresAtUtc = $existingTokenExpiresAt
                 Write-Step 'Reusing the current Microsoft Graph access token from the existing session.' -Color Green
+                Write-Step 'Microsoft Graph authentication is ready.' -Color Green
             }
             else {
                 $script:GraphAccessToken = $null
@@ -1022,6 +1040,7 @@ function Connect-Services {
 
             Write-Step 'Starting device-code sign-in and opening the login page automatically...' -Color DarkYellow
             $null = Get-GraphAccessToken -TenantId $TenantId -ClientId $GraphClientId -Scopes $graphScopes
+            Write-Step 'Connected to Microsoft Graph.' -Color Green
         }
     }
     catch {
@@ -1074,6 +1093,7 @@ function Connect-Services {
             if ($adminUrl -and $adminUrl -match '^https://.+') {
                 Connect-PnPOnline -Url $adminUrl -Interactive -ErrorAction Stop -WarningAction SilentlyContinue -InformationAction SilentlyContinue 3>$null 6>$null
                 $pnpConnected = $true
+                Write-Step 'Connected to SharePoint / PnP.' -Color Green
             }
         }
         elseif ($pnpConnected) {
@@ -1210,7 +1230,7 @@ function Get-TenantMetadata {
         ScriptVersion      = '1.0'
         RunTimestampUtc    = (Get-Date).ToUniversalTime().ToString('o')
         ExecutingAdmin     = if ($script:MgContext) { $script:MgContext.Account } else { 'not collected' }
-        GrantedScopes      = if ($script:MgContext -and $script:MgContext.Scopes) { @($script:MgContext.Scopes) } else { 'not collected' }
+        GrantedScopes      = if ($script:MgContext -and $script:MgContext.Scopes) { @($script:MgContext.Scopes) } elseif (@($script:GraphProvidedScopes).Count -gt 0) { @($script:GraphProvidedScopes) } else { 'not collected' }
         ConsentStatus      = if (@($script:GraphMissingScopes).Count -gt 0) { 'partial' } else { 'complete' }
         MissingGraphPermissions = @($script:GraphMissingScopes)
         TotalUsers         = $userCount
@@ -2234,10 +2254,13 @@ try {
     Connect-Services
 
     Write-Phase 'Permission Validation'
-    $requiredScopes = Get-DefaultGraphScopes
+    $requiredScopes = Get-RequiredGraphScopes
     $script:GraphMissingScopes = @()
     $scopeValidationOk = Test-GraphScopeValidation -RequiredScopes $requiredScopes
     if (-not $scopeValidationOk) {
+        if ($GraphClientId -eq '04b07795-8ddb-461a-bbee-02f9e1bf7b46') {
+            Write-Step 'Using the default Microsoft client ID with .default scope requires pre-consented Graph delegated permissions in this tenant. Missing scopes must be granted by an admin (or use a custom app registration with the required delegated scopes).' -Color DarkYellow
+        }
         $null = Ensure-GraphConsent -RequiredScopes $requiredScopes
         Write-Verbose 'Graph scope validation found partial consent in this tenant; some collectors will return not collected instead of failing.'
     }
