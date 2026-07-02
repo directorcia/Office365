@@ -956,6 +956,35 @@ function Get-GraphRestAll {
     return $results
 }
 
+function Get-UserRegistrationFeatureCount {
+    param(
+        [AllowNull()][object[]]$FeatureCounts,
+        [Parameter(Mandatory)][string]$FeatureName
+    )
+
+    foreach ($featureCount in @($FeatureCounts)) {
+        if ($null -eq $featureCount) { continue }
+        if (-not ($featureCount.PSObject.Properties.Name -contains 'feature')) { continue }
+        if ([string]$featureCount.feature -ne $FeatureName) { continue }
+
+        if ($featureCount.PSObject.Properties.Name -contains 'userCount') {
+            return Get-IntValue -Value $featureCount.userCount -Default 0
+        }
+    }
+
+    return $null
+}
+
+function Get-UserRegistrationFeatureSummary {
+    param(
+        [string]$IncludedUserTypes = 'all',
+        [string]$IncludedUserRoles = 'all'
+    )
+
+    $uri = "https://graph.microsoft.com/v1.0/reports/authenticationMethods/usersRegisteredByFeature(includedUserTypes='$IncludedUserTypes',includedUserRoles='$IncludedUserRoles')"
+    return Get-GraphRest -Uri $uri
+}
+
 # ----------------------------------------------------------------------------
 # Connections (read-only scopes)
 # ----------------------------------------------------------------------------
@@ -1336,9 +1365,26 @@ function Get-LicensingReadiness {
 
 function Get-IdentityReadiness {
     $auth = @((Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/reports/authenticationMethods/userRegistrationDetails'))
+    $featureSummary = Get-UserRegistrationFeatureSummary -IncludedUserTypes 'all' -IncludedUserRoles 'all'
     $mfaCapable = @($auth | Where-Object { $_.IsMfaCapable -eq $true }).Count
     $mfaRegistered = @($auth | Where-Object { $_.IsMfaRegistered -eq $true }).Count
     $passwordless = @($auth | Where-Object { $_.IsPasswordlessCapable -eq $true }).Count
+
+    $mfaPopulationUserCount = 'not collected'
+    $mfaPopulationSource = 'not collected'
+    if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'totalUserCount') {
+        $mfaPopulationUserCount = Get-IntValue -Value $featureSummary.totalUserCount -Default 0
+        $mfaPopulationSource = 'reports/authenticationMethods/usersRegisteredByFeature totalUserCount'
+    }
+    elseif (@($auth).Count -gt 0) {
+        $mfaPopulationUserCount = @($auth).Count
+        $mfaPopulationSource = 'reports/authenticationMethods/userRegistrationDetails row count fallback'
+    }
+
+    $mfaCapableSummaryCount = $null
+    if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'userRegistrationFeatureCounts') {
+        $mfaCapableSummaryCount = Get-UserRegistrationFeatureCount -FeatureCounts $featureSummary.userRegistrationFeatureCounts -FeatureName 'mfaCapable'
+    }
 
     $roles = @((Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/directoryRoles'))
     $targetRoleNames = @(
@@ -1383,6 +1429,12 @@ function Get-IdentityReadiness {
         MfaCapableCount      = $mfaCapable
         MfaRegisteredCount   = $mfaRegistered
         PasswordlessCount    = $passwordless
+        MfaPopulationUserCount = $mfaPopulationUserCount
+        MfaPopulationSource  = $mfaPopulationSource
+        MfaSummaryTotalUserCount = if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'totalUserCount') { Get-IntValue -Value $featureSummary.totalUserCount -Default 0 } else { 'not collected' }
+        MfaSummaryUserTypes  = if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'userTypes') { [string]$featureSummary.userTypes } else { 'not collected' }
+        MfaSummaryUserRoles  = if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'userRoles') { [string]$featureSummary.userRoles } else { 'not collected' }
+        MfaCapableSummaryCount = if ($null -ne $mfaCapableSummaryCount) { $mfaCapableSummaryCount } else { 'not collected' }
         GuestUsers           = $guestUsers
         StaleUsers           = $staleUsers
         GlobalAdminCount     = $globalAdminCount
@@ -1775,14 +1827,18 @@ function Get-IdentityAccessAdvanced {
     $globalAdmins = if ($identity -and $identity.PSObject.Properties.Name -contains 'GlobalAdminCount') { Get-IntValue -Value $identity.GlobalAdminCount -Default 0 } else { 0 }
     $privilegedRoles = if ($identity -and $identity.PSObject.Properties.Name -contains 'PrivilegedRoleCount') { Get-IntValue -Value $identity.PrivilegedRoleCount -Default 0 } else { 0 }
     $adminRoleCount = $globalAdmins + $privilegedRoles
-    $totalUsers = if ($metadata -and $metadata.PSObject.Properties.Name -contains 'TotalUsers') { Get-IntValue -Value $metadata.TotalUsers -Default 0 } else { 0 }
+    $mfaPopulationUserCount = if ($identity -and $identity.PSObject.Properties.Name -contains 'MfaPopulationUserCount') { Get-IntValue -Value $identity.MfaPopulationUserCount -Default 0 } else { 0 }
+    $fallbackTotalUsers = if ($metadata -and $metadata.PSObject.Properties.Name -contains 'TotalUsers') { Get-IntValue -Value $metadata.TotalUsers -Default 0 } else { 0 }
+    $mfaDenominator = if ($mfaPopulationUserCount -gt 0) { $mfaPopulationUserCount } else { $fallbackTotalUsers }
 
     return [ordered]@{
         AdminRoleObjectsCount = $adminRoleCount
         MfaCapableUsers       = $mfaCapable
         MfaRegisteredUsers    = $mfaRegistered
         PasswordlessCapableUsers = $passwordless
-        MfaRegistrationPercent = if ($totalUsers -gt 0) { [math]::Round(($mfaRegistered / $totalUsers) * 100, 2) } else { 0 }
+        MfaPopulationUserCount = if ($mfaDenominator -gt 0) { $mfaDenominator } else { 'not collected' }
+        MfaPopulationSource  = if ($identity -and $identity.PSObject.Properties.Name -contains 'MfaPopulationSource') { $identity.MfaPopulationSource } else { 'not collected' }
+        MfaRegistrationPercent = if ($mfaDenominator -gt 0) { [math]::Round(($mfaRegistered / $mfaDenominator) * 100, 2) } else { 0 }
         PhishingResistantMfaCoverage = 'not collected'
         PimSignal = 'not collected'
     }
@@ -2030,8 +2086,10 @@ function Get-ReadinessFlags {
     $licPercent = if (Test-HashtableKey -InputObject $lic -Key 'PrereqReadyPercent') { Get-DoubleValue -Value $lic['PrereqReadyPercent'] -Default 0 } else { 0 }
     $totalUsers = if (Test-HashtableKey -InputObject $script:Report.Metadata -Key 'TotalUsers') { Get-IntValue -Value $script:Report.Metadata['TotalUsers'] -Default 0 } else { 0 }
     $mfaRegisteredCount = if (Test-HashtableKey -InputObject $id -Key 'MfaRegisteredCount') { Get-IntValue -Value $id['MfaRegisteredCount'] -Default 0 } else { 0 }
+    $mfaPopulationUserCount = if (Test-HashtableKey -InputObject $id -Key 'MfaPopulationUserCount') { Get-IntValue -Value $id['MfaPopulationUserCount'] -Default 0 } else { 0 }
     $activeUsers30Days = if (Test-HashtableKey -InputObject $ad -Key 'ActiveUsers30Days') { Get-IntValue -Value $ad['ActiveUsers30Days'] -Default 0 } else { 0 }
-    $mfaPercent = if ($totalUsers -gt 0) { [math]::Round(($mfaRegisteredCount / $totalUsers) * 100, 2) } else { 0 }
+    $mfaDenominator = if ($mfaPopulationUserCount -gt 0) { $mfaPopulationUserCount } else { $totalUsers }
+    $mfaPercent = if ($mfaDenominator -gt 0) { [math]::Round(($mfaRegisteredCount / $mfaDenominator) * 100, 2) } else { 0 }
     # NOTE: ActiveUsers30Days is a 30-day cumulative count from the Microsoft 365 usage report.
     # It is not a unique single-day user population, so the percentage can exceed 100% in tenants
     # where the same user appears on multiple days during the reporting window.
@@ -2046,6 +2104,8 @@ function Get-ReadinessFlags {
     return [ordered]@{
         LicencePrereqPercent      = $licPercent
         MfaRegisteredPercent      = $mfaPercent
+        MfaPopulationUserCount    = if ($mfaDenominator -gt 0) { $mfaDenominator } else { 'not collected' }
+        MfaPopulationSource       = if (Test-HashtableKey -InputObject $id -Key 'MfaPopulationSource') { $id['MfaPopulationSource'] } else { 'not collected' }
         CaPoliciesEnabled         = $caEnabledPolicies
         SensitivityLabelsPublished = if ($govPublished -gt 0) { $true } else { $false }
         RestrictedSearchEnabled   = if ($spoRestricted -ne 'not collected') { [bool]$spoRestricted } else { $false }
