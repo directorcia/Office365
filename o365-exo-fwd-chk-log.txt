@@ -1,0 +1,35 @@
+
+[2026-06-30 22:18:39] Script started
+
+[2026-06-30 22:18:39] [INFO] Get all mailbox details - Start
+[2026-06-30 22:18:40] [INFO] Retrieved 7 mailbox entries
+[2026-06-30 22:18:40] [INFO] Get all mailbox details - Finish
+
+[2026-06-30 22:18:40] Check Mailbox Forwards - Start
+
+[2026-06-30 22:18:40]     Forwarding enabled for Consulting - Forwarding = True
+[2026-06-30 22:18:40]     Forwarding address = smtp:superuser@ciaopslabs.onmicrosoft.com
+[2026-06-30 22:18:40] 
+Check Mailbox Forwards - Finish
+
+[2026-06-30 22:18:40] Check Outlook Rule Forwards - Start
+
+[2026-06-30 22:18:46] 
+Check Outlook Rule Forwards - Finish
+
+[2026-06-30 22:18:46] Check Sweep Rules - Start
+
+[2026-06-30 22:18:49] 
+Check Sweep Rules - Finish
+
+[2026-06-30 22:18:49] Summary
+[2026-06-30 22:18:49]     Mailbox forwarding enabled = 1
+[2026-06-30 22:18:49]     Mailbox forwarding address set but disabled = 0
+[2026-06-30 22:18:49]     Inbox rules with ForwardTo = 0
+[2026-06-30 22:18:49]     Inbox rules with RedirectTo = 0
+[2026-06-30 22:18:49]     Inbox rule retrieval errors = 0
+[2026-06-30 22:18:49]     Sweep rules enabled = 0
+[2026-06-30 22:18:49]     Sweep rule retrieval errors = 0
+[2026-06-30 22:18:49] Script complete
+[2026-06-30 22:18:49] Log file: C:\downloads\source\Office365\o365-exo-fwd-chk-log.txt
+
