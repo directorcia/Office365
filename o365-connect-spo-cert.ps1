@@ -21,7 +21,8 @@ param(
     [string]$CertificateMapPath = "",  ## defaults to o365-spo-admin-cert-auth.json in parent of script directory
 
     ## When used with -GenerateLocalCertificate, also create the Entra app, upload the cert,
-    ## grant Sites.FullControl.All, and update the profile map automatically.
+    ## grant Sites.FullControl.All, Graph Application.Read.All, Graph Group.Read.All,
+    ## and update the profile map automatically.
     [switch]$ProvisionEntraApp = $false,
     [string]$AppDisplayName = "",
     [string]$SetupClientId = "1950a258-227b-4e31-a9cf-717495945fc2",
@@ -799,7 +800,8 @@ function Get-SpoAdminProvisioningRoleTargets {
     .SYNOPSIS
         Resolve the SharePoint Online and Microsoft Graph service principals and required app role IDs.
     .OUTPUTS
-        PSCustomObject  SpoServicePrincipal, SpoSitesFullRole, GraphServicePrincipal, GraphReadAllRole.
+        PSCustomObject  SpoServicePrincipal, SpoSitesFullRole, GraphServicePrincipal,
+        GraphReadAllRole, GraphGroupReadAllRole.
     #>
     [CmdletBinding()]
     param(
@@ -837,11 +839,18 @@ function Get-SpoAdminProvisioningRoleTargets {
     }
     Write-Debug "Graph Application.Read.All role ID: $($graphReadAllRole.id)"
 
+    $graphGroupReadAllRole = $graphSp.appRoles | Where-Object { $_.value -eq "Group.Read.All" -and $_.allowedMemberTypes -contains "Application" } | Select-Object -First 1
+    if ($null -eq $graphGroupReadAllRole) {
+        throw "Group.Read.All app role not found on Microsoft Graph service principal."
+    }
+    Write-Debug "Graph Group.Read.All role ID: $($graphGroupReadAllRole.id)"
+
     return [PSCustomObject]@{
         SpoServicePrincipal   = $spoSp
         SpoSitesFullRole      = $sitesFullRole
         GraphServicePrincipal = $graphSp
         GraphReadAllRole      = $graphReadAllRole
+        GraphGroupReadAllRole = $graphGroupReadAllRole
     }
 }
 
@@ -858,6 +867,7 @@ function Get-OrCreateSpoAdminEntraApplication {
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$DisplayName,
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$SpoSitesFullRoleId,
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$GraphReadAllRoleId,
+        [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$GraphGroupReadAllRoleId,
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$SpoResourceAppId,
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$GraphResourceAppId,
         [Parameter(Mandatory = $true)][hashtable]$Colors
@@ -890,7 +900,8 @@ function Get-OrCreateSpoAdminEntraApplication {
                 ## Microsoft Graph
                 resourceAppId  = $GraphResourceAppId
                 resourceAccess = @(
-                    @{ id = $GraphReadAllRoleId; type = "Role" }
+                    @{ id = $GraphReadAllRoleId; type = "Role" },
+                    @{ id = $GraphGroupReadAllRoleId; type = "Role" }
                 )
             }
         )
@@ -997,7 +1008,8 @@ function Get-OrCreateSpoAdminEntraServicePrincipal {
 function Set-SpoAdminEntraAppRoleAssignments {
     <#
     .SYNOPSIS
-        Grant Sites.FullControl.All and Graph Application.Read.All to the provisioned service principal.
+        Grant Sites.FullControl.All, Graph Application.Read.All, and Graph Group.Read.All
+        to the provisioned service principal.
     #>
     [CmdletBinding()]
     param(
@@ -1007,6 +1019,7 @@ function Set-SpoAdminEntraAppRoleAssignments {
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$SpoSitesFullRoleId,
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$GraphServicePrincipalId,
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$GraphReadAllRoleId,
+        [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$GraphGroupReadAllRoleId,
         [Parameter(Mandatory = $true)][hashtable]$Colors
     )
 
@@ -1035,6 +1048,18 @@ function Set-SpoAdminEntraAppRoleAssignments {
         $graphRoleBody = @{ principalId = $ServicePrincipalId; resourceId = $GraphServicePrincipalId; appRoleId = $GraphReadAllRoleId }
         Invoke-SpoAdminGraphRequest -AccessToken $AccessToken -Method Post -Uri "$graphBase/servicePrincipals/$ServicePrincipalId/appRoleAssignments" -Body $graphRoleBody | Out-Null
         Write-Host -ForegroundColor $Colors.ProcessMessage "Microsoft Graph Application.Read.All granted."
+    }
+
+    Write-Host -ForegroundColor $Colors.ProcessMessage "Granting Microsoft Graph Group.Read.All permission (admin consent)..."
+    $groupAssignments    = Invoke-SpoAdminGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/servicePrincipals/$ServicePrincipalId/appRoleAssignments"
+    $groupAlreadyGranted = $groupAssignments.value | Where-Object { $_.appRoleId -eq $GraphGroupReadAllRoleId -and $_.resourceId -eq $GraphServicePrincipalId }
+    if ($null -ne $groupAlreadyGranted) {
+        Write-Host -ForegroundColor $Colors.ProcessMessage "Microsoft Graph Group.Read.All already granted - skipping."
+    }
+    else {
+        $groupRoleBody = @{ principalId = $ServicePrincipalId; resourceId = $GraphServicePrincipalId; appRoleId = $GraphGroupReadAllRoleId }
+        Invoke-SpoAdminGraphRequest -AccessToken $AccessToken -Method Post -Uri "$graphBase/servicePrincipals/$ServicePrincipalId/appRoleAssignments" -Body $groupRoleBody | Out-Null
+        Write-Host -ForegroundColor $Colors.ProcessMessage "Microsoft Graph Group.Read.All granted."
     }
 }
 
@@ -1075,6 +1100,7 @@ function Invoke-SpoAdminEntraAppProvisioning {
         -DisplayName        $DisplayName `
         -SpoSitesFullRoleId $targets.SpoSitesFullRole.id `
         -GraphReadAllRoleId $targets.GraphReadAllRole.id `
+        -GraphGroupReadAllRoleId $targets.GraphGroupReadAllRole.id `
         -SpoResourceAppId   $SpoResourceAppId `
         -GraphResourceAppId $GraphResourceAppId `
         -Colors             $Colors
@@ -1090,6 +1116,7 @@ function Invoke-SpoAdminEntraAppProvisioning {
         -SpoSitesFullRoleId      $targets.SpoSitesFullRole.id `
         -GraphServicePrincipalId $targets.GraphServicePrincipal.id `
         -GraphReadAllRoleId      $targets.GraphReadAllRole.id `
+        -GraphGroupReadAllRoleId $targets.GraphGroupReadAllRole.id `
         -Colors                  $Colors
 
     return [PSCustomObject]@{
@@ -1375,6 +1402,7 @@ try {
             Write-Host -ForegroundColor $Colors.ProcessMessage "App ID:           $($provisionResult.AppId)"
             Write-Host -ForegroundColor $Colors.ProcessMessage "Cert Thumbprint:  $($generatedCertificate.Thumbprint)"
             Write-Host -ForegroundColor $Colors.ProcessMessage "Tenant:           $provisionTenant"
+            Write-Host -ForegroundColor $Colors.ProcessMessage "Granted app permissions: SharePoint Sites.FullControl.All; Microsoft Graph Application.Read.All; Microsoft Graph Group.Read.All"
             Write-Host -ForegroundColor $Colors.WarningMessage "IMPORTANT: New app role grants can take 15-30 minutes to replicate across services."
             Write-Host -ForegroundColor $Colors.WarningMessage "Certificate-based Connect-SPOService attempts may fail during this window even when provisioning succeeded."
             Write-Host -ForegroundColor $Colors.ProcessMessage "`nConnect any time using:"
