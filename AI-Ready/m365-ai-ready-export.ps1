@@ -658,7 +658,20 @@ function Get-RequiredGraphScopes {
 }
 
 function Get-DefaultGraphScopes {
-    return @(Get-RequiredGraphScopes)
+    # Keep the interactive default delegated scope set explicit so the startup guidance,
+    # consent expectations, and requested permissions stay aligned.
+    return @(
+        'AuditLog.Read.All'
+        'DeviceManagementManagedDevices.Read.All'
+        'Directory.Read.All'
+        'ExternalConnection.Read.All'
+        'Group.Read.All'
+        'InformationProtectionPolicy.Read.All'
+        'Organization.Read.All'
+        'Policy.Read.All'
+        'Reports.Read.All'
+        'SecurityEvents.Read.All'
+    )
 }
 
 function Test-GraphPermissionsAvailable {
@@ -1304,7 +1317,7 @@ function Get-CopilotUsageSnapshot {
     if (-not (Test-GraphPermissionsAvailable -RequiredPermissions @('Reports.Read.All'))) {
         return [ordered]@{
             Status      = 'not collected'
-            Reason      = 'missing Graph permission: Reports.Read.All'
+            Reason      = 'Missing Graph permission: Reports.Read.All'
             ActiveUsers = 'not collected'
             ReportDate  = 'not collected'
             RecordCount = 0
@@ -1549,9 +1562,8 @@ function Connect-Services {
     Write-Step 'Connecting to Microsoft Graph and Microsoft 365 services...' -Color Yellow
 
     $teamsImportError = $null
-    $pnpImportError = $null
     try { Import-Module MicrosoftTeams -ErrorAction Stop } catch { $teamsImportError = $_.Exception.Message }
-    try { Import-Module PnP.PowerShell -ErrorAction Stop } catch { $pnpImportError = $_.Exception.Message }
+    try { Import-Module PnP.PowerShell -ErrorAction Stop } catch {}
     try { Import-Module ExchangeOnlineManagement -ErrorAction SilentlyContinue } catch {}
 
     try {
@@ -1626,15 +1638,20 @@ function Connect-Services {
         else {
             if ($RequestRequiredGraphScopesUpFront -and $isDefaultMsClient) {
                 Write-Warning 'Upfront Graph scope mode works best with a custom app registration. The default Microsoft public client cannot reliably request this tenant-specific delegated scope set directly, so a custom GraphClientId is recommended.'
+                Write-Step 'Rerun for full delegated consent with: -GraphClientId <your-app-id> -RequestRequiredGraphScopesUpFront' -Color DarkYellow
             }
 
             if ($isDefaultMsClient -and ($graphScopes -notcontains 'https://graph.microsoft.com/.default')) {
                 Write-Warning 'The Microsoft first-party client ID cannot request tenant-specific delegated Graph scopes directly. Falling back to https://graph.microsoft.com/.default to avoid AADSTS65002.'
+                Write-Step 'For the full exporter delegated scope set, rerun with: -GraphClientId <your-app-id> -RequestRequiredGraphScopesUpFront' -Color DarkYellow
                 $graphScopes = @('https://graph.microsoft.com/.default')
             }
 
             if ($graphScopes -contains 'https://graph.microsoft.com/.default') {
                 Write-Step 'Using Graph default scope set for device-code authentication.' -Color DarkYellow
+                if ($isDefaultMsClient) {
+                    Write-Step 'To request all exporter delegated Graph permissions explicitly, rerun with: -GraphClientId <your-app-id> -RequestRequiredGraphScopesUpFront' -Color DarkYellow
+                }
             }
             else {
                 $consentUrl = Get-GraphAdminConsentUrl -TenantId $TenantId -ClientId $GraphClientId
@@ -1643,6 +1660,7 @@ function Connect-Services {
                 }
                 else {
                     Write-Step 'Requesting the required delegated Graph permissions so the tenant can consent to them if needed.' -Color DarkYellow
+                    Write-Step 'To force consent up front, rerun with: -GraphClientId <your-app-id> -RequestRequiredGraphScopesUpFront' -Color DarkYellow
                 }
                 Write-Step "If sign-in fails due to missing consent, grant admin consent for the custom app registration: $consentUrl" -Color DarkYellow
             }
@@ -1831,43 +1849,100 @@ function Disconnect-Services {
 # ============================================================================
 
 function Get-TenantMetadata {
-    if (-not (Test-GraphPermissionsAvailable -RequiredPermissions @('Directory.Read.All', 'Organization.Read.All'))) {
-        return [ordered]@{
-            Status               = 'not collected'
-            Reason               = 'Missing Graph permission: Directory.Read.All and/or Organization.Read.All'
-            TenantName           = 'not collected'
-            TenantId             = 'not collected'
-            DefaultDomain        = 'not collected'
-            GeoLocation          = 'not collected'
-            ScriptVersion        = '1.0'
-            RunTimestampUtc      = (Get-Date).ToUniversalTime().ToString('o')
-            ExecutingAdmin       = if ($script:MgContext) { $script:MgContext.Account } else { 'not collected' }
-            GrantedScopes        = if ($script:MgContext -and $script:MgContext.Scopes) { @($script:MgContext.Scopes) } elseif (@($script:GraphProvidedScopes).Count -gt 0) { @($script:GraphProvidedScopes) } else { 'not collected' }
-            ConsentStatus        = if (@($script:GraphMissingScopes).Count -gt 0) { 'partial' } else { 'complete' }
-            MissingGraphPermissions = @($script:GraphMissingScopes)
-            TotalUsers           = 'not collected'
-            MemberUsers          = 'not collected'
-            GuestUsers           = 'not collected'
-            IncludeSampling      = [bool]$IncludeSampling
-            IncludeDetailedData  = [bool]$IncludeDetailedData
-            SampleSize           = [int]$SampleSize
+    $org = $null
+    $users = @()
+    $userCount = 'not collected'
+    $memberCount = 'not collected'
+    $guestCount = 'not collected'
+    $defaultDomain = 'not collected'
+    $geoLocation = 'not collected'
+
+    $missingMetadataScopes = @(Get-GraphMissingScopes -RequiredScopes @('Directory.Read.All', 'Organization.Read.All'))
+    $canReadOrganization = @((Get-GraphMissingScopes -RequiredScopes @('Organization.Read.All'))).Count -eq 0
+    $canReadUsers = @((Get-GraphMissingScopes -RequiredScopes @('Directory.Read.All'))).Count -eq 0
+
+    if ($canReadOrganization) {
+        try {
+            $org = @((Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/organization')) | Select-Object -First 1
+            $defaultDomainValue = @($org.VerifiedDomains | Where-Object { $_.IsDefault -eq $true } | Select-Object -ExpandProperty Name -First 1)
+            if (-not [string]::IsNullOrWhiteSpace([string]$defaultDomainValue)) {
+                $defaultDomain = [string]$defaultDomainValue
+            }
+
+            $geoLocationValue = Get-ObjectPropertyValue -InputObject $org -Name 'CountryLetterCode' -Default 'not collected'
+            if (Test-ValueCollected -Value $geoLocationValue) {
+                $geoLocation = [string]$geoLocationValue
+            }
+        }
+        catch {
+            $org = $null
         }
     }
 
-    $org = @((Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/organization')) | Select-Object -First 1
-    $users = @(Get-DirectoryUsersForReadiness)
-    $userCount = @($users).Count
-    $memberCount = @($users | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'userType' -Default '')) -ne 'Guest' }).Count
-    $guestCount = @($users | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'userType' -Default '')) -eq 'Guest' }).Count
-    $defaultDomain = @($org.VerifiedDomains | Where-Object { $_.IsDefault -eq $true } | Select-Object -ExpandProperty Name -First 1)
+    if ($canReadUsers) {
+        try {
+            $users = @(Get-DirectoryUsersForReadiness)
+            $userCount = @($users).Count
+            $memberCount = @($users | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'userType' -Default '')) -ne 'Guest' }).Count
+            $guestCount = @($users | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'userType' -Default '')) -eq 'Guest' }).Count
+        }
+        catch {
+            $userCount = 'not collected'
+            $memberCount = 'not collected'
+            $guestCount = 'not collected'
+        }
+    }
+
+    $contextTenantId = Get-ObjectPropertyValue -InputObject $script:MgContext -Name 'TenantId' -Default 'not collected'
+    $tenantIdValue = Get-ObjectPropertyValue -InputObject $org -Name 'Id' -Default 'not collected'
+    if (-not (Test-ValueCollected -Value $tenantIdValue)) {
+        if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
+            $tenantIdValue = $TenantId
+        }
+        elseif (Test-ValueCollected -Value $contextTenantId) {
+            $tenantIdValue = $contextTenantId
+        }
+    }
+
+    $tenantNameValue = Get-ObjectPropertyValue -InputObject $org -Name 'DisplayName' -Default 'not collected'
+    if (-not (Test-ValueCollected -Value $tenantNameValue)) {
+        $adminUpn = [string](Get-ObjectPropertyValue -InputObject $script:MgContext -Name 'Account' -Default '')
+        if (-not [string]::IsNullOrWhiteSpace($adminUpn) -and $adminUpn.Contains('@')) {
+            $tenantNameValue = ($adminUpn.Split('@')[-1]).ToLowerInvariant()
+        }
+        elseif (Test-ValueCollected -Value $defaultDomain) {
+            $tenantNameValue = [string]$defaultDomain
+        }
+    }
+
+    if (-not (Test-ValueCollected -Value $defaultDomain)) {
+        $defaultDomainFromAccount = [string](Get-ObjectPropertyValue -InputObject $script:MgContext -Name 'Account' -Default '')
+        if (-not [string]::IsNullOrWhiteSpace($defaultDomainFromAccount) -and $defaultDomainFromAccount.Contains('@')) {
+            $defaultDomain = ($defaultDomainFromAccount.Split('@')[-1]).ToLowerInvariant()
+        }
+    }
+
+    $reason = ''
+    $status = 'reported'
+    if (@($missingMetadataScopes).Count -gt 0) {
+        $status = 'partial'
+        $reason = "Missing Graph permission(s): $(@($missingMetadataScopes) -join ', '). Metadata fields were populated from available fallback sources where possible."
+    }
+
+    if (-not (Test-ValueCollected -Value $tenantIdValue) -and -not (Test-ValueCollected -Value $tenantNameValue)) {
+        $status = 'not collected'
+        if ([string]::IsNullOrWhiteSpace($reason)) {
+            $reason = 'Tenant metadata was unavailable from both Microsoft Graph and current auth context.'
+        }
+    }
 
     return [ordered]@{
-        Status             = 'reported'
-        Reason             = ''
-        TenantName         = $org.DisplayName
-        TenantId           = $org.Id
-        DefaultDomain      = $defaultDomain
-        GeoLocation        = $org.CountryLetterCode
+        Status             = $status
+        Reason             = $reason
+        TenantName         = if (Test-ValueCollected -Value $tenantNameValue) { $tenantNameValue } else { 'not collected' }
+        TenantId           = if (Test-ValueCollected -Value $tenantIdValue) { $tenantIdValue } else { 'not collected' }
+        DefaultDomain      = if (Test-ValueCollected -Value $defaultDomain) { $defaultDomain } else { 'not collected' }
+        GeoLocation        = $geoLocation
         ScriptVersion      = '1.0'
         RunTimestampUtc    = (Get-Date).ToUniversalTime().ToString('o')
         ExecutingAdmin     = if ($script:MgContext) { $script:MgContext.Account } else { 'not collected' }
@@ -1980,89 +2055,158 @@ function Get-LicensingReadiness {
 }
 
 function Get-IdentityReadiness {
-    if (-not (Test-GraphPermissionsAvailable -RequiredPermissions @('AuditLog.Read.All', 'Directory.Read.All'))) {
-        return [ordered]@{
-            Status               = 'not collected'
-            Reason               = 'Missing Graph permission: AuditLog.Read.All and/or Directory.Read.All'
-            MfaCapableCount      = 'not collected'
-            MfaRegisteredCount   = 'not collected'
-            PasswordlessCount    = 'not collected'
-            MfaPopulationUserCount = 'not collected'
-            MfaPopulationSource  = 'not collected'
-            MfaSummaryTotalUserCount = 'not collected'
-            MfaSummaryUserTypes  = 'not collected'
-            MfaSummaryUserRoles  = 'not collected'
-            MfaCapableSummaryCount = 'not collected'
-            GuestUsers           = 'not collected'
-            StaleUsers           = 'not collected'
-            GlobalAdminCount     = 'not collected'
-            PrivilegedRoleCount  = 'not collected'
-            SecurityDefaultsEnabled = 'not collected'
-        }
-    }
+    $missingCoreScopes = @(Get-GraphMissingScopes -RequiredScopes @('AuditLog.Read.All', 'Directory.Read.All'))
+    $hasAuditLogRead = @((Get-GraphMissingScopes -RequiredScopes @('AuditLog.Read.All'))).Count -eq 0
+    $hasDirectoryRead = @((Get-GraphMissingScopes -RequiredScopes @('Directory.Read.All'))).Count -eq 0
 
-    $auth = @((Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/reports/authenticationMethods/userRegistrationDetails'))
-    $featureSummary = Get-UserRegistrationFeatureSummary -IncludedUserTypes 'all' -IncludedUserRoles 'all'
-    $mfaCapable = @($auth | Where-Object { $_.IsMfaCapable -eq $true }).Count
-    $mfaRegistered = @($auth | Where-Object { $_.IsMfaRegistered -eq $true }).Count
-    $passwordless = @($auth | Where-Object { $_.IsPasswordlessCapable -eq $true }).Count
-
+    $auth = @()
+    $featureSummary = $null
+    $mfaCapable = 'not collected'
+    $mfaRegistered = 'not collected'
+    $passwordless = 'not collected'
     $mfaPopulationUserCount = 'not collected'
     $mfaPopulationSource = 'not collected'
-    if (@($auth).Count -gt 0) {
-        $mfaPopulationUserCount = @($auth).Count
-        $mfaPopulationSource = 'reports/authenticationMethods/userRegistrationDetails row count'
-    }
-    elseif ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'totalUserCount') {
-        $mfaPopulationUserCount = Get-IntValue -Value $featureSummary.totalUserCount -Default 0
-        $mfaPopulationSource = 'reports/authenticationMethods/usersRegisteredByFeature totalUserCount fallback'
-    }
+    $mfaSummaryTotalUserCount = 'not collected'
+    $mfaSummaryUserTypes = 'not collected'
+    $mfaSummaryUserRoles = 'not collected'
+    $mfaCapableSummaryCount = 'not collected'
 
-    $mfaCapableSummaryCount = $null
-    if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'userRegistrationFeatureCounts') {
-        $mfaCapableSummaryCount = Get-UserRegistrationFeatureCount -FeatureCounts $featureSummary.userRegistrationFeatureCounts -FeatureName 'mfaCapable'
-    }
-
-    $roles = @((Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/directoryRoles'))
-    $targetRoleNames = @(
-        'Global Administrator','Exchange Administrator','SharePoint Administrator',
-        'Teams Administrator','Security Administrator','Compliance Administrator',
-        'Conditional Access Administrator','Privileged Role Administrator'
-    )
-    $globalAdminCount = 0
-    $privilegedRoleCount = 0
-
-    foreach ($role in ($roles | Where-Object { $_.DisplayName -in $targetRoleNames })) {
-        $members = @((Get-GraphRestAll -Uri "https://graph.microsoft.com/v1.0/directoryRoles/$($role.Id)/members" -Query @{ '$select' = 'id' }))
-        $memberCount = @($members).Count
-
-        if ($role.DisplayName -match 'Global Administrator') {
-            $globalAdminCount = $memberCount
+    if ($hasAuditLogRead) {
+        try {
+            $auth = @((Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/reports/authenticationMethods/userRegistrationDetails'))
         }
-        elseif ($role.DisplayName -match 'Exchange|SharePoint|Teams|Security|Compliance|Conditional Access|Privileged') {
-            $privilegedRoleCount += $memberCount
+        catch {
+            $auth = @()
         }
-    }
 
-    $users = @(Get-DirectoryUsersForReadiness -IncludeSignInActivity)
-    $guestUsers = @($users | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'userType' -Default '')) -eq 'Guest' }).Count
-    $staleUsers = 0
-    foreach ($u in $users) {
-        $last = $null
-        if ($u.PSObject.Properties.Name -contains 'SignInActivity' -and $null -ne $u.SignInActivity) {
-            if ($u.SignInActivity.PSObject.Properties.Name -contains 'LastSignInDateTime') {
-                $last = $u.SignInActivity.LastSignInDateTime
+        try {
+            $featureSummary = Get-UserRegistrationFeatureSummary -IncludedUserTypes 'all' -IncludedUserRoles 'all'
+        }
+        catch {
+            $featureSummary = $null
+        }
+
+        $mfaCapable = @($auth | Where-Object { $_.IsMfaCapable -eq $true }).Count
+        $mfaRegistered = @($auth | Where-Object { $_.IsMfaRegistered -eq $true }).Count
+        $passwordless = @($auth | Where-Object { $_.IsPasswordlessCapable -eq $true }).Count
+
+        if (@($auth).Count -gt 0) {
+            $mfaPopulationUserCount = @($auth).Count
+            $mfaPopulationSource = 'reports/authenticationMethods/userRegistrationDetails row count'
+        }
+        elseif ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'totalUserCount') {
+            $mfaPopulationUserCount = Get-IntValue -Value $featureSummary.totalUserCount -Default 0
+            $mfaPopulationSource = 'reports/authenticationMethods/usersRegisteredByFeature totalUserCount fallback'
+        }
+
+        if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'totalUserCount') {
+            $mfaSummaryTotalUserCount = Get-IntValue -Value $featureSummary.totalUserCount -Default 0
+        }
+        if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'userTypes') {
+            $mfaSummaryUserTypes = [string]$featureSummary.userTypes
+        }
+        if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'userRoles') {
+            $mfaSummaryUserRoles = [string]$featureSummary.userRoles
+        }
+        if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'userRegistrationFeatureCounts') {
+            $mfaCapableSummary = Get-UserRegistrationFeatureCount -FeatureCounts $featureSummary.userRegistrationFeatureCounts -FeatureName 'mfaCapable'
+            if ($null -ne $mfaCapableSummary) {
+                $mfaCapableSummaryCount = $mfaCapableSummary
             }
         }
+    }
 
-        if ($last) {
-            if ((Get-Date).ToUniversalTime() - [DateTime]$last -gt [TimeSpan]::FromDays(90)) { $staleUsers++ }
+    $globalAdminCount = 'not collected'
+    $privilegedRoleCount = 'not collected'
+    $guestUsers = 'not collected'
+    $staleUsers = 'not collected'
+
+    if ($hasDirectoryRead) {
+        $targetRoleNames = @(
+            'Global Administrator','Exchange Administrator','SharePoint Administrator',
+            'Teams Administrator','Security Administrator','Compliance Administrator',
+            'Conditional Access Administrator','Privileged Role Administrator'
+        )
+        $globalAdminCount = 0
+        $privilegedRoleCount = 0
+
+        try {
+            $roles = @((Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/directoryRoles'))
+            foreach ($role in ($roles | Where-Object { $_.DisplayName -in $targetRoleNames })) {
+                $members = @((Get-GraphRestAll -Uri "https://graph.microsoft.com/v1.0/directoryRoles/$($role.Id)/members" -Query @{ '$select' = 'id' }))
+                $memberCount = @($members).Count
+
+                if ($role.DisplayName -match 'Global Administrator') {
+                    $globalAdminCount = $memberCount
+                }
+                elseif ($role.DisplayName -match 'Exchange|SharePoint|Teams|Security|Compliance|Conditional Access|Privileged') {
+                    $privilegedRoleCount += $memberCount
+                }
+            }
+        }
+        catch {
+            $globalAdminCount = 'not collected'
+            $privilegedRoleCount = 'not collected'
+        }
+
+        try {
+            $users = @(Get-DirectoryUsersForReadiness -IncludeSignInActivity)
+            $guestUsers = @($users | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'userType' -Default '')) -eq 'Guest' }).Count
+            $staleUsers = 0
+            foreach ($u in $users) {
+                $last = $null
+                if ($u.PSObject.Properties.Name -contains 'SignInActivity' -and $null -ne $u.SignInActivity) {
+                    if ($u.SignInActivity.PSObject.Properties.Name -contains 'LastSignInDateTime') {
+                        $last = $u.SignInActivity.LastSignInDateTime
+                    }
+                }
+
+                if ($last) {
+                    if ((Get-Date).ToUniversalTime() - [DateTime]$last -gt [TimeSpan]::FromDays(90)) { $staleUsers++ }
+                }
+            }
+        }
+        catch {
+            $guestUsers = 'not collected'
+            $staleUsers = 'not collected'
         }
     }
 
-    $securityDefaults = Get-GraphRest -Uri 'https://graph.microsoft.com/v1.0/policies/identitySecurityDefaultsEnforcementPolicy'
-    $identityStatus = if (Test-GraphPermissionsAvailable -RequiredPermissions @('Policy.Read.All')) { 'reported' } else { 'partial' }
-    $identityReason = if ($identityStatus -eq 'partial') { 'Security defaults could not be collected because Policy.Read.All is missing.' } else { '' }
+    $securityDefaults = $null
+    if (Test-GraphPermissionsAvailable -RequiredPermissions @('Policy.Read.All')) {
+        try {
+            $securityDefaults = Get-GraphRest -Uri 'https://graph.microsoft.com/v1.0/policies/identitySecurityDefaultsEnforcementPolicy'
+        }
+        catch {
+            $securityDefaults = $null
+        }
+    }
+
+    $reasons = [System.Collections.Generic.List[string]]::new()
+    if (@($missingCoreScopes).Count -gt 0) {
+        $reasons.Add("Missing Graph permission(s): $(@($missingCoreScopes) -join ', ')") | Out-Null
+    }
+    if (-not (Test-GraphPermissionsAvailable -RequiredPermissions @('Policy.Read.All'))) {
+        $reasons.Add('Security defaults could not be collected because Policy.Read.All is missing.') | Out-Null
+    }
+
+    $hasAnyCoreData =
+        (Test-ValueCollected -Value $mfaCapable) -or
+        (Test-ValueCollected -Value $mfaRegistered) -or
+        (Test-ValueCollected -Value $passwordless) -or
+        (Test-ValueCollected -Value $guestUsers) -or
+        (Test-ValueCollected -Value $staleUsers) -or
+        (Test-ValueCollected -Value $globalAdminCount) -or
+        (Test-ValueCollected -Value $privilegedRoleCount)
+
+    $identityStatus = if ($hasAnyCoreData) {
+        if ($reasons.Count -gt 0) { 'partial' } else { 'reported' }
+    }
+    else {
+        'not collected'
+    }
+
+    $identityReason = if ($reasons.Count -gt 0) { $reasons -join ' ' } else { '' }
 
     return [ordered]@{
         Status               = $identityStatus
@@ -2072,10 +2216,10 @@ function Get-IdentityReadiness {
         PasswordlessCount    = $passwordless
         MfaPopulationUserCount = $mfaPopulationUserCount
         MfaPopulationSource  = $mfaPopulationSource
-        MfaSummaryTotalUserCount = if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'totalUserCount') { Get-IntValue -Value $featureSummary.totalUserCount -Default 0 } else { 'not collected' }
-        MfaSummaryUserTypes  = if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'userTypes') { [string]$featureSummary.userTypes } else { 'not collected' }
-        MfaSummaryUserRoles  = if ($featureSummary -and $featureSummary.PSObject.Properties.Name -contains 'userRoles') { [string]$featureSummary.userRoles } else { 'not collected' }
-        MfaCapableSummaryCount = if ($null -ne $mfaCapableSummaryCount) { $mfaCapableSummaryCount } else { 'not collected' }
+        MfaSummaryTotalUserCount = $mfaSummaryTotalUserCount
+        MfaSummaryUserTypes  = $mfaSummaryUserTypes
+        MfaSummaryUserRoles  = $mfaSummaryUserRoles
+        MfaCapableSummaryCount = $mfaCapableSummaryCount
         GuestUsers           = $guestUsers
         StaleUsers           = $staleUsers
         GlobalAdminCount     = $globalAdminCount
@@ -2089,8 +2233,8 @@ function Get-IdentityReadiness {
 function Get-ConditionalAccessReadiness {
     if (-not (Test-GraphPermissionsAvailable -RequiredPermissions @('Policy.Read.All'))) {
         return [ordered]@{
-            Status = 'not collected'
-            Reason = 'Missing Graph permission: Policy.Read.All'
+            Status = 'partial'
+            Reason = 'Missing Graph permission: Policy.Read.All. Conditional Access policy inventory and coverage signals were not collected.'
             TotalPolicies = 'not collected'
             EnabledPolicies = 'not collected'
             CoverageFlags = [ordered]@{
@@ -2945,11 +3089,19 @@ function Get-AdoptionSignals {
     }
 
     $copilot = Get-CopilotUsageSnapshot -Period 'D30'
+    $copilotReported = ([string](Get-ObjectPropertyValue -InputObject $copilot -Name 'Status' -Default 'not collected') -eq 'reported')
+    $copilotReason = [string](Get-ObjectPropertyValue -InputObject $copilot -Name 'Reason' -Default '')
 
     if ($null -eq $latest) {
+        $status = if ($copilotReported) { 'partial' } else { 'not collected' }
+        $reason = 'Office 365 active user report was unavailable.'
+        if (-not $copilotReported -and -not [string]::IsNullOrWhiteSpace($copilotReason)) {
+            $reason = "$reason Copilot usage was not collected: $copilotReason"
+        }
+
         return [ordered]@{
-            Status                  = if ($copilot.Status -eq 'reported') { 'partial' } else { 'not collected' }
-            Reason                  = if ($copilot.Status -eq 'reported') { 'Office 365 active user report was unavailable.' } else { 'Office 365 active user report was unavailable.' }
+            Status                  = $status
+            Reason                  = $reason
             ActiveUsers30Days      = 'not collected'
             TeamsActiveUsers       = 'not collected'
             SharePointActiveUsers  = 'not collected'
@@ -2964,9 +3116,20 @@ function Get-AdoptionSignals {
         }
     }
 
+    $status = if ($copilotReported) { 'reported' } else { 'partial' }
+    $reason = if ($copilotReported) {
+        ''
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($copilotReason)) {
+        "Copilot usage was not collected: $copilotReason"
+    }
+    else {
+        'Copilot usage was not collected.'
+    }
+
     return [ordered]@{
-        Status                  = 'reported'
-        Reason                  = ''
+        Status                  = $status
+        Reason                  = $reason
         # Per Microsoft Graph, this report returns active-user counts for a report date within the
         # requested report period. This script uses the latest available row as the current adoption snapshot.
         ActiveUsers30Days      = Get-ActiveUserCountFromRow -Row $latest -CandidateNames @('office365', 'office 365')
@@ -3213,6 +3376,7 @@ function Get-SearchSemanticAdvanced {
 
 function Get-EndpointAppAdvanced {
     $hasDeviceReadPermission = Test-GraphPermissionsAvailable -RequiredPermissions @('DeviceManagementManagedDevices.Read.All')
+    $hasReportsReadPermission = Test-GraphPermissionsAvailable -RequiredPermissions @('Reports.Read.All')
     $managedDevices = @()
     if ($hasDeviceReadPermission) {
         $managedDevices = @((Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/deviceManagement/managedDevices' -Query @{ '$select' = 'id,complianceState,operatingSystem' }))
@@ -3221,25 +3385,50 @@ function Get-EndpointAppAdvanced {
     $compliant = @($managedDevices | Where-Object { $_.PSObject.Properties.Name -contains 'ComplianceState' -and $_.ComplianceState -eq 'compliant' }).Count
     $windows = @($managedDevices | Where-Object { $_.PSObject.Properties.Name -contains 'OperatingSystem' -and $_.OperatingSystem -match 'Windows' }).Count
 
-    $appsReport = @(Get-GraphReportRows -Uri "https://graph.microsoft.com/v1.0/reports/getM365AppUserCounts(period='D30')")
+    $appsReport = if ($hasReportsReadPermission) {
+        @(Get-GraphReportRows -Uri "https://graph.microsoft.com/v1.0/reports/getM365AppUserCounts(period='D30')")
+    }
+    else {
+        @()
+    }
 
     if (-not $managedDevicesReadable -and @($appsReport).Count -eq 0) {
+        $reasonParts = [System.Collections.Generic.List[string]]::new()
+        if (-not $hasDeviceReadPermission) {
+            $reasonParts.Add('Device management signal is unavailable because Graph permission DeviceManagementManagedDevices.Read.All is missing.') | Out-Null
+        }
+        else {
+            $reasonParts.Add('Device management data could not be collected from managedDevices.') | Out-Null
+        }
+
+        if (-not $hasReportsReadPermission) {
+            $reasonParts.Add('M365 Apps report data is unavailable because Graph permission Reports.Read.All is missing.') | Out-Null
+        }
+        else {
+            $reasonParts.Add('M365 Apps report data was unavailable.') | Out-Null
+        }
+
         return [ordered]@{
             Status                = 'not collected'
-            Reason                = 'Neither device compliance nor M365 Apps report data was collected.'
+            Reason                = ($reasonParts -join ' ')
             ManagedDeviceCount    = 'not collected'
             CompliantDeviceCount  = 'not collected'
             WindowsDeviceCount    = 'not collected'
             DeviceCompliancePercent = 'not collected'
-            M365AppReportAvailable = 'not collected'
+            M365AppReportAvailable = if ($hasReportsReadPermission) { $false } else { 'not collected' }
             DeviceManagementSignal = if (-not $hasDeviceReadPermission) { 'not collected (missing Graph permission: DeviceManagementManagedDevices.Read.All)' } else { 'not collected (requires DeviceManagement managedDevices read permissions)' }
             BrowserReadinessSignal = 'not collected'
         }
     }
 
+    $endpointReason = 'Browser readiness signal was not collected.'
+    if (-not $hasDeviceReadPermission) {
+        $endpointReason = "Device management signal is unavailable because Graph permission DeviceManagementManagedDevices.Read.All is missing. $endpointReason"
+    }
+
     return [ordered]@{
         Status = 'partial'
-        Reason = 'Browser readiness signal was not collected.'
+        Reason = $endpointReason
         ManagedDeviceCount = if ($managedDevicesReadable) { @($managedDevices).Count } else { 'not collected' }
         CompliantDeviceCount = if ($managedDevicesReadable) { $compliant } else { 'not collected' }
         WindowsDeviceCount = if ($managedDevicesReadable) { $windows } else { 'not collected' }
@@ -3292,7 +3481,7 @@ function Get-AppGovernanceAdvanced {
     if (-not (Test-GraphPermissionsAvailable -RequiredPermissions @('Directory.Read.All'))) {
         return [ordered]@{
             Status = 'not collected'
-            Reason = 'Missing Graph permission: Directory.Read.All'
+            Reason = 'Missing Graph permission: Directory.Read.All. Service principals, OAuth grants, high-risk grants, stale grant signal, and ownerless app signal were not collected.'
             ServicePrincipalCount = 'not collected'
             OAuthGrantCount = 'not collected'
             HighRiskGrantCount = 'not collected'
