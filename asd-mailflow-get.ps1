@@ -97,18 +97,41 @@ param(
     [string]$LogPath
 )
 
+Set-StrictMode -Version 3.0
+
 # Get script and parent directory paths
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $parentPath = Split-Path -Parent $scriptPath
+$runTimestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+
+# Ensure the parent directory for an output path exists
+function Initialize-OutputDirectory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Purpose
+    )
+
+    $directory = Split-Path -Parent $Path
+    if ([string]::IsNullOrWhiteSpace($directory)) {
+        return
+    }
+
+    if (-not (Test-Path -Path $directory)) {
+        New-Item -Path $directory -ItemType Directory -Force -ErrorAction Stop | Out-Null
+        Write-Host "Created $Purpose directory: $directory"
+    }
+}
 
 # Set default paths for all files in parent directory
 if (-not $CSVPath) {
-    $CSVPath = Join-Path $parentPath "asd-mailflow-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').csv"
+    $CSVPath = Join-Path $parentPath "asd-mailflow-get-$runTimestamp.csv"
 }
 
 # Set default log path if detailed logging is enabled
 if ($DetailedLogging -and -not $LogPath) {
-    $LogPath = Join-Path $parentPath "asd-mailflow-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+    $LogPath = Join-Path $parentPath "asd-mailflow-get-$runTimestamp.log"
 }
 
 # Default GitHub URL for baseline settings
@@ -122,7 +145,7 @@ if (-not $BaselinePath) {
 # Script-scope variables for tracking state
 $script:BaselinePath = $BaselinePath
 $script:baselineLoaded = $false
-$script:HTMLPath = Join-Path $parentPath "asd-mailflow-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+$script:HTMLPath = Join-Path $parentPath "asd-mailflow-get-$runTimestamp.html"
 $script:LogPath = $LogPath
 $script:DetailedLogging = $DetailedLogging
 
@@ -247,20 +270,20 @@ function Test-BaselineSchema {
     }
     
     if ($missingFields.Count -gt 0) {
-        Write-ColorOutput "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
-        Write-ColorOutput "❌ BASELINE JSON SCHEMA VALIDATION FAILED" -Type Error
-        Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+        Write-ColorOutput "`n===================================================" -Type Error
+        Write-ColorOutput "ERROR: BASELINE JSON SCHEMA VALIDATION FAILED" -Type Error
+        Write-ColorOutput "===================================================" -Type Error
         Write-Host ""
         Write-ColorOutput "Missing required fields:" -Type Error
         foreach ($missing in $missingFields) {
-            Write-Host "  • $($missing.Path)"
-            Write-Host "    └─ $($missing.Description)"
+            Write-Host "  - $($missing.Path)"
+            Write-Host "    -> $($missing.Description)"
         }
         Write-Host ""
         Write-ColorOutput "The baseline JSON file does not conform to the expected schema." -Type Warning
         Write-ColorOutput "Please check the file format or use the default GitHub baseline." -Type Warning
         Write-Host ""
-        Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+        Write-ColorOutput "===================================================" -Type Error
         return $false
     }
     
@@ -298,7 +321,7 @@ function Get-BaselineSettings {
                 $script:baselineLoaded = $true
                 Write-Progress -Activity "Loading Baseline" -Completed
                 Write-Log "Baseline loaded successfully from GitHub" -Level "INFO"
-                Write-ColorOutput "✓ Baseline loaded successfully from GitHub.`n" -Type Success
+                Write-ColorOutput "[OK] Baseline loaded successfully from GitHub.`n" -Type Success
             }
             else {
                 Write-Progress -Activity "Loading Baseline" -Completed
@@ -310,7 +333,7 @@ function Get-BaselineSettings {
             Write-Progress -Activity "Loading Baseline" -Completed
             Write-Log "Failed to download baseline from URL: $($_.Exception.Message)" -Level "ERROR"
             Write-ColorOutput "Failed to download or parse baseline from URL: $($_.Exception.Message)" -Type Error
-            Write-ColorOutput "⚠️  Using built-in ASD Blueprint defaults instead`n" -Type Warning
+            Write-ColorOutput "[WARN] Using built-in ASD Blueprint defaults instead`n" -Type Warning
             $baselineSettings = $null
         }
     }
@@ -327,7 +350,7 @@ function Get-BaselineSettings {
                 $script:baselineLoaded = $true
                 Write-Progress -Activity "Loading Baseline" -Completed
                 Write-Log "Baseline loaded successfully from local file" -Level "INFO"
-                Write-ColorOutput "✓ Baseline loaded successfully from JSON file.`n" -Type Success
+                Write-ColorOutput "[OK] Baseline loaded successfully from JSON file.`n" -Type Success
             }
             else {
                 Write-Progress -Activity "Loading Baseline" -Completed
@@ -340,7 +363,7 @@ function Get-BaselineSettings {
             Write-Log "Failed to parse baseline JSON: $($_.Exception.Message)" -Level "ERROR"
             Write-ColorOutput "Failed to parse baseline JSON: $($_.Exception.Message)" -Type Error
             Write-ColorOutput "Error at line $($_.InvocationInfo.ScriptLineNumber): $($_.InvocationInfo.Line.Trim())" -Type Error
-            Write-ColorOutput "⚠️  Using built-in ASD Blueprint defaults instead`n" -Type Warning
+            Write-ColorOutput "[WARN] Using built-in ASD Blueprint defaults instead`n" -Type Warning
             $baselineSettings = $null
         }
     }
@@ -348,7 +371,7 @@ function Get-BaselineSettings {
         Write-Progress -Activity "Loading Baseline" -Completed
         Write-Log "Baseline file not found at: $Path - using defaults" -Level "WARN"
         Write-ColorOutput "Baseline file not found at: $Path" -Type Warning
-        Write-ColorOutput "⚠️  Using built-in ASD Blueprint defaults instead`n" -Type Warning
+        Write-ColorOutput "[WARN] Using built-in ASD Blueprint defaults instead`n" -Type Warning
     }
 
     # Build and return ASD Blueprint requirements (from baseline if available, otherwise defaults)
@@ -458,18 +481,19 @@ function Test-ExchangePermissions {
         
         # Check if it's a permission-related error
         if ($errorMessage -match "Access.*Denied|not have permission|Insufficient|Unauthorized|Authorization|forbidden") {
-            Write-ColorOutput "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
-            Write-ColorOutput "❌ INSUFFICIENT PERMISSIONS" -Type Error
-            Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+            Write-Log "Permission validation failed due to insufficient permissions: $errorMessage" -Level "ERROR"
+            Write-ColorOutput "`n===================================================" -Type Error
+            Write-ColorOutput "ERROR: INSUFFICIENT PERMISSIONS" -Type Error
+            Write-ColorOutput "===================================================" -Type Error
             Write-Host ""
             Write-ColorOutput "This script requires Exchange Online read permissions." -Type Warning
             Write-Host ""
             Write-ColorOutput "Required Roles (one of the following):" -Type Info
-            Write-Host "  • Exchange Administrator"
-            Write-Host "  • Global Administrator" 
-            Write-Host "  • Global Reader"
-            Write-Host "  • View-Only Organization Management"
-            Write-Host "  • Compliance Administrator"
+            Write-Host "  - Exchange Administrator"
+            Write-Host "  - Global Administrator" 
+            Write-Host "  - Global Reader"
+            Write-Host "  - View-Only Organization Management"
+            Write-Host "  - Compliance Administrator"
             Write-Host ""
             Write-ColorOutput "Error Details:" -Type Warning
             Write-Host "  $errorMessage"
@@ -480,11 +504,12 @@ function Test-ExchangePermissions {
             Write-Host "  3. Wait for role assignment to propagate (may take a few minutes)"
             Write-Host "  4. Re-run this script after role assignment"
             Write-Host ""
-            Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+            Write-ColorOutput "===================================================" -Type Error
             return $false
         }
         else {
             # Some other error occurred
+            Write-Log "Permission validation failed due to unexpected error: $errorMessage" -Level "ERROR"
             Write-ColorOutput "Permission check failed: $errorMessage" -Type Error
             Write-ColorOutput "Please verify your Exchange Online connection and try again." -Type Warning
             return $false
@@ -547,7 +572,12 @@ function New-HTMLReport {
     $totalChecks = $CheckResults.Count
     $passedChecks = ($CheckResults | Where-Object { $_.Compliant }).Count
     $failedChecks = $totalChecks - $passedChecks
-    $compliancePercentage = [math]::Round(($passedChecks / $totalChecks) * 100, 2)
+    $compliancePercentage = if ($totalChecks -gt 0) {
+        [math]::Round(($passedChecks / $totalChecks) * 100, 2)
+    }
+    else {
+        0
+    }
     $overallStatus = if ($compliancePercentage -eq 100) { "COMPLIANT" } else { "NON-COMPLIANT" }
     $statusColor = if ($compliancePercentage -eq 100) { "#28a745" } else { "#dc3545" }
     
@@ -816,7 +846,7 @@ function New-HTMLReport {
 <body>
     <div class="container">
         <div class="header">
-            <h1>🛡️ ASD Mail Flow Settings Compliance Report</h1>
+            <h1>ASD Mail Flow Settings Compliance Report</h1>
             <p>Exchange Online Mail Flow Configuration Check</p>
             <p class="timestamp">Generated: $reportDate</p>
         </div>
@@ -841,7 +871,7 @@ function New-HTMLReport {
         </div>
         
         <div class="info-section">
-            <h2>📋 Organization Information</h2>
+            <h2>Organization Information</h2>
             <div class="info-grid">
                 <div class="info-item">
                     <strong>Organization:</strong> $($OrgConfig.DisplayName)
@@ -862,7 +892,7 @@ function New-HTMLReport {
         </div>
         
         <div class="results-section">
-            <h2>🔍 Detailed Check Results</h2>
+            <h2>Detailed Check Results</h2>
             <table class="result-table">
                 <thead>
                     <tr>
@@ -878,7 +908,7 @@ function New-HTMLReport {
 
     foreach ($result in $CheckResults) {
         $statusClass = if ($result.Compliant) { "status-pass" } else { "status-fail" }
-        $statusIcon = if ($result.Compliant) { "✓" } else { "✗" }
+        $statusIcon = if ($result.Compliant) { "+" } else { "x" }
         $statusText = if ($result.Compliant) { "PASS" } else { "FAIL" }
         
         $html += @"
@@ -1139,7 +1169,7 @@ function Invoke-MailFlowCheck {
     
     foreach ($result in $checkResults) {
         $statusColor = if ($result.Compliant) { "Success" } else { "Error" }
-        $statusSymbol = if ($result.Compliant) { "[✓]" } else { "[✗]" }
+        $statusSymbol = if ($result.Compliant) { "[OK]" } else { "[X]" }
         
         Write-ColorOutput "$statusSymbol $($result.Setting)" -Type $statusColor
         Write-Host "    Description : $($result.Description)"
@@ -1153,7 +1183,12 @@ function Invoke-MailFlowCheck {
     $totalChecks = $checkResults.Count
     $passedChecks = ($checkResults | Where-Object { $_.Compliant }).Count
     $failedChecks = $totalChecks - $passedChecks
-    $compliancePercentage = [math]::Round(($passedChecks / $totalChecks) * 100, 2)
+    $compliancePercentage = if ($totalChecks -gt 0) {
+        [math]::Round(($passedChecks / $totalChecks) * 100, 2)
+    }
+    else {
+        0
+    }
     
     Write-ColorOutput "========================================" -Type Info
     Write-ColorOutput "  SUMMARY" -Type Info
@@ -1170,9 +1205,9 @@ function Invoke-MailFlowCheck {
     Write-Host "Compliance      : $compliancePercentage%"
     
     if ($compliancePercentage -eq 100) {
-        Write-ColorOutput "`nStatus          : COMPLIANT ✓" -Type Success
+        Write-ColorOutput "`nStatus          : COMPLIANT [OK]" -Type Success
     } else {
-        Write-ColorOutput "`nStatus          : NON-COMPLIANT ✗" -Type Error
+        Write-ColorOutput "`nStatus          : NON-COMPLIANT [X]" -Type Error
     }
     
     Write-ColorOutput "========================================`n" -Type Info
@@ -1211,7 +1246,6 @@ function Invoke-MailFlowCheck {
     
     # Complete progress
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Status "Completed" -PercentComplete 100
-    Start-Sleep -Milliseconds 500
     Write-Progress -Activity "ASD Mail Flow Settings Check" -Completed
     
     return $checkResults
@@ -1219,6 +1253,15 @@ function Invoke-MailFlowCheck {
 
 # Main execution
 try {
+    # Validate and prepare output directories
+    Initialize-OutputDirectory -Path $script:HTMLPath -Purpose "HTML report"
+    if ($ExportToCSV) {
+        Initialize-OutputDirectory -Path $CSVPath -Purpose "CSV export"
+    }
+    if ($script:DetailedLogging -and -not [string]::IsNullOrWhiteSpace($script:LogPath)) {
+        Initialize-OutputDirectory -Path $script:LogPath -Purpose "log"
+    }
+
     # Initialize logging if enabled
     if ($script:DetailedLogging) {
         Write-Log "=== ASD Mail Flow Settings Check Started ===" -Level "INFO"
@@ -1307,9 +1350,9 @@ catch {
         Write-Log "Stack Trace: $($_.ScriptStackTrace)" -Level "ERROR"
     }
     
-    Write-ColorOutput "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
-    Write-ColorOutput "❌ SCRIPT EXECUTION FAILED" -Type Error
-    Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+    Write-ColorOutput "`n===================================================" -Type Error
+    Write-ColorOutput "ERROR: SCRIPT EXECUTION FAILED" -Type Error
+    Write-ColorOutput "===================================================" -Type Error
     Write-Host ""
     Write-ColorOutput "Error Message:" -Type Error
     Write-Host "  $($_.Exception.Message)"
@@ -1323,7 +1366,7 @@ catch {
         Write-Host "  $($_.ScriptStackTrace)"
     }
     Write-Host ""
-    Write-ColorOutput "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Type Error
+    Write-ColorOutput "===================================================" -Type Error
     
     if ($script:DetailedLogging) {
         Write-Host ""

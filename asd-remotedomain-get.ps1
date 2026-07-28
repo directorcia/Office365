@@ -176,6 +176,48 @@ function Write-ColorOutput {
     }
 }
 
+# HTML-encode dynamic values before inserting into report markup
+function Convert-ToHtmlEncoded {
+    param(
+        [AllowNull()]
+        [object]$Value
+    )
+
+    if ($null -eq $Value) {
+        return ''
+    }
+
+    return [System.Net.WebUtility]::HtmlEncode($Value.ToString())
+}
+
+# Get a human-readable baseline source for report output
+function Get-BaselineSourceDisplay {
+    param(
+        [string]$SourcePath,
+        [bool]$LoadedFromExternalSource
+    )
+
+    if (-not $LoadedFromExternalSource) {
+        return 'Built-in Defaults'
+    }
+
+    if ($SourcePath -match '^https?://') {
+        try {
+            $uri = [System.Uri]$SourcePath
+            $fileName = if ($uri.Segments.Count -gt 0) { $uri.Segments[-1] } else { $uri.AbsolutePath }
+            if ([string]::IsNullOrWhiteSpace($fileName)) {
+                $fileName = $uri.Host
+            }
+            return "$(Convert-ToHtmlEncoded $fileName) (Online)"
+        }
+        catch {
+            return "$(Convert-ToHtmlEncoded $SourcePath) (Online)"
+        }
+    }
+
+    return "$(Convert-ToHtmlEncoded (Split-Path -Leaf $SourcePath)) (Local)"
+}
+
 # Helper to safely read JSON values
 function Get-BaselineValue {
     param(
@@ -530,7 +572,6 @@ function New-HTMLReport {
     )
     
     # Calculate overall statistics
-    $totalDomains = $AllDomainResults.Count
     $totalAllChecks = ($AllDomainResults | ForEach-Object { $_.TotalChecks } | Measure-Object -Sum).Sum
     $totalAllPassed = ($AllDomainResults | ForEach-Object { $_.PassedChecks } | Measure-Object -Sum).Sum
     $totalAllFailed = $totalAllChecks - $totalAllPassed
@@ -554,13 +595,16 @@ function New-HTMLReport {
     }
     
     # Create domain HTML if available
-    $domainHtml = if ($domainName) { 
-        "<p style='margin-top:6px;font-size:1.05em;font-weight:600'>$domainName</p>" 
+    $domainHtml = if ($domainName) {
+        $encodedDomainName = Convert-ToHtmlEncoded $domainName
+        "<p style='margin-top:6px;font-size:1.05em;font-weight:600'>$encodedDomainName</p>"
     } else { 
         '' 
     }
     
-    $reportDate = Get-Date -Format "dd MMMM yyyy - HH:mm:ss"
+    $reportDate = Convert-ToHtmlEncoded (Get-Date -Format "dd MMMM yyyy - HH:mm:ss")
+    $domainsCheckedDisplay = Convert-ToHtmlEncoded ($AllDomainResults.Domain.Identity -join ', ')
+    $baselineSourceDisplay = Get-BaselineSourceDisplay -SourcePath $script:BaselinePath -LoadedFromExternalSource $script:baselineLoaded
     
     $html = @"
 <!DOCTYPE html>
@@ -918,16 +962,10 @@ function New-HTMLReport {
                     <strong>Total Domains:</strong> $($AllDomainResults.Count)
                 </div>
                 <div class="info-item">
-                    <strong>Domains Checked:</strong> $($AllDomainResults.Domain.Identity -join ', ')
+                    <strong>Domains Checked:</strong> $domainsCheckedDisplay
                 </div>
                 <div class="info-item">
-                    <strong>Baseline Source:</strong> $(if ($script:baselineLoaded) { 
-                        $fileName = Split-Path -Leaf $script:BaselinePath
-                        $location = if ($script:BaselinePath -match '^https?://') { "Online" } else { "Local" }
-                        "$fileName ($location)"
-                    } else { 
-                        "Built-in Defaults" 
-                    })
+                    <strong>Baseline Source:</strong> $baselineSourceDisplay
                 </div>
             </div>
         </div>
@@ -939,12 +977,14 @@ function New-HTMLReport {
         $checkResults = $domainResult.CheckResults
         $domainCompliance = $domainResult.CompliancePercentage
         $domainStatusColor = if ($domainCompliance -eq 100) { "#28a745" } else { "#dc3545" }
+        $domainIdentityEncoded = Convert-ToHtmlEncoded $domain.Identity
+        $domainNameEncoded = Convert-ToHtmlEncoded $domain.DomainName
         
         $html += @"
         <div class="results-section">
             <div style="background: $domainStatusColor; color: white; padding: 15px; margin: 0 0 20px 0; border-radius: 5px;">
-                <h2 style="margin: 0; border: none; padding: 0;">🌐 Domain: $($domain.Identity)</h2>
-                <p style="margin: 5px 0 0 0; font-size: 0.9em;">Domain Name: $($domain.DomainName) | Compliance: $domainCompliance%</p>
+                <h2 style="margin: 0; border: none; padding: 0;">🌐 Domain: $domainIdentityEncoded</h2>
+                <p style="margin: 5px 0 0 0; font-size: 0.9em;">Domain Name: $domainNameEncoded | Compliance: $domainCompliance%</p>
             </div>
             <table class="result-table">
                 <thead>
@@ -963,6 +1003,10 @@ function New-HTMLReport {
             $statusClass = if ($result.Compliant) { "status-pass" } else { "status-fail" }
             $statusIcon = if ($result.Compliant) { "✓" } else { "✗" }
             $statusText = if ($result.Compliant) { "PASS" } else { "FAIL" }
+            $settingEncoded = Convert-ToHtmlEncoded $result.Setting
+            $descriptionEncoded = Convert-ToHtmlEncoded $result.Description
+            $currentValueEncoded = Convert-ToHtmlEncoded $result.CurrentValue
+            $requiredValueEncoded = Convert-ToHtmlEncoded $result.RequiredValue
             
             $html += @"
                     <tr>
@@ -971,10 +1015,10 @@ function New-HTMLReport {
                                 <span class="status-icon">$statusIcon</span>$statusText
                             </span>
                         </td>
-                        <td><strong>$($result.Setting)</strong></td>
-                        <td>$($result.Description)</td>
-                        <td>$($result.CurrentValue)</td>
-                        <td>$($result.RequiredValue)</td>
+                        <td><strong>$settingEncoded</strong></td>
+                        <td>$descriptionEncoded</td>
+                        <td>$currentValueEncoded</td>
+                        <td>$requiredValueEncoded</td>
                     </tr>
 "@
         }
@@ -1292,7 +1336,6 @@ function Invoke-RemoteDomainCheck {
     
     # Complete progress
     Write-Progress -Activity "ASD Remote Domain Check" -Status "Completed" -PercentComplete 100
-    Start-Sleep -Milliseconds 500
     Write-Progress -Activity "ASD Remote Domain Check" -Completed
     
     return $allDomainResults

@@ -45,43 +45,113 @@
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [string]$OutputPath,
+    [switch]$NoBrowser,
+    [switch]$SkipModuleInstall
+)
+
+function Write-Status {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+
+        [string]$Color = 'Cyan'
+    )
+
+    Write-Host $Message -ForegroundColor $Color
+}
+
+function Resolve-ReportPath {
+    param(
+        [string]$Path,
+        [string]$DateStamp
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        $basePath = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
+        return Join-Path $basePath "ASD-CA-Evaluation-Report-$DateStamp.html"
+    }
+
+    $resolvedPath = if ([System.IO.Path]::IsPathRooted($Path)) {
+        $Path
+    }
+    else {
+        Join-Path (Get-Location).Path $Path
+    }
+
+    $parentDir = Split-Path $resolvedPath -Parent
+    if ($parentDir -and -not (Test-Path $parentDir)) {
+        New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+    }
+
+    return $resolvedPath
+}
+
+function Install-RequiredModule {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ModuleName
+    )
+
+    try {
+        Write-Status "  Installing $ModuleName..." 'Cyan'
+        if (Get-Command Install-Module -ErrorAction SilentlyContinue) {
+            Install-Module -Name $ModuleName -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+        }
+        elseif (Get-Command Install-PSResource -ErrorAction SilentlyContinue) {
+            Install-PSResource -Name $ModuleName -Scope CurrentUser -TrustRepository -ErrorAction Stop
+        }
+        else {
+            throw 'Neither Install-Module nor Install-PSResource is available.'
+        }
+
+        Write-Status "  ✓ Successfully installed $ModuleName" 'Green'
+    }
+    catch {
+        throw "Failed to install $ModuleName. Error: $($_.Exception.Message)"
+    }
+}
 
 # Check for required Microsoft.Graph modules
 $requiredModules = @('Microsoft.Graph.Authentication')
 $missingModules = @()
 
-Write-Host "`nChecking for required PowerShell modules..." -ForegroundColor Cyan
+Write-Status "`nChecking for required PowerShell modules..." 'Cyan'
 
 foreach ($moduleName in $requiredModules) {
     if (-not (Get-Module -ListAvailable -Name $moduleName)) {
         $missingModules += $moduleName
-        Write-Host "  ✗ $moduleName not found" -ForegroundColor Yellow
+        Write-Status "  ✗ $moduleName not found" 'Yellow'
     }
     else {
-        Write-Host "  ✓ $moduleName found" -ForegroundColor Green
+        Write-Status "  ✓ $moduleName found" 'Green'
     }
 }
 
 # Install missing modules
 if ($missingModules.Count -gt 0) {
-    Write-Host "`nInstalling missing modules..." -ForegroundColor Yellow
+    if ($SkipModuleInstall) {
+        Write-Status "`nSkipping module installation because -SkipModuleInstall was supplied." 'Yellow'
+        Write-Status "Install the missing modules manually before rerunning the script." 'Yellow'
+        exit 1
+    }
+
+    Write-Status "`nInstalling missing modules..." 'Yellow'
     foreach ($moduleName in $missingModules) {
         try {
-            Write-Host "  Installing $moduleName..." -ForegroundColor Cyan
-            Install-Module -Name $moduleName -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
-            Write-Host "  ✓ Successfully installed $moduleName" -ForegroundColor Green
+            Install-RequiredModule -ModuleName $moduleName
         }
         catch {
-            Write-Host "  ✗ Failed to install $moduleName. Error: $_" -ForegroundColor Red
-            Write-Host "`nPlease install the module manually using:" -ForegroundColor Yellow
-            Write-Host "  Install-Module -Name $moduleName -Scope CurrentUser -Force" -ForegroundColor White
+            Write-Status "  ✗ $($_.Exception.Message)" 'Red'
+            Write-Status "`nPlease install the module manually using:" 'Yellow'
+            Write-Status "  Install-Module -Name $moduleName -Scope CurrentUser -Force" 'White'
             exit 1
         }
     }
 }
 else {
-    Write-Host "All required modules are installed" -ForegroundColor Green
+    Write-Status "All required modules are installed" 'Green'
 }
 
 # Connect to Microsoft Graph
@@ -1461,7 +1531,7 @@ foreach ($recommendation in $asdRecommendations) {
 
 # Generate HTML Report
 $reportDate = Get-Date -Format "yyyyMMdd-HHmmss"
-$reportPath = Join-Path (Split-Path $PSScriptRoot -Parent) "ASD-CA-Evaluation-Report-$reportDate.html"
+$reportPath = Resolve-ReportPath -Path $OutputPath -DateStamp $reportDate
 
 # Calculate overall statistics
 $totalRecommendations = $asdRecommendations.Count
@@ -2660,12 +2730,17 @@ Write-Host "  ✗ Non-Compliant: $nonCompliantCount / $totalRecommendations (inc
 Write-Host ""
 
 # Open the report in default browser
-try {
-    Start-Process $reportPath
-    Write-Host "Report opened in default browser" -ForegroundColor Green
+if (-not $NoBrowser) {
+    try {
+        Start-Process $reportPath
+        Write-Host "Report opened in default browser" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "Please open the report manually: $reportPath" -ForegroundColor Yellow
+    }
 }
-catch {
-    Write-Host "Please open the report manually: $reportPath" -ForegroundColor Yellow
+else {
+    Write-Host "Browser opening skipped because -NoBrowser was specified" -ForegroundColor Yellow
 }
 
 # Disconnect from Microsoft Graph

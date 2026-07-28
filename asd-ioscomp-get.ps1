@@ -62,17 +62,48 @@ param(
     [Parameter(HelpMessage = "Path to log file. Defaults to parent directory with timestamp")]
     [string]$LogPath,
     [Parameter(HelpMessage = "Custom output path for HTML compliance report. Defaults to timestamped file in parent directory.")]
+    [Alias('OutputPath')]
     [string]$HTMLPath,
     [Parameter(HelpMessage = "Target a specific compliance policy by display name. If not specified, all iOS compliance policies are checked.")]
-    [string]$PolicyName
+    [string]$PolicyName,
+    [Parameter(HelpMessage = "Skip opening the generated report in the browser")]
+    [switch]$NoBrowser,
+    [Parameter(HelpMessage = "Skip automatic installation of missing Microsoft Graph modules")]
+    [switch]$SkipModuleInstall
 )
 
 # Paths
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $parentPath = Split-Path -Parent $scriptPath
 
-if (-not $CSVPath) { $CSVPath = Join-Path $parentPath "asd-ioscomp-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').csv" }
-if ($DetailedLogging -and -not $LogPath) { $LogPath = Join-Path $parentPath "asd-ioscomp-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').log" }
+function Resolve-OutputPath {
+    param(
+        [string]$Path,
+        [string]$DefaultName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return Join-Path $parentPath $DefaultName
+    }
+
+    if ([IO.Path]::IsPathRooted($Path)) {
+        $resolvedPath = $Path
+    }
+    else {
+        $resolvedPath = Join-Path $parentPath $Path
+    }
+
+    $folder = Split-Path -Parent $resolvedPath
+    if ($folder -and -not (Test-Path $folder)) {
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    }
+
+    return $resolvedPath
+}
+
+$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+if (-not $CSVPath) { $CSVPath = "asd-ioscomp-get-$timestamp.csv" }
+if ($DetailedLogging -and -not $LogPath) { $LogPath = "asd-ioscomp-get-$timestamp.log" }
 
 # Default GitHub URL for baseline settings
 $defaultGitHubURL = "https://raw.githubusercontent.com/directorcia/bp/main/Intune/Policies/ASD/ios-compliance.json"
@@ -81,11 +112,9 @@ if (-not $BaselinePath) { $BaselinePath = $defaultGitHubURL }
 # Script-scope state
 $script:BaselinePath = $BaselinePath
 $script:baselineLoaded = $false
-$script:HTMLPath = if ($HTMLPath) {
-    # If relative path provided, resolve to parent directory
-    if ([IO.Path]::IsPathRooted($HTMLPath)) { $HTMLPath } else { Join-Path $parentPath $HTMLPath }
-} else { Join-Path $parentPath "asd-ioscomp-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').html" }
-$script:LogPath = $LogPath
+$script:HTMLPath = Resolve-OutputPath -Path $HTMLPath -DefaultName "asd-ioscomp-get-$timestamp.html"
+$script:CSVPath = Resolve-OutputPath -Path $CSVPath -DefaultName "asd-ioscomp-get-$timestamp.csv"
+$script:LogPath = if ($DetailedLogging) { Resolve-OutputPath -Path $LogPath -DefaultName "asd-ioscomp-get-$timestamp.log" } else { $null }
 $script:DetailedLogging = $DetailedLogging
 $script:connectedDomain = "Unknown"
 
@@ -158,13 +187,54 @@ function Get-BaselineSettings {
 }
 
 # Graph module & connection
+function Install-GraphModule {
+    param([switch]$SkipInstall)
+
+    $moduleName = 'Microsoft.Graph.Authentication'
+    if (Get-Module -ListAvailable -Name $moduleName) {
+        return $true
+    }
+
+    if ($SkipInstall) {
+        Write-ColorOutput "Missing module $moduleName and automatic installation was skipped." -Type Warning
+        return $false
+    }
+
+    Write-ColorOutput "Installing missing Microsoft Graph module..." -Type Info
+    try {
+        if (Get-Command Install-Module -ErrorAction SilentlyContinue) {
+            Install-Module -Name $moduleName -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+        }
+        elseif (Get-Command Install-PSResource -ErrorAction SilentlyContinue) {
+            Install-PSResource -Name $moduleName -Scope CurrentUser -TrustRepository -ErrorAction Stop
+        }
+        else {
+            throw 'Neither Install-Module nor Install-PSResource is available.'
+        }
+
+        Write-ColorOutput "Microsoft Graph module installed successfully." -Type Success
+        return $true
+    }
+    catch {
+        Write-ColorOutput "Failed to install Microsoft.Graph.Authentication: $($_.Exception.Message)" -Type Error
+        Write-ColorOutput "Install it manually with: Install-Module Microsoft.Graph -Scope CurrentUser" -Type Warning
+        return $false
+    }
+}
+
 function Test-GraphModule {
     Write-ColorOutput "Checking for Microsoft.Graph modules..." -Type Info
     try {
+        if (-not (Get-Module -ListAvailable -Name 'Microsoft.Graph.Authentication')) {
+            if (-not (Install-GraphModule -SkipInstall:$SkipModuleInstall)) {
+                return $false
+            }
+        }
+
         Import-Module Microsoft.Graph.Authentication -ErrorAction Stop | Out-Null
         Write-ColorOutput "Microsoft.Graph.Authentication module loaded." -Type Success
         return $true
-    } 
+    }
     catch {
         Write-ColorOutput "Failed to load Microsoft.Graph.Authentication module: $($_.Exception.Message)" -Type Error
         Write-ColorOutput "Install with: Install-Module Microsoft.Graph -Scope CurrentUser" -Type Warning
@@ -279,7 +349,7 @@ function Test-GraphPermissions {
 }
 
 # Comparison helpers
-function Normalize-Value {
+function Convert-ToComparableValue {
     param([object]$Value)
     if ($null -eq $Value) { return $null }
     if ($Value -is [bool]) { return [bool]$Value }
@@ -296,8 +366,8 @@ function Normalize-Value {
 
 function Compare-Values {
     param([object]$Current,[object]$Required)
-    $c = Normalize-Value $Current
-    $r = Normalize-Value $Required
+    $c = Convert-ToComparableValue $Current
+    $r = Convert-ToComparableValue $Required
     if ($null -eq $r -and $null -eq $c) { return $true }
     if ($null -eq $r) { return $true }
     
@@ -558,8 +628,8 @@ function Invoke-CompliancePolicyCheck {
     # CSV export
     if ($ExportToCSV) {
         try {
-            $results | Select-Object Policy,Setting,CurrentValue,RequiredValue,Status | Export-Csv -Path $CSVPath -NoTypeInformation -Encoding UTF8
-            Write-ColorOutput "Results exported to: $CSVPath" -Type Success
+            $results | Select-Object Policy,Setting,CurrentValue,RequiredValue,Status | Export-Csv -Path $script:CSVPath -NoTypeInformation -Encoding UTF8
+            Write-ColorOutput "Results exported to: $script:CSVPath" -Type Success
         } catch { Write-ColorOutput "Failed to export CSV: $($_.Exception.Message)" -Type Error }
     }
 
@@ -567,7 +637,12 @@ function Invoke-CompliancePolicyCheck {
     Write-ColorOutput "Generating HTML report..." -Type Info
     if (New-HTMLReport -CheckResults $results -OutputPath $script:HTMLPath) {
         Write-ColorOutput "HTML report generated: $script:HTMLPath" -Type Success
-        try { Start-Process $script:HTMLPath } catch { Write-ColorOutput "Could not open report in browser: $($_.Exception.Message)" -Type Warning }
+        if (-not $NoBrowser) {
+            try { Start-Process $script:HTMLPath } catch { Write-ColorOutput "Could not open report in browser: $($_.Exception.Message)" -Type Warning }
+        }
+        else {
+            Write-ColorOutput "Browser opening skipped because -NoBrowser was specified." -Type Info
+        }
     }
 
     return $results

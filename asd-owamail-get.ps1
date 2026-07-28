@@ -311,6 +311,16 @@ function Test-Setting {
     }
 }
 
+function ConvertTo-HtmlSafe {
+    param([AllowNull()][object]$Value)
+
+    if ($null -eq $Value) {
+        return ''
+    }
+
+    return [System.Net.WebUtility]::HtmlEncode($Value.ToString())
+}
+
 # HTML report
 function New-HTMLReport {
     param(
@@ -320,9 +330,11 @@ function New-HTMLReport {
         [string]$DomainName
     )
     $total = $CheckResults.Count
-    $passed = ($CheckResults | Where-Object { $_.Compliant }).Count
-    $failed = $total - $passed
-    $pct = if ($total -gt 0) { [math]::Round(($passed/$total)*100,2) } else { 0 }
+    $passed = ($CheckResults | Where-Object { $_.Status -eq 'PASS' }).Count
+    $informational = ($CheckResults | Where-Object { $_.Status -in @('IGNORED', 'N/A') }).Count
+    $compliant = ($CheckResults | Where-Object { $_.Compliant }).Count
+    $failed = ($CheckResults | Where-Object { $_.Status -eq 'FAIL' }).Count
+    $pct = if ($total -gt 0) { [math]::Round(($compliant/$total)*100,2) } else { 0 }
     $overall = if ($pct -eq 100) { 'COMPLIANT' } else { 'NON-COMPLIANT' }
     $statusColor = if ($pct -eq 100) { '#28a745' } else { '#dc3545' }
     $reportDate = Get-Date -Format "dd MMMM yyyy - HH:mm:ss"
@@ -356,6 +368,7 @@ body{font-family:'Segoe UI',Tahoma,Verdana,sans-serif;background:#f0f2f5;padding
 .card .value{font-size:2.2em;font-weight:700}
 .card.total .value{color:#007bff}
 .card.passed .value{color:#28a745}
+.card.info .value{color:#fd7e14}
 .card.failed .value{color:#dc3545}
 .card.compliance .value{color:$statusColor}
 .results{padding:25px}
@@ -366,6 +379,8 @@ tbody tr:nth-child(even){background:#f8f9fa}
 .badge{display:inline-block;padding:4px 10px;border-radius:14px;font-weight:600}
 .pass{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
 .fail{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
+.ignored{background:#fff3cd;color:#856404;border:1px solid #ffeeba}
+.na{background:#d1ecf1;color:#0c5460;border:1px solid #bee5eb}
 .overall{background:$statusColor;color:#fff;text-align:center;padding:24px}
 /* Centered footer styling for info links */
 .footer{padding:20px;text-align:center;background:#f8f9fa;color:#6c757d;font-size:.9em;border-top:1px solid #e9ecef}
@@ -383,6 +398,7 @@ tbody tr:nth-child(even){background:#f8f9fa}
     <div class="summary">
             <div class="card total"><div>Total Checks</div><div class="value">$total</div></div>
             <div class="card passed"><div>Passed</div><div class="value">$passed</div></div>
+            <div class="card info"><div>Informational</div><div class="value">$informational</div></div>
             <div class="card failed"><div>Failed</div><div class="value">$failed</div></div>
             <div class="card compliance"><div>Compliance</div><div class="value">$pct%</div></div>
     </div>
@@ -393,15 +409,19 @@ tbody tr:nth-child(even){background:#f8f9fa}
 "@
 
     foreach ($r in $CheckResults) {
-        $cls = if ($r.Compliant) { 'pass' } else { 'fail' }
-        $txt = if ($r.Compliant) { 'PASS' } else { 'FAIL' }
+                $statusMeta = switch ($r.Status) {
+                        'PASS' { @{ Class = 'pass'; Text = 'PASS' } }
+                        'IGNORED' { @{ Class = 'ignored'; Text = 'IGNORED' } }
+                        'N/A' { @{ Class = 'na'; Text = 'N/A' } }
+                        default { @{ Class = 'fail'; Text = 'FAIL' } }
+                }
         $html += @"
           <tr>
-            <td><span class="badge $cls">$txt</span></td>
-            <td><strong>$($r.Policy)</strong></td>
-            <td>$($r.Setting)</td>
-            <td>$($r.CurrentValue)</td>
-            <td>$($r.RequiredValue)</td>
+                        <td><span class="badge $($statusMeta.Class)">$($statusMeta.Text)</span></td>
+                        <td><strong>$(ConvertTo-HtmlSafe $r.Policy)</strong></td>
+                        <td>$(ConvertTo-HtmlSafe $r.Setting)</td>
+                        <td>$(ConvertTo-HtmlSafe $r.CurrentValue)</td>
+                        <td>$(ConvertTo-HtmlSafe $r.RequiredValue)</td>
           </tr>
 "@
     }
@@ -411,7 +431,7 @@ tbody tr:nth-child(even){background:#f8f9fa}
       </table>
     </div>
         <div class="overall"><h2>Overall Status: $overall</h2>
-            <p style="font-size:1.1em;margin-top:8px;">$passed of $total checks passed</p>
+            <p style="font-size:1.1em;margin-top:8px;">$compliant of $total checks are compliant or informational</p>
         </div>
 
             <div class="footer">

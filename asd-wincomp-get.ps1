@@ -71,22 +71,30 @@ param(
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $parentPath = Split-Path -Parent $scriptPath
 
-if (-not $CSVPath) { $CSVPath = Join-Path $parentPath "asd-wincomp-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').csv" }
-if ($DetailedLogging -and -not $LogPath) { $LogPath = Join-Path $parentPath "asd-wincomp-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').log" }
-
 # Default GitHub URL for baseline settings
 $defaultGitHubURL = "https://raw.githubusercontent.com/directorcia/bp/main/Intune/Policies/ASD/windows-compliance.json"
 if (-not $BaselinePath) { $BaselinePath = $defaultGitHubURL }
 
-# Script-scope state
 $script:BaselinePath = $BaselinePath
 $script:baselineLoaded = $false
+$script:CSVPath = if ($CSVPath) {
+    if ([IO.Path]::IsPathRooted($CSVPath)) { $CSVPath } else { Join-Path $parentPath $CSVPath }
+} else { Join-Path $parentPath "asd-wincomp-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').csv" }
 $script:HTMLPath = if ($HTMLPath) {
-    # If relative path provided, resolve to parent directory
     if ([IO.Path]::IsPathRooted($HTMLPath)) { $HTMLPath } else { Join-Path $parentPath $HTMLPath }
 } else { Join-Path $parentPath "asd-wincomp-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').html" }
-$script:LogPath = $LogPath
+$script:LogPath = if ($LogPath) {
+    if ([IO.Path]::IsPathRooted($LogPath)) { $LogPath } else { Join-Path $parentPath $LogPath }
+} elseif ($DetailedLogging) { Join-Path $parentPath "asd-wincomp-get-$(Get-Date -Format 'yyyyMMdd-HHmmss').log" } else { $null }
 $script:DetailedLogging = $DetailedLogging
+
+foreach ($outputPath in @($script:CSVPath, $script:HTMLPath, $script:LogPath)) {
+    if (-not $outputPath) { continue }
+    $outputDir = Split-Path -Parent $outputPath
+    if ($outputDir -and -not (Test-Path -LiteralPath $outputDir)) {
+        New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+    }
+}
 
 $scriptVersion = "1.0"
 $scriptName = "ASD Windows Compliance Policy Check"
@@ -172,11 +180,18 @@ function Test-GraphModule {
 }
 
 function Connect-MSGraph {
+    [CmdletBinding()]
+    param([switch]$ForceReconnect)
+
     Write-ColorOutput "`nChecking Microsoft Graph connection..." -Type Info
     try {
+        if ($ForceReconnect) {
+            try { Disconnect-MgGraph -ErrorAction SilentlyContinue } catch {}
+        }
+
         # Check if already connected
         $context = Get-MgContext -ErrorAction SilentlyContinue
-        if ($context) {
+        if ($context -and -not $ForceReconnect) {
             Write-ColorOutput "Already connected to Microsoft Graph." -Type Success
             Write-ColorOutput "Tenant: $($context.TenantId)" -Type Info
             return $true
@@ -280,7 +295,7 @@ function Test-GraphPermissions {
 }
 
 # Comparison helpers
-function Normalize-Value {
+function ConvertTo-NormalizedValue {
     param([object]$Value)
     if ($null -eq $Value) { return $null }
     if ($Value -is [bool]) { return [bool]$Value }
@@ -297,8 +312,8 @@ function Normalize-Value {
 
 function Compare-Values {
     param([object]$Current,[object]$Required)
-    $c = Normalize-Value $Current
-    $r = Normalize-Value $Required
+    $c = ConvertTo-NormalizedValue $Current
+    $r = ConvertTo-NormalizedValue $Required
     if ($null -eq $r -and $null -eq $c) { return $true }
     if ($null -eq $r) { return $true }
     
@@ -446,24 +461,28 @@ function Invoke-CompliancePolicyCheck {
         # Use Graph API directly to avoid module loading conflicts
         $url = "https://graph.microsoft.com/beta/deviceManagement/deviceCompliancePolicies"
         $response = Invoke-MgGraphRequest -Method GET -Uri $url -ErrorAction Stop
-        $allPolicies = $response.value
+        $allPolicies = @($response.value)
         
         # Handle pagination if needed
         while ($response.'@odata.nextLink') {
             $response = Invoke-MgGraphRequest -Method GET -Uri $response.'@odata.nextLink' -ErrorAction Stop
-            $allPolicies += $response.value
+            $allPolicies += @($response.value)
         }
         
         # Filter for Windows 10 compliance policies
-        $policies = $allPolicies | Where-Object { 
+        $policies = @($allPolicies | Where-Object { 
             $_.'@odata.type' -eq '#microsoft.graph.windows10CompliancePolicy' 
-        }
+        })
         
         # Further filter by policy name if specified
         if ($TargetPolicyName) {
-            $policies = $policies | Where-Object { $_.displayName -eq $TargetPolicyName }
+            $matchingPolicies = @($policies | Where-Object { $_.displayName -ieq $TargetPolicyName })
+            if (-not $matchingPolicies) {
+                $matchingPolicies = @($policies | Where-Object { $_.displayName -like "*$TargetPolicyName*" })
+            }
+            $policies = $matchingPolicies
             if (-not $policies) { 
-                Write-ColorOutput "No Windows compliance policy found with name: $TargetPolicyName" -Type Warning 
+                Write-ColorOutput "No Windows compliance policy found matching: $TargetPolicyName" -Type Warning 
                 return $null
             }
         }
