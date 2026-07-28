@@ -2,20 +2,20 @@
 [CmdletBinding()]
 param(
     [Parameter(HelpMessage="Enable detailed logging and transcript recording")]
-    [switch]$DebugMode = $false,
+    [switch]$DebugMode,
     
     [Parameter(HelpMessage="Number of days to consider a user inactive (default: 90 days)")]
     [ValidateRange(1, 365)]
     [int]$InactiveDays = 90,
     
-    [Parameter(HelpMessage="Include guest/external users in the analysis (enabled by default)")]
-    [switch]$IncludeGuests = $true,
+    [Parameter(HelpMessage="Include guest/external users in the analysis")]
+    [switch]$IncludeGuests,
     
     [Parameter(HelpMessage="Generate HTML report")]
-    [switch]$GenerateHtmlReport = $true,
+    [switch]$GenerateHtmlReport,
     
     [Parameter(HelpMessage="Automatically open HTML report in browser when completed")]
-    [switch]$OpenReportInBrowser = $true
+    [switch]$OpenReportInBrowser
 )
 
 <#CIAOPS
@@ -28,8 +28,12 @@ Source: https://github.com/directorcia/Office365/blob/master/m365-inactiveusers-
 
 # Initialize
 $Script:OutputDir = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
+New-Item -Path $Script:OutputDir -ItemType Directory -Force | Out-Null
 $LogPath = Join-Path $Script:OutputDir "check-inactive-users-$(Get-Date -Format 'yyyy-MM-dd-HHmm').txt"
 $Script:UserResults = [System.Collections.Generic.List[object]]::new()
+$script:IncludeGuestsEnabled = if ($PSBoundParameters.ContainsKey('IncludeGuests')) { $IncludeGuests.IsPresent } else { $true }
+$script:GenerateHtmlReportEnabled = if ($PSBoundParameters.ContainsKey('GenerateHtmlReport')) { $GenerateHtmlReport.IsPresent } else { $true }
+$script:OpenReportInBrowserEnabled = if ($PSBoundParameters.ContainsKey('OpenReportInBrowser')) { $OpenReportInBrowser.IsPresent } else { $true }
 
 function Write-LogMessage {
     [CmdletBinding()]
@@ -127,7 +131,7 @@ function Get-InactiveUsers {
         
         foreach ($user in $allUsers) {
             # Skip guest users if not included
-            if ($user.userType -eq "Guest" -and -not $IncludeGuests) {
+            if ($user.userType -eq "Guest" -and -not $script:IncludeGuestsEnabled) {
                 continue
             }
             
@@ -221,7 +225,7 @@ function ConvertTo-HtmlEncoded {
     return [System.Net.WebUtility]::HtmlEncode($Text)
 }
 
-function Generate-HtmlReport {
+function New-HtmlReport {
     param(
         [Parameter(Mandatory = $true)]
         [string]$OutputPath
@@ -313,16 +317,24 @@ function Generate-HtmlReport {
             <input type="text" id="searchBox" class="search-box" placeholder="🔍 Search users..." onkeyup="filterTable()">
 "@
 
-    # Add user tables for each category
-    $categories = @(
-        @{ Name = "Active Users"; Users = $activeUsers; Icon = "✅" },
-        @{ Name = "Inactive Users"; Users = $inactiveUsers; Icon = "⚠️" },
-        @{ Name = "Never Logged In Users"; Users = $neverLoggedUsers; Icon = "🚫" },
-        @{ Name = "Unlicensed Users"; Users = $unlicensedUsers; Icon = "💳" },
-        @{ Name = "External/Guest Users"; Users = $guestUsers; Icon = "🌐" }
-    )
+    if ($Script:UserResults.Count -eq 0) {
+        $html += @"
+            <div style="padding: 20px; background: #fff3cd; border-radius: 6px; color: #856404;">
+                <strong>No user records were found.</strong> The script completed successfully, but no matching users were returned from Microsoft Graph.
+            </div>
+"@
+    }
+    else {
+        # Add user tables for each category
+        $categories = @(
+            @{ Name = "Active Users"; Users = $activeUsers; Icon = "✅" },
+            @{ Name = "Inactive Users"; Users = $inactiveUsers; Icon = "⚠️" },
+            @{ Name = "Never Logged In Users"; Users = $neverLoggedUsers; Icon = "🚫" },
+            @{ Name = "Unlicensed Users"; Users = $unlicensedUsers; Icon = "💳" },
+            @{ Name = "External/Guest Users"; Users = $guestUsers; Icon = "🌐" }
+        )
 
-    foreach ($category in $categories) {
+        foreach ($category in $categories) {
         if ($category.Users -and $category.Users.Count -gt 0) {
             $html += @"
             
@@ -432,11 +444,11 @@ function Export-Results {
         
         # Generate HTML report if requested
         $htmlPath = $null
-        if ($GenerateHtmlReport) {
+        if ($script:GenerateHtmlReportEnabled) {
             $htmlPath = Join-Path $Script:OutputDir "inactive-users-report-$(Get-Date -Format 'yyyy-MM-dd-HHmm').html"
             Write-LogMessage "📊 Generating HTML report: $htmlPath" -Level Information
             
-            Generate-HtmlReport -OutputPath $htmlPath
+            New-HtmlReport -OutputPath $htmlPath
             Write-LogMessage "✅ HTML report generated: $htmlPath" -Level Success
         }
         
@@ -454,9 +466,9 @@ try {
     Write-LogMessage "=== CIAOPS Inactive Users Check - Started ===" -Level Information
     Write-LogMessage "Configuration:" -Level Information
     Write-LogMessage "  • Inactive Days Threshold: $InactiveDays days" -Level Information
-    Write-LogMessage "  • Include Guests: $IncludeGuests" -Level Information
-    Write-LogMessage "  • Generate HTML Report: $GenerateHtmlReport" -Level Information
-    Write-LogMessage "  • Auto-open Report in Browser: $OpenReportInBrowser" -Level Information
+    Write-LogMessage "  • Include Guests: $script:IncludeGuestsEnabled" -Level Information
+    Write-LogMessage "  • Generate HTML Report: $script:GenerateHtmlReportEnabled" -Level Information
+    Write-LogMessage "  • Auto-open Report in Browser: $script:OpenReportInBrowserEnabled" -Level Information
     
     # Initialize Graph connection
     Initialize-GraphConnection
@@ -470,7 +482,7 @@ try {
     Write-LogMessage "=== CIAOPS Inactive Users Check - Completed ===" -Level Success
     
     # Open HTML report if it was generated and auto-open is enabled
-    if ($OpenReportInBrowser -and $htmlReportPath -and (Test-Path $htmlReportPath)) {
+    if ($script:OpenReportInBrowserEnabled -and $htmlReportPath -and (Test-Path $htmlReportPath)) {
         Write-LogMessage "🌐 Opening HTML report in default browser..." -Level Information
         try {
             Start-Process $htmlReportPath
