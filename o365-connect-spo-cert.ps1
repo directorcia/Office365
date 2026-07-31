@@ -139,8 +139,10 @@ function Resolve-SpoAdminCertificateProfile {
 
     if ($candidateProfiles.Count -eq 0) {
         if ($profileItems.Count -eq 1) {
-            Write-Debug "No exact profile match found for the supplied filters; using the only available profile."
-            return $profileItems[0]
+            ## FIX #18: Warn visibly when explicit filters do not match - the fallback profile may target a different tenant/app.
+            $fallbackProfile = $profileItems[0]
+            Write-Host -ForegroundColor $Colors.WarningMessage ("No profile matched the supplied filters; falling back to the only profile in the map: name='{0}' tenant='{1}' adminUrl='{2}'" -f $fallbackProfile.name, $fallbackProfile.tenant, $fallbackProfile.adminUrl)
+            return $fallbackProfile
         }
 
         $appliedFilters = @()
@@ -450,7 +452,13 @@ function Get-DeviceCodeGraphToken {
     Write-Host -ForegroundColor $Colors.SystemMessage "Paste the code in the browser and sign in, then return here."
     Write-Host -ForegroundColor $Colors.SystemMessage "-------------------------------------`n"
 
-    Start-Process $deviceCodeResponse.verification_uri
+    ## Browser launch is best-effort; on headless/remote sessions the user can browse from another device.
+    try {
+        Start-Process $deviceCodeResponse.verification_uri -ErrorAction Stop
+    }
+    catch {
+        Write-Host -ForegroundColor $Colors.WarningMessage "Could not open a browser automatically. Browse to $($deviceCodeResponse.verification_uri) manually."
+    }
 
     $tokenBody = @{
         grant_type  = "urn:ietf:params:oauth:grant-type:device_code"
@@ -619,6 +627,12 @@ function Set-SpoAdminProfileMapEntry {
             throw "Timed out waiting for profile map lock: $fullMapPath"
         }
         Write-Verbose "Profile map lock acquired for: $fullMapPath"
+
+        ## FIX #19: Ensure the map directory exists - the default path lives under cert-export/ which may not exist yet.
+        $mapDir = Split-Path -Parent $fullMapPath
+        if (-not [string]::IsNullOrWhiteSpace($mapDir) -and -not (Test-Path -LiteralPath $mapDir)) {
+            New-Item -Path $mapDir -ItemType Directory -Force | Out-Null
+        }
 
         $mapData = @{ profiles = @() }
         if (Test-Path -Path $fullMapPath) {
@@ -1226,112 +1240,117 @@ try {
         throw "Specify exactly one mode: -GenerateLocalCertificate or -UseCertificateAuth."
     }
 
-    if (Get-Module -ListAvailable -Name microsoft.online.sharepoint.powershell) {
-        Write-Host -ForegroundColor $Colors.ProcessMessage "SharePoint Online PowerShell module installed"
-    }
-    else {
-        Write-Host -ForegroundColor $Colors.WarningMessage -BackgroundColor $Colors.ErrorMessage "[001] - SharePoint Online PowerShell module not installed`n"
-        if (-not $noprompt) {
-            do {
-                $response = Read-Host -Prompt "`nDo you wish to install the SharePoint Online PowerShell module (Y/N)?"
-            } until (-not [string]::IsNullOrWhiteSpace($response))
-
-            if ($response -ne 'Y' -and $response -ne 'y') {
-                throw "SharePoint Online PowerShell module is required."
-            }
+    ## The SPO module is only needed to connect. Certificate generation/provisioning uses Graph REST
+    ## exclusively, so skip module install/update/load in -GenerateLocalCertificate mode.
+    if ($UseCertificateAuth) {
+        if (Get-Module -ListAvailable -Name microsoft.online.sharepoint.powershell) {
+            Write-Host -ForegroundColor $Colors.ProcessMessage "SharePoint Online PowerShell module installed"
         }
-
-        Write-Host -ForegroundColor $Colors.ProcessMessage "Installing SharePoint Online PowerShell module - Administration escalation required"
-        ## FIX #16: Capture exit code from elevated install; fail early with a clear message if UAC was denied or install failed.
-        $installProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList "Install-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:`$false" -Wait -WindowStyle Hidden -PassThru
-        if ($installProcess.ExitCode -ne 0) {
-            throw "Elevated module install failed (exit code $($installProcess.ExitCode)). Run PowerShell as Administrator and retry, or install the module manually: Install-Module -Name microsoft.online.sharepoint.powershell"
-        }
-        Write-Host -ForegroundColor $Colors.ProcessMessage "SharePoint Online PowerShell module installed"
-    }
-
-    if (-not $noupdate) {
-        Write-Host -ForegroundColor $Colors.ProcessMessage "Checking whether newer version of SharePoint Online PowerShell module is available"
-        $version          = Get-InstalledModule -Name microsoft.online.sharepoint.powershell -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
-        $psgalleryVersion = Find-Module -Name microsoft.online.sharepoint.powershell -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
-
-        $localVersion  = if ($null -ne $version)          { $version.Version -as [string] }          else { $null }
-        $onlineVersion = if ($null -ne $psgalleryVersion) { $psgalleryVersion.Version -as [string] } else { $null }
-
-        if ($null -eq $localVersion -or $null -eq $onlineVersion) {
-            Write-Host -ForegroundColor $Colors.WarningMessage "Unable to compare module versions - skipping update check."
-        }
-        elseif ([version]$localVersion -lt [version]$onlineVersion) {
-            Write-Host -ForegroundColor $Colors.WarningMessage "Local module $localVersion is lower than Gallery module $onlineVersion"
+        else {
+            Write-Host -ForegroundColor $Colors.WarningMessage -BackgroundColor $Colors.ErrorMessage "[001] - SharePoint Online PowerShell module not installed`n"
             if (-not $noprompt) {
                 do {
-                    $updateResponse = Read-Host -Prompt "`nDo you wish to update the SharePoint Online PowerShell module (Y/N)?"
-                } until (-not [string]::IsNullOrWhiteSpace($updateResponse))
+                    $response = Read-Host -Prompt "`nDo you wish to install the SharePoint Online PowerShell module (Y/N)?"
+                } until (-not [string]::IsNullOrWhiteSpace($response))
 
-                if ($updateResponse -eq 'Y' -or $updateResponse -eq 'y') {
+                if ($response -ne 'Y' -and $response -ne 'y') {
+                    throw "SharePoint Online PowerShell module is required."
+                }
+            }
+
+            Write-Host -ForegroundColor $Colors.ProcessMessage "Installing SharePoint Online PowerShell module - Administration escalation required"
+            ## FIX #16: Capture exit code from elevated install; fail early with a clear message if UAC was denied or install failed.
+            ## FIX #17: Pass -Command explicitly - pwsh (PS6+) treats a bare first argument as -File, not -Command.
+            $installProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', "Install-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:`$false") -Wait -WindowStyle Hidden -PassThru
+            if ($installProcess.ExitCode -ne 0) {
+                throw "Elevated module install failed (exit code $($installProcess.ExitCode)). Run PowerShell as Administrator and retry, or install the module manually: Install-Module -Name microsoft.online.sharepoint.powershell"
+            }
+            Write-Host -ForegroundColor $Colors.ProcessMessage "SharePoint Online PowerShell module installed"
+        }
+
+        if (-not $noupdate) {
+            Write-Host -ForegroundColor $Colors.ProcessMessage "Checking whether newer version of SharePoint Online PowerShell module is available"
+            $version          = Get-InstalledModule -Name microsoft.online.sharepoint.powershell -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+            $psgalleryVersion = Find-Module -Name microsoft.online.sharepoint.powershell -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+
+            $localVersion  = if ($null -ne $version)          { $version.Version -as [string] }          else { $null }
+            $onlineVersion = if ($null -ne $psgalleryVersion) { $psgalleryVersion.Version -as [string] } else { $null }
+
+            if ($null -eq $localVersion -or $null -eq $onlineVersion) {
+                Write-Host -ForegroundColor $Colors.WarningMessage "Unable to compare module versions - skipping update check."
+            }
+            elseif ([version]$localVersion -lt [version]$onlineVersion) {
+                Write-Host -ForegroundColor $Colors.WarningMessage "Local module $localVersion is lower than Gallery module $onlineVersion"
+                if (-not $noprompt) {
+                    do {
+                        $updateResponse = Read-Host -Prompt "`nDo you wish to update the SharePoint Online PowerShell module (Y/N)?"
+                    } until (-not [string]::IsNullOrWhiteSpace($updateResponse))
+
+                    if ($updateResponse -eq 'Y' -or $updateResponse -eq 'y') {
+                        Write-Host -ForegroundColor $Colors.ProcessMessage "Updating SharePoint Online PowerShell module - Administration escalation required"
+                        ## FIX #16: Capture and check exit code for update as well.
+                        $updateProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', "Update-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:`$false") -Wait -WindowStyle Hidden -PassThru
+                        if ($updateProcess.ExitCode -ne 0) {
+                            Write-Host -ForegroundColor $Colors.WarningMessage "Module update may have failed (exit code $($updateProcess.ExitCode)). Continuing with current installed version."
+                        }
+                    }
+                }
+                else {
                     Write-Host -ForegroundColor $Colors.ProcessMessage "Updating SharePoint Online PowerShell module - Administration escalation required"
-                    ## FIX #16: Capture and check exit code for update as well.
-                    $updateProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList "Update-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:`$false" -Wait -WindowStyle Hidden -PassThru
+                    $updateProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', "Update-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:`$false") -Wait -WindowStyle Hidden -PassThru
                     if ($updateProcess.ExitCode -ne 0) {
                         Write-Host -ForegroundColor $Colors.WarningMessage "Module update may have failed (exit code $($updateProcess.ExitCode)). Continuing with current installed version."
                     }
                 }
             }
             else {
-                Write-Host -ForegroundColor $Colors.ProcessMessage "Updating SharePoint Online PowerShell module - Administration escalation required"
-                $updateProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList "Update-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:`$false" -Wait -WindowStyle Hidden -PassThru
-                if ($updateProcess.ExitCode -ne 0) {
-                    Write-Host -ForegroundColor $Colors.WarningMessage "Module update may have failed (exit code $($updateProcess.ExitCode)). Continuing with current installed version."
-                }
+                Write-Host -ForegroundColor $Colors.ProcessMessage "Local module $localVersion is current"
             }
         }
+
+        Write-Host -ForegroundColor $Colors.ProcessMessage "Loading SharePoint Online PowerShell module"
+        $ps = $PSVersionTable.PSVersion
+        if ($ps.Major -lt 6) {
+            Import-Module microsoft.online.sharepoint.powershell -DisableNameChecking -ErrorAction Stop | Out-Null
+        }
         else {
-            Write-Host -ForegroundColor $Colors.ProcessMessage "Local module $localVersion is current"
+            ## Prefer native import in PowerShell 6+ so full cmdlet parameter sets are available.
+            try {
+                Write-Host -ForegroundColor $Colors.ProcessMessage "Using native module load for PowerShell 6+ (SkipEditionCheck)"
+                Import-Module microsoft.online.sharepoint.powershell -DisableNameChecking -SkipEditionCheck -ErrorAction Stop | Out-Null
+            }
+            catch {
+                Write-Host -ForegroundColor $Colors.WarningMessage "Native load failed. Falling back to compatibility mode for PowerShell 6+"
+                Import-Module microsoft.online.sharepoint.powershell -DisableNameChecking -UseWindowsPowerShell -ErrorAction Stop | Out-Null
+            }
         }
-    }
-
-    Write-Host -ForegroundColor $Colors.ProcessMessage "Loading SharePoint Online PowerShell module"
-    $ps = $PSVersionTable.PSVersion
-    if ($ps.Major -lt 6) {
-        Import-Module microsoft.online.sharepoint.powershell -DisableNameChecking -ErrorAction Stop | Out-Null
-    }
-    else {
-        ## Prefer native import in PowerShell 6+ so full cmdlet parameter sets are available.
-        try {
-            Write-Host -ForegroundColor $Colors.ProcessMessage "Using native module load for PowerShell 6+ (SkipEditionCheck)"
-            Import-Module microsoft.online.sharepoint.powershell -DisableNameChecking -SkipEditionCheck -ErrorAction Stop | Out-Null
-        }
-        catch {
-            Write-Host -ForegroundColor $Colors.WarningMessage "Native load failed. Falling back to compatibility mode for PowerShell 6+"
-            Import-Module microsoft.online.sharepoint.powershell -DisableNameChecking -UseWindowsPowerShell -ErrorAction Stop | Out-Null
-        }
-    }
-
-    $connectSpoCommand = Get-Command -Name Connect-SPOService -ErrorAction Stop
-    $connectParamKeys  = @($connectSpoCommand.Parameters.Keys)
-    $hasAppParam       = ($connectParamKeys -contains 'ClientId' -or $connectParamKeys -contains 'AppId')
-    $hasThumbprintParam= ($connectParamKeys -contains 'Thumbprint' -or $connectParamKeys -contains 'CertificateThumbprint')
-    Write-Debug "Connect-SPOService source: $($connectSpoCommand.Source)"
-    Write-Debug "Connect-SPOService params: $($connectParamKeys -join ', ')"
-
-    $spoSupportsCertConnect = ($hasAppParam -and $hasThumbprintParam)
-    if (-not $spoSupportsCertConnect -and $ps.Major -ge 6) {
-        Write-Host -ForegroundColor $Colors.WarningMessage "Loaded SPO module context does not expose certificate auth parameters. Retrying with Windows PowerShell compatibility mode."
-        Import-Module microsoft.online.sharepoint.powershell -DisableNameChecking -UseWindowsPowerShell -Force -ErrorAction Stop | Out-Null
 
         $connectSpoCommand = Get-Command -Name Connect-SPOService -ErrorAction Stop
         $connectParamKeys  = @($connectSpoCommand.Parameters.Keys)
         $hasAppParam       = ($connectParamKeys -contains 'ClientId' -or $connectParamKeys -contains 'AppId')
         $hasThumbprintParam= ($connectParamKeys -contains 'Thumbprint' -or $connectParamKeys -contains 'CertificateThumbprint')
-        Write-Debug "Connect-SPOService source after compatibility reload: $($connectSpoCommand.Source)"
-        Write-Debug "Connect-SPOService params after compatibility reload: $($connectParamKeys -join ', ')"
+        Write-Debug "Connect-SPOService source: $($connectSpoCommand.Source)"
+        Write-Debug "Connect-SPOService params: $($connectParamKeys -join ', ')"
 
         $spoSupportsCertConnect = ($hasAppParam -and $hasThumbprintParam)
-    }
+        if (-not $spoSupportsCertConnect -and $ps.Major -ge 6) {
+            Write-Host -ForegroundColor $Colors.WarningMessage "Loaded SPO module context does not expose certificate auth parameters. Retrying with Windows PowerShell compatibility mode."
+            Import-Module microsoft.online.sharepoint.powershell -DisableNameChecking -UseWindowsPowerShell -Force -ErrorAction Stop | Out-Null
 
-    if (-not $spoSupportsCertConnect) {
-        $moduleVersion = (Get-Module -Name microsoft.online.sharepoint.powershell | Sort-Object Version -Descending | Select-Object -First 1).Version
-        throw "Connect-SPOService certificate auth parameters are unavailable in the loaded SharePoint Online module context (reported version: $moduleVersion). Update microsoft.online.sharepoint.powershell to a version that supports Connect-SPOService certificate authentication."
+            $connectSpoCommand = Get-Command -Name Connect-SPOService -ErrorAction Stop
+            $connectParamKeys  = @($connectSpoCommand.Parameters.Keys)
+            $hasAppParam       = ($connectParamKeys -contains 'ClientId' -or $connectParamKeys -contains 'AppId')
+            $hasThumbprintParam= ($connectParamKeys -contains 'Thumbprint' -or $connectParamKeys -contains 'CertificateThumbprint')
+            Write-Debug "Connect-SPOService source after compatibility reload: $($connectSpoCommand.Source)"
+            Write-Debug "Connect-SPOService params after compatibility reload: $($connectParamKeys -join ', ')"
+
+            $spoSupportsCertConnect = ($hasAppParam -and $hasThumbprintParam)
+        }
+
+        if (-not $spoSupportsCertConnect) {
+            $moduleVersion = (Get-Module -Name microsoft.online.sharepoint.powershell | Sort-Object Version -Descending | Select-Object -First 1).Version
+            throw "Connect-SPOService certificate auth parameters are unavailable in the loaded SharePoint Online module context (reported version: $moduleVersion). Update microsoft.online.sharepoint.powershell to a version that supports Connect-SPOService certificate authentication."
+        }
     }
 
     if ($GenerateLocalCertificate) {
@@ -1430,9 +1449,10 @@ try {
     }
 
     if ([string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
+        Write-Host -ForegroundColor $Colors.ProcessMessage "No certificate thumbprint supplied. Searching the local certificate store for a generated certificate..."
         $CertificateThumbprint = Resolve-SpoAdminCertificateThumbprint -PreferredSubject $GeneratedCertSubject -Colors $Colors
         if ([string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
-            Write-Host -ForegroundColor $Colors.WarningMessage "No local certificate thumbprint was supplied. Looking for a generated certificate in the local store..."
+            Write-Host -ForegroundColor $Colors.WarningMessage "No suitable certificate with a private key was found in the local store."
         }
     }
 

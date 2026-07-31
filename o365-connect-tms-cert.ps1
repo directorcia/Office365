@@ -274,7 +274,7 @@ function Get-DeviceCodeGraphToken {
         [Parameter(Mandatory = $true)][hashtable]$Colors
     )
 
-    $normalizedTenantId = ($TenantId ?? '').Trim().Trim('/')
+    $normalizedTenantId = $TenantId.Trim().Trim('/')
     if ([string]::IsNullOrWhiteSpace($normalizedTenantId)) {
         throw "TenantId cannot be empty for device-code Graph auth."
     }
@@ -366,7 +366,12 @@ function Get-DeviceCodeGraphToken {
     Write-Host -ForegroundColor $Colors.SystemMessage "Paste the code in the browser and sign in, then return here."
     Write-Host -ForegroundColor $Colors.SystemMessage "-------------------------------------`n"
 
-    Start-Process $deviceCodeResponse.verification_uri
+    try {
+        Start-Process $deviceCodeResponse.verification_uri -ErrorAction Stop
+    }
+    catch {
+        Write-Host -ForegroundColor $Colors.WarningMessage "Unable to open a browser automatically. Browse to $($deviceCodeResponse.verification_uri) manually and enter the code."
+    }
 
     $tokenBody = @{
         grant_type  = "urn:ietf:params:oauth:grant-type:device_code"
@@ -548,33 +553,40 @@ function Set-TeamsEntraRequiredResourceAccess {
 
     $graphBase = "https://graph.microsoft.com/v1.0"
     $existingApp = Invoke-TeamsGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/applications/${AppObjectId}?`$select=requiredResourceAccess"
-    $existingRequiredAccess = @($existingApp.requiredResourceAccess)
-    $missingRequiredAccess = @()
+
+    ## Graph rejects requiredResourceAccess collections containing duplicate resourceAppId entries,
+    ## so missing roles must be merged into the existing entry rather than appended as new entries.
+    $mergedRequiredAccess = [System.Collections.Generic.List[object]]::new()
+    foreach ($entry in @($existingApp.requiredResourceAccess)) { $mergedRequiredAccess.Add($entry) }
+    $needsUpdate = $false
 
     foreach ($requiredEntry in @($RequiredResourceAccess)) {
-        $existingEntry = $existingRequiredAccess | Where-Object { $_.resourceAppId -eq $requiredEntry.resourceAppId } | Select-Object -First 1
-        if ($null -eq $existingEntry) {
-            $missingRequiredAccess += $requiredEntry
+        $existingIndex = -1
+        for ($i = 0; $i -lt $mergedRequiredAccess.Count; $i++) {
+            if ($mergedRequiredAccess[$i].resourceAppId -eq $requiredEntry.resourceAppId) { $existingIndex = $i; break }
+        }
+
+        if ($existingIndex -lt 0) {
+            $mergedRequiredAccess.Add($requiredEntry)
+            $needsUpdate = $true
             continue
         }
 
-        $requiredRoleIds = @($requiredEntry.resourceAccess | ForEach-Object { $_.id })
+        $existingEntry = $mergedRequiredAccess[$existingIndex]
         $existingRoleIds = @($existingEntry.resourceAccess | ForEach-Object { $_.id })
-        foreach ($requiredRoleId in $requiredRoleIds) {
-            if ($existingRoleIds -notcontains $requiredRoleId) {
-                $missingRequiredAccess += @{
-                    resourceAppId  = $requiredEntry.resourceAppId
-                    resourceAccess = @(
-                        @{ id = $requiredRoleId; type = 'Role' }
-                    )
-                }
+        $missingRoles = @($requiredEntry.resourceAccess | Where-Object { $existingRoleIds -notcontains $_.id })
+        if ($missingRoles.Count -gt 0) {
+            $mergedRequiredAccess[$existingIndex] = @{
+                resourceAppId  = $existingEntry.resourceAppId
+                resourceAccess = @($existingEntry.resourceAccess) + $missingRoles
             }
+            $needsUpdate = $true
         }
     }
 
-    if ($missingRequiredAccess.Count -gt 0) {
+    if ($needsUpdate) {
         Write-Host -ForegroundColor $Colors.ProcessMessage "Updating app registration required resource access entries..."
-        $patchBody = @{ requiredResourceAccess = @($existingRequiredAccess) + $missingRequiredAccess }
+        $patchBody = @{ requiredResourceAccess = $mergedRequiredAccess.ToArray() }
         Invoke-TeamsGraphRequest -AccessToken $AccessToken -Method Patch -Uri "$graphBase/applications/$AppObjectId" -Body $patchBody | Out-Null
     }
     else {
@@ -751,6 +763,7 @@ function Get-OrCreateTeamsEntraApplication {
 
     $graphBase = "https://graph.microsoft.com/v1.0"
     $createdNewApp = $false
+    $appObject = $null
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Checking for existing app registration: $DisplayName..."
     $appFilter = [uri]::EscapeDataString("displayName eq '" + ($DisplayName -replace "'", "''") + "'")
@@ -875,7 +888,7 @@ function Resolve-TeamsTenantId {
         [string]$TenantOrDomain
     )
 
-    $inputValue = ($TenantOrDomain ?? '').Trim().Trim('/').ToLowerInvariant()
+    $inputValue = ([string]$TenantOrDomain).Trim().Trim('/').ToLowerInvariant()
     if ([string]::IsNullOrWhiteSpace($inputValue)) {
         return $null
     }
@@ -1161,7 +1174,19 @@ try {
     }
 
     Write-Debug "Resolving profile and certificate auth inputs."
-    $resolvedProfile = Resolve-TeamsCertificateProfile -Path $CertificateMapPath -TenantFilter $Tenant -ProfileFilter $ProfileName -OrganizationFilter $Organization -NoPrompt:$noprompt -Colors $Colors
+    ## Skip the profile map lookup when all auth values were supplied directly, so a non-matching
+    ## or unrelated map file cannot block an otherwise fully specified connection.
+    $haveDirectAuthValues = ((-not [string]::IsNullOrWhiteSpace($Organization)) -or (-not [string]::IsNullOrWhiteSpace($Tenant))) -and
+        (-not [string]::IsNullOrWhiteSpace($AppId)) -and
+        (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint))
+
+    $resolvedProfile = $null
+    if ($haveDirectAuthValues) {
+        Write-Debug "All certificate auth values supplied directly - skipping profile map lookup."
+    }
+    else {
+        $resolvedProfile = Resolve-TeamsCertificateProfile -Path $CertificateMapPath -TenantFilter $Tenant -ProfileFilter $ProfileName -OrganizationFilter $Organization -NoPrompt:$noprompt -Colors $Colors
+    }
     if ($null -ne $resolvedProfile) {
         if ([string]::IsNullOrWhiteSpace($Organization)) {
             if (-not [string]::IsNullOrWhiteSpace($resolvedProfile.organization)) {
@@ -1203,11 +1228,12 @@ try {
         throw "Certificate with thumbprint '$CertificateThumbprint' not found in Cert:\CurrentUser\My. Import the PFX or run -GenerateLocalCertificate -ProvisionEntraApp on this machine first."
     }
 
-    $daysUntilExpiry = ($localCert.NotAfter - (Get-Date)).Days
-    if ($daysUntilExpiry -le 0) {
+    $now = Get-Date
+    if ($localCert.NotAfter -le $now) {
         throw "Certificate '$CertificateThumbprint' expired on $($localCert.NotAfter.ToString('yyyy-MM-dd')). Provision a new certificate."
     }
-    elseif ($daysUntilExpiry -le 30) {
+    $daysUntilExpiry = [int][math]::Ceiling(($localCert.NotAfter - $now).TotalDays)
+    if ($daysUntilExpiry -le 30) {
         Write-Host -ForegroundColor $Colors.WarningMessage "Warning: Certificate expires in $daysUntilExpiry day(s) on $($localCert.NotAfter.ToString('yyyy-MM-dd'))."
     }
     else {

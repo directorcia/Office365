@@ -214,11 +214,11 @@ if (get-module -listavailable -name Microsoft.Graph.Identity.DirectoryManagement
 }
 else {
     write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[001] - Microsoft Graph Identity Directory Management module not installed`n"
-    if (prompt) {
+    if ($prompt) {
         do {
             $response = read-host -Prompt "`nDo you wish to install the Microsoft Graph Identity Directory Management module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
-        if ($result -eq 'Y' -or $result -eq 'y') {
+        if ($response -eq 'Y') {
             write-host -foregroundcolor $processmessagecolor "Installing Microsoft Graph Identity Directory Management module - Administration escalation required"
             Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Force -confirm:$false" -wait -WindowStyle Hidden
             write-host -foregroundcolor $processmessagecolor "Microsoft Graph Identity Directory Management module installed"
@@ -261,7 +261,7 @@ if (-not $noupdate) {
             do {
                 $response = read-host -Prompt "`nDo you wish to update the Microsoft Graph Identity Directory Management PowerShell module (Y/N)?"
             } until (-not [string]::isnullorempty($response))
-            if ($result -eq 'Y' -or $result -eq 'y') {
+            if ($response -eq 'Y') {
                 write-host -foregroundcolor $processmessagecolor "Updating Microsoft Graph Identity Directory Management PowerShell module - Administration escalation required"
                 Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name Microsoft.Graph.Identity.DirectoryManagement -Force -confirm:$false" -wait -WindowStyle Hidden
                 write-host -foregroundcolor $processmessagecolor "Microsoft Graph Identity Directory Management PowerShell module - updated"
@@ -280,7 +280,7 @@ if (-not $noupdate) {
 
 write-host -foregroundcolor $processmessagecolor "Microsoft Graph Identity Directory Management PowerShell module loading"
 Try {
-    Import-Module Microsoft.Graph.Identity.DirectoryManagement | Out-Null
+    Import-Module Microsoft.Graph.Identity.DirectoryManagement -ErrorAction Stop | Out-Null
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Microsoft Graph Identity Directory Management PowerShell module`n"
@@ -303,7 +303,7 @@ else {
         do {
             $response = read-host -Prompt "`nDo you wish to install the SharePoint Online Graph PowerShell module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
-        if ($result -eq 'Y' -or $result -eq 'y') {
+        if ($response -eq 'Y') {
             write-host -foregroundcolor $processmessagecolor "Installing SharePoint Online Graph PowerShell module - Administration escalation required"
             Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name Microsoft.Graph.Sites -Force -confirm:$false" -wait -WindowStyle Hidden
             write-host -foregroundcolor $processmessagecolor "SharePoint Online Online Graph PowerShell module installed"
@@ -347,7 +347,7 @@ if (-not $noupdate) {
             do {
                 $response = read-host -Prompt "`nDo you wish to update the SharePoint Online Graph PowerShell module (Y/N)?"
             } until (-not [string]::isnullorempty($response))
-            if ($result -eq 'Y' -or $result -eq 'y') {
+            if ($response -eq 'Y') {
                 write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online Graph PowerShell module - Administration escalation required"
                 Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name Microsoft.Graph.Sites -Force -confirm:$false" -wait -WindowStyle Hidden
                 write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell Graph module - updated"
@@ -366,7 +366,7 @@ if (-not $noupdate) {
 
 write-host -foregroundcolor $processmessagecolor "Microsoft Graph SharePoint Online PowerShell module loading"
 Try {
-    Import-Module Microsoft.Graph.Sites | Out-Null
+    Import-Module Microsoft.Graph.Sites -ErrorAction Stop | Out-Null
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Microsoft Graph SharePoint Online PowerShell module`n"
@@ -381,7 +381,7 @@ write-host -foregroundcolor $processmessagecolor "Microsoft Graph SharePoint Onl
 ## Connect to Office 365 admin service
 write-host -foregroundcolor $processmessagecolor "Connecting to Microsoft Graph"
 try {
-    Connect-MgGraph -nowelcome -Scopes "Sites.Read.All", "sites.ReadWrite.All,Domain.Read.All"
+    Connect-MgGraph -nowelcome -Scopes "Sites.Read.All", "Sites.ReadWrite.All", "Domain.Read.All", "Organization.Read.All" -ErrorAction Stop
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[003] - Unable to connect to Microsoft Graph`n"
@@ -395,6 +395,7 @@ write-host -foregroundcolor $processmessagecolor "Connected to Microsoft Graph"
 
 ## Auto detect SharePoint Online admin domain
 write-host -foregroundcolor $processmessagecolor "Determining SharePoint URL"
+$tenantname = $null
 $domains = get-mgdomain                        ## get a list of all domains in tenant
 foreach ($domain in $domains) {
     ## loop through all these domains
@@ -404,6 +405,13 @@ foreach ($domain in $domains) {
         $tenantname = $onname[0]                    ## the first string in this array is the name of the tenant
     }                                               ## end of find the on.microsoft.com domain
 }                                                   ## end of the domain checking look
+if ([string]::IsNullOrEmpty($tenantname)) {
+    Write-Host -ForegroundColor $errormessagecolor "[007] - Unable to determine tenant name (no onmicrosoft.com domain found)`n"
+    if ($debug) {
+        Stop-Transcript | Out-Null
+    }
+    exit 7
+}
 $tenanturl = "https://" + $tenantname + "-admin.sharepoint.com"
 Write-host -ForegroundColor $processmessagecolor "SharePoint admin URL =", $tenanturl
 
@@ -418,7 +426,7 @@ else {
         do {
             $response = read-host -Prompt "`nDo you wish to install the SharePoint Online PNP PowerShell module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
-        if ($result -eq 'Y' -or $result -eq 'y') {
+        if ($response -eq 'Y') {
             write-host -foregroundcolor $processmessagecolor "Installing SharePoint Online PNP PowerShell module - Administration escalation required"
             Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name pnp.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
             write-host -foregroundcolor $processmessagecolor "SharePoint Online Online PNP PowerShell module installed"
@@ -462,7 +470,7 @@ if (-not $noupdate) {
             do {
                 $response = read-host -Prompt "`nDo you wish to update the SharePoint Online PNP PowerShell module (Y/N)?"
             } until (-not [string]::isnullorempty($response))
-            if ($result -eq 'Y' -or $result -eq 'y') {
+            if ($response -eq 'Y') {
                 write-host -foregroundcolor $processmessagecolor "Updating SharePoint Online PNP PowerShell module - Administration escalation required"
                 Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name pnp.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
                 write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP PowerShell module - updated"
@@ -496,12 +504,19 @@ Foreach ($site in $sites) {
 }
 write-host -foregroundcolor $processmessagecolor "Sites found =",$sitesummary.count
 $result = $sitesummary | select-object Name, weburl | Sort-Object Name,weburl | Out-GridView -OutputMode Single -title "Select SharePoint site to connect to with PNP"
+if ($null -eq $result) {
+    write-host -foregroundcolor $warningmessagecolor "No site selected. Terminating script"
+    if ($debug) {
+        Stop-Transcript | Out-Null
+    }
+    exit 0
+}
 write-host -foregroundcolor $processmessagecolor "Selected SharePoint Online site =", $result.weburl
 
 # Import SharePoint Online PNP module
 write-host -foregroundcolor $processmessagecolor "SharePoint Online PNP PowerShell module loading"
 Try {
-    Import-Module pnp.powershell | Out-Null
+    Import-Module pnp.powershell -ErrorAction Stop | Out-Null
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[005] - Unable to load SharePoint Online PNP PowerShell module. Try using PowerShell V7 or above`n"
@@ -525,7 +540,7 @@ if (-not [string]::IsNullOrEmpty($ClientId)) {
     
     Try {
         write-host -foregroundcolor $processmessagecolor "Connecting to PnP using existing Azure AD app..."
-        connect-pnponline -url $result.weburl -Interactive -ClientId $ClientId
+        connect-pnponline -url $result.weburl -Interactive -ClientId $ClientId -ErrorAction Stop
         write-host -foregroundcolor $processmessagecolor "✅ Successfully connected to SharePoint PnP Online with existing app!"
     }
     catch {
@@ -554,7 +569,6 @@ if (-not [string]::IsNullOrEmpty($ClientId)) {
             write-host -foregroundcolor $processmessagecolor "Using existing Microsoft Graph session for PnP authentication"
             
             # Extract tenant information from Microsoft Graph context
-            $tenantId = $mgContext.TenantId
             $tenantDomain = ""
             
             try {
@@ -597,7 +611,7 @@ if (-not [string]::IsNullOrEmpty($ClientId)) {
                         
                         # Now connect using the newly created app
                         write-host -foregroundcolor $processmessagecolor "Connecting to PnP using newly created app..."
-                        connect-pnponline -url $result.weburl -Interactive -ClientId $newClientId
+                        connect-pnponline -url $result.weburl -Interactive -ClientId $newClientId -ErrorAction Stop
                         write-host -foregroundcolor $processmessagecolor "✅ Successfully connected to SharePoint PnP Online with new app!"
                     } else {
                         throw "App registration returned null"
@@ -612,7 +626,7 @@ if (-not [string]::IsNullOrEmpty($ClientId)) {
                 # Fallback: Try direct interactive connection (may fail with new PnP requirements)
                 write-host -foregroundcolor $processmessagecolor "Attempting fallback interactive connection..."
                 try {
-                    connect-pnponline -url $result.weburl -Interactive
+                    connect-pnponline -url $result.weburl -Interactive -ErrorAction Stop
                     write-host -foregroundcolor $processmessagecolor "✅ Successfully connected to SharePoint PnP Online (fallback)"
                 } catch {
                     throw "Both app registration and fallback connection failed: $($_.Exception.Message)"

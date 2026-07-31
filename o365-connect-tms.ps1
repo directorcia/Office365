@@ -40,8 +40,9 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::
 
 
 if ($debug) {
-    write-host "Script activity logged at ..\o365-connect-tms.txt"
-    start-transcript "..\o365-connect-tms.txt" | Out-Null                                        ## Log file created in parent directory that is overwritten on each run
+    $transcriptpath = Join-Path (Split-Path -Parent $PSScriptRoot) "o365-connect-tms.txt"   ## Log file created in parent directory that is overwritten on each run
+    write-host "Script activity logged at $transcriptpath"
+    start-transcript $transcriptpath | Out-Null
 }
 write-host -foregroundcolor $systemmessagecolor "Microsoft Teams connection script started`n"
 write-host -ForegroundColor $processmessagecolor "Prompt = ",(-not $noprompt)
@@ -57,7 +58,7 @@ else {
         } until (-not [string]::isnullorempty($response))
         if ($response -eq 'Y' -or $response -eq 'y') {
             write-host -foregroundcolor $processmessagecolor "Installing Microsoft Teams PowerShell module - Administration escalation required"
-            Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name MicrosoftTeams -Force -confirm:$false" -wait -WindowStyle Hidden
+            Start-Process powershell -Verb runAs -ArgumentList 'install-Module -Name MicrosoftTeams -Force -Confirm:$false' -wait -WindowStyle Hidden
             write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module installed"
         }
         else {
@@ -70,25 +71,35 @@ else {
     }
     else {
         write-host -foregroundcolor $processmessagecolor "Installing Microsoft Teams PowerShell module - Administration escalation required"
-        Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name MicrosoftTeams -Force -confirm:$false" -wait -WindowStyle Hidden
+        Start-Process powershell -Verb runAs -ArgumentList 'install-Module -Name MicrosoftTeams -Force -Confirm:$false' -wait -WindowStyle Hidden
         write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module installed"    
-    }  
+    }
+    ## Verify installation actually succeeded before continuing
+    if (-not (get-module -listavailable -name MicrosoftTeams)) {
+        write-host -ForegroundColor $errormessagecolor "[001A] - Teams PowerShell module still not found after install attempt. Install manually with: Install-Module -Name MicrosoftTeams`n"
+        if ($debug) { Stop-Transcript | Out-Null }
+        exit 1
+    }
 }
 
 if (-not $noupdate) {
     write-host -foregroundcolor $processmessagecolor "Check whether newer version of Microsoft Teams PowerShell module is available"
-    #get version of the module (selects the first if there are more versions installed)
-    $version = (Get-InstalledModule -name MicrosoftTeams) | Sort-Object Version -Descending  | Select-Object Version -First 1
-    #get version of the module in psgallery
-    $psgalleryversion = Find-Module -Name MicrosoftTeams | Sort-Object Version -Descending | Select-Object Version -First 1
-    #convert to string for comparison
-    $stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
-    $a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
-    #convert to string for comparison
-    $onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
-    $b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
+    $a = $null
+    $b = $null
+    try {
+        #get highest installed version of the module
+        $a = (Get-InstalledModule -Name MicrosoftTeams -ErrorAction Stop | Sort-Object Version -Descending | Select-Object -First 1).Version -as [string]
+        #get version of the module in psgallery
+        $b = (Find-Module -Name MicrosoftTeams -ErrorAction Stop | Sort-Object Version -Descending | Select-Object -First 1).Version -as [string]
+    }
+    catch {
+        write-host -foregroundcolor $warningmessagecolor "Unable to check for module updates (offline or module not installed via PowerShellGet) - skipping update check"
+    }
     #version compare
-    if ([version]"$a" -ge [version]"$b") {
+    if (-not $a -or -not $b) {
+        # update check skipped
+    }
+    elseif ([version]"$a" -ge [version]"$b") {
         Write-Host -foregroundcolor $processmessagecolor "Local module $a greater or equal to Gallery module $b"
         write-host -foregroundcolor $processmessagecolor "No update required"
     }
@@ -101,7 +112,7 @@ if (-not $noupdate) {
             } until (-not [string]::isnullorempty($response))
             if ($response -eq 'Y' -or $response -eq 'y') {
                 write-host -foregroundcolor $processmessagecolor "Updating the Microsoft Teams PowerShell module - Administration escalation required"
-                Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name MicrosoftTeams -Force -confirm:$false" -wait -WindowStyle Hidden
+                Start-Process powershell -Verb runAs -ArgumentList 'update-Module -Name MicrosoftTeams -Force -Confirm:$false' -wait -WindowStyle Hidden
                 write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module - updated"
             }
             else {
@@ -110,7 +121,7 @@ if (-not $noupdate) {
         }
         else {
         write-host -foregroundcolor $processmessagecolor "Updating the Microsoft Teams PowerShell module - Administration escalation required" 
-        Start-Process powershell -Verb runAs -ArgumentList "update-Module -Name MicrosoftTeams -Force -confirm:$false" -wait -WindowStyle Hidden
+        Start-Process powershell -Verb runAs -ArgumentList 'update-Module -Name MicrosoftTeams -Force -Confirm:$false' -wait -WindowStyle Hidden
         write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module - updated"
         }
     }
@@ -118,7 +129,7 @@ if (-not $noupdate) {
 
 write-host -foregroundcolor $processmessagecolor "Microsoft Teams PowerShell module loading"
 try {
-    $result = import-module MicrosoftTeams
+    import-module MicrosoftTeams -ErrorAction Stop
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[002] - Unable to load Microsoft Teams PowerShell module`n"
@@ -138,10 +149,13 @@ write-host -foregroundcolor $processmessagecolor "Connecting to Microsoft Teams"
 $already = $false
 if (-not $ForceReconnect) {
     try {
-        $ctx = Get-CsOnlineSession -ErrorAction SilentlyContinue
-        if ($ctx) {
-            $already = $true
-            Write-Host -ForegroundColor $processmessagecolor "Existing Teams session detected - skipping new connection (use -ForceReconnect to override)"
+        # Get-CsOnlineSession does not exist in all module versions - guard before calling
+        if (Get-Command Get-CsOnlineSession -ErrorAction SilentlyContinue) {
+            $ctx = Get-CsOnlineSession -ErrorAction SilentlyContinue
+            if ($ctx) {
+                $already = $true
+                Write-Host -ForegroundColor $processmessagecolor "Existing Teams session detected - skipping new connection (use -ForceReconnect to override)"
+            }
         }
     } catch {}
 }

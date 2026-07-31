@@ -74,7 +74,7 @@ else {
     write-host -foregroundcolor $processmessagecolor "[Info] = Debug mode disabled`n"
 }
 write-host -foregroundcolor $systemmessagecolor "SharePoint Online Connection script started`n"
-if ($prompt) {
+if (-not $noprompt) {
     write-host -foregroundcolor $processmessagecolor "[Info] = Prompt mode enabled"
 }
 else {
@@ -94,7 +94,7 @@ else {
         do {
             $response = read-host -Prompt "`nDo you wish to install the Microsoft.Graph.Authentication module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
-        if ($result -eq 'Y' -or $result -eq 'y') {
+        if ($response -eq 'Y' -or $response -eq 'y') {
             write-host -foregroundcolor $processmessagecolor "Installing Microsoft.Graph.Authentication module - Administration escalation required"
             Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name Microsoft.Graph.Authentication -Force -confirm:$false" -wait -WindowStyle Hidden
             write-host -foregroundcolor $processmessagecolor "Microsoft.Graph.Authentication module installed"
@@ -115,18 +115,30 @@ else {
 }
 if (-not $noupdate) {
     write-host -foregroundcolor $processmessagecolor "Check whether newer version of Microsoft.Graph.Authentication module is available"
-    #get version of the module (selects the first if there are more versions installed)
-    $version = (Get-InstalledModule -name Microsoft.Graph.Authentication) | Sort-Object Version -Descending  | Select-Object Version -First 1
-    #get version of the module in psgallery
-    $psgalleryversion = Find-Module -Name Microsoft.Graph.Authentication | Sort-Object Version -Descending | Select-Object Version -First 1
-    #convert to string for comparison
-    $stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
-    $a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
-    #convert to string for comparison
-    $onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
-    $b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
+    try {
+        #get version of the module (selects the first if there are more versions installed)
+        $version = Get-InstalledModule -name Microsoft.Graph.Authentication -ErrorAction Stop | Sort-Object Version -Descending | Select-Object Version -First 1
+        #get version of the module in psgallery
+        $psgalleryversion = Find-Module -Name Microsoft.Graph.Authentication -ErrorAction Stop | Sort-Object Version -Descending | Select-Object Version -First 1
+    }
+    catch {
+        Write-Host -ForegroundColor $warningmessagecolor "Unable to check module versions (offline or module not installed via PowerShellGet). Skipping update check."
+        $version = $null
+        $psgalleryversion = $null
+    }
+    if (-not $version -or -not $psgalleryversion) {
+        $a = $null
+        $b = $null
+    }
+    else {
+        $a = $version.Version -as [string]
+        $b = $psgalleryversion.Version -as [string]
+    }
     #version compare
-    if ([version]"$a" -ge [version]"$b") {
+    if (-not $a -or -not $b) {
+        write-host -foregroundcolor $processmessagecolor "Update check skipped"
+    }
+    elseif ([version]"$a" -ge [version]"$b") {
         Write-Host -foregroundcolor $processmessagecolor "Local module $a greater or equal to Gallery module $b"
         write-host -foregroundcolor $processmessagecolor "No update required"
     }
@@ -322,15 +334,15 @@ if (get-module -listavailable -name microsoft.online.sharepoint.powershell) {   
     write-host -ForegroundColor $processmessagecolor "SharePoint Online PowerShell module installed"
 }
 else {
-    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[004] - SharePoint Online PowerShell module not installed`n"
+    write-host -ForegroundColor $warningmessagecolor -backgroundcolor $errormessagecolor "[007] - SharePoint Online PowerShell module not installed`n"
     if (-not $noprompt) {
         do {
             $response = read-host -Prompt "`nDo you wish to install the SharePoint Online PowerShell module (Y/N)?"
         } until (-not [string]::isnullorempty($response))
-        if ($result -eq 'Y' -or $result -eq 'y') {
+        if ($response -eq 'Y' -or $response -eq 'y') {
             write-host -foregroundcolor $processmessagecolor "Installing SharePoint Online PowerShell module - Administration escalation required"
             Start-Process powershell -Verb runAs -ArgumentList "install-Module -Name microsoft.online.sharepoint.powershell -Force -confirm:$false" -wait -WindowStyle Hidden
-            write-host -foregroundcolor $processmessagecolor "SharePoint Online Online PowerShell module installed"
+            write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module installed"
         }
         else {
             write-host -foregroundcolor $processmessagecolor "Terminating script"
@@ -349,18 +361,30 @@ else {
 
 if (-not $noupdate) {
     write-host -foregroundcolor $processmessagecolor "Check whether newer version of SharePoint Online PowerShell module is available"
-    #get version of the module (selects the first if there are more versions installed)
-    $version = (Get-InstalledModule -name microsoft.online.sharepoint.powershell) | Sort-Object Version -Descending  | Select-Object Version -First 1
-    #get version of the module in psgallery
-    $psgalleryversion = Find-Module -Name microsoft.online.sharepoint.powershell | Sort-Object Version -Descending | Select-Object Version -First 1
-    #convert to string for comparison
-    $stringver = $version | Select-Object @{n='ModuleVersion'; e={$_.Version -as [string]}}
-    $a = $stringver | Select-Object Moduleversion -ExpandProperty Moduleversion
-    #convert to string for comparison
-    $onlinever = $psgalleryversion | Select-Object @{n='OnlineVersion'; e={$_.Version -as [string]}}
-    $b = $onlinever | Select-Object OnlineVersion -ExpandProperty OnlineVersion
+    try {
+        #get version of the module (selects the first if there are more versions installed)
+        $version = Get-InstalledModule -name microsoft.online.sharepoint.powershell -ErrorAction Stop | Sort-Object Version -Descending | Select-Object Version -First 1
+        #get version of the module in psgallery
+        $psgalleryversion = Find-Module -Name microsoft.online.sharepoint.powershell -ErrorAction Stop | Sort-Object Version -Descending | Select-Object Version -First 1
+    }
+    catch {
+        Write-Host -ForegroundColor $warningmessagecolor "Unable to check module versions (offline or module not installed via PowerShellGet). Skipping update check."
+        $version = $null
+        $psgalleryversion = $null
+    }
+    if (-not $version -or -not $psgalleryversion) {
+        $a = $null
+        $b = $null
+    }
+    else {
+        $a = $version.Version -as [string]
+        $b = $psgalleryversion.Version -as [string]
+    }
     #version compare
-    if ([version]"$a" -ge [version]"$b") {
+    if (-not $a -or -not $b) {
+        write-host -foregroundcolor $processmessagecolor "Update check skipped"
+    }
+    elseif ([version]"$a" -ge [version]"$b") {
         Write-Host -foregroundcolor $processmessagecolor "Local module $a greater or equal to Gallery module $b"
         write-host -foregroundcolor $processmessagecolor "No update required"
     }
@@ -392,11 +416,11 @@ if (-not $noupdate) {
 write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell module loading"
 Try {
     if ($ps.Major -lt 6) {
-        $result = Import-Module microsoft.online.sharepoint.powershell -disablenamechecking
+        Import-Module microsoft.online.sharepoint.powershell -disablenamechecking -ErrorAction Stop
     }
     else {
         write-host -foregroundcolor $processmessagecolor "[Info] = Using compatibility mode`n"
-        $result = Import-Module microsoft.online.sharepoint.powershell -disablenamechecking -UseWindowsPowerShell
+        Import-Module microsoft.online.sharepoint.powershell -disablenamechecking -UseWindowsPowerShell -ErrorAction Stop
     }
 }
 catch {
@@ -412,7 +436,7 @@ write-host -foregroundcolor $processmessagecolor "SharePoint Online PowerShell m
 # Connect to SharePoint Online Service
 write-host -foregroundcolor $processmessagecolor "Connecting to SharePoint Online"
 Try {
-    connect-sposervice -url $tenanturl | Out-Null
+    connect-sposervice -url $tenanturl -ErrorAction Stop | Out-Null
 }
 catch {
     Write-Host -ForegroundColor $errormessagecolor "[006] - Unable to connect to SharePoint Online`n"

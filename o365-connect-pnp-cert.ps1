@@ -1233,7 +1233,9 @@ try {
 
         Write-Host -ForegroundColor $Colors.ProcessMessage "Installing PnP.PowerShell module - Administration escalation required"
         ## FIX #11: Capture exit code so a denied UAC prompt or failed install is surfaced clearly.
-        $installProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList "Install-Module -Name PnP.PowerShell -Force -Confirm:`$false" -Wait -WindowStyle Hidden -PassThru
+        ## FIX #16: pwsh treats a bare first argument as -File, so -Command must be explicit.
+        ## $ErrorActionPreference ensures a failed install produces a nonzero exit code.
+        $installProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', '$ErrorActionPreference = ''Stop''; Install-Module -Name PnP.PowerShell -Force -Confirm:$false') -Wait -WindowStyle Hidden -PassThru
         if ($installProcess.ExitCode -ne 0) {
             throw "Elevated module install failed (exit code $($installProcess.ExitCode)). Run PowerShell as Administrator and retry, or install the module manually: Install-Module -Name PnP.PowerShell"
         }
@@ -1253,32 +1255,24 @@ try {
         }
         elseif ([version]$localVersion -lt [version]$onlineVersion) {
             Write-Host -ForegroundColor $Colors.WarningMessage "Local module $localVersion is lower than Gallery module $onlineVersion"
+            $doUpdate = $true
             if (-not $noprompt) {
                 do {
                     $updateResponse = Read-Host -Prompt "`nDo you wish to update the PnP.PowerShell module (Y/N)?"
                 } until (-not [string]::IsNullOrWhiteSpace($updateResponse))
-
-                if ($updateResponse -eq 'Y' -or $updateResponse -eq 'y') {
-                    Write-Host -ForegroundColor $Colors.ProcessMessage "Updating PnP.PowerShell module - Administration escalation required"
-                    $updateProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList "Update-Module -Name PnP.PowerShell -Force -Confirm:`$false" -Wait -WindowStyle Hidden -PassThru
-                    if ($updateProcess.ExitCode -ne 0) {
-                        Write-Host -ForegroundColor $Colors.WarningMessage "Module update may have failed (exit code $($updateProcess.ExitCode)). Continuing with current installed version."
-                    }
-                    else {
-                        ## DLLs are loaded into the AppDomain at import time and cannot be hot-swapped.
-                        ## The new version only takes effect in a fresh session.
-                        Write-Host -ForegroundColor $Colors.WarningMessage "IMPORTANT: Module updated. Close and reopen this PowerShell session before continuing."
-                        throw "Session restart required after module update. Please close this window and re-run the script."
-                    }
-                }
+                $doUpdate = ($updateResponse -eq 'Y' -or $updateResponse -eq 'y')
             }
-            else {
+
+            if ($doUpdate) {
                 Write-Host -ForegroundColor $Colors.ProcessMessage "Updating PnP.PowerShell module - Administration escalation required"
-                $updateProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList "Update-Module -Name PnP.PowerShell -Force -Confirm:`$false" -Wait -WindowStyle Hidden -PassThru
+                ## FIX #16: pwsh treats a bare first argument as -File, so -Command must be explicit.
+                $updateProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', '$ErrorActionPreference = ''Stop''; Update-Module -Name PnP.PowerShell -Force -Confirm:$false') -Wait -WindowStyle Hidden -PassThru
                 if ($updateProcess.ExitCode -ne 0) {
                     Write-Host -ForegroundColor $Colors.WarningMessage "Module update may have failed (exit code $($updateProcess.ExitCode)). Continuing with current installed version."
                 }
                 else {
+                    ## DLLs are loaded into the AppDomain at import time and cannot be hot-swapped.
+                    ## The new version only takes effect in a fresh session.
                     Write-Host -ForegroundColor $Colors.WarningMessage "IMPORTANT: Module updated. Close and reopen this PowerShell session before continuing."
                     throw "Session restart required after module update. Please close this window and re-run the script."
                 }
