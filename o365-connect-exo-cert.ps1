@@ -206,6 +206,20 @@ function New-ExoLocalCertificate {
     Write-Debug "Starting local certificate generation."
     Write-Verbose "Creating self-signed certificate: Subject='$SubjectName', YearsValid=$YearsValid, OutputPath='$OutputPath'"
 
+    ## Resolve the PFX password up front so a missing password fails before a cert is created in the store.
+    $securePfxPassword = $null
+    if ($ExportPfx) {
+        $securePfxPassword = $PfxPassword
+
+        if ($null -eq $securePfxPassword -and -not $NoPrompt) {
+            $securePfxPassword = Read-Host -Prompt "Enter password for generated PFX file" -AsSecureString
+        }
+
+        if ($null -eq $securePfxPassword) {
+            throw "ExportGeneratedPfx requires GeneratedPfxPassword (or prompt input when noprompt is not used)."
+        }
+    }
+
     if (-not (Test-Path -Path $OutputPath)) {
         Write-Debug "Creating certificate output directory: $OutputPath"
         New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
@@ -220,23 +234,21 @@ function New-ExoLocalCertificate {
     $safeSubject = ($SubjectName -replace '[^A-Za-z0-9\-_.]', '-')
     $fileBase = "{0}-{1}" -f $safeSubject, $certificate.Thumbprint
     $cerPath = Join-Path -Path $OutputPath -ChildPath "$fileBase.cer"
-
-    Export-Certificate -Cert $certificate -FilePath $cerPath -Type CERT -Force -ErrorAction Stop | Out-Null
-
     $pfxPath = $null
-    if ($ExportPfx) {
-        $securePfxPassword = $PfxPassword
 
-        if ($null -eq $securePfxPassword -and -not $NoPrompt) {
-            $securePfxPassword = Read-Host -Prompt "Enter password for generated PFX file" -AsSecureString
+    ## Remove the store cert if any export fails, so a failed run leaves no orphaned certificate behind.
+    try {
+        Export-Certificate -Cert $certificate -FilePath $cerPath -Type CERT -Force -ErrorAction Stop | Out-Null
+
+        if ($ExportPfx) {
+            $pfxPath = Join-Path -Path $OutputPath -ChildPath "$fileBase.pfx"
+            Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $securePfxPassword -Force -ErrorAction Stop | Out-Null
         }
-
-        if ($null -eq $securePfxPassword) {
-            throw "ExportGeneratedPfx requires GeneratedPfxPassword (or prompt input when noprompt is not used)."
-        }
-
-        $pfxPath = Join-Path -Path $OutputPath -ChildPath "$fileBase.pfx"
-        Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $securePfxPassword -Force -ErrorAction Stop | Out-Null
+    }
+    catch {
+        Remove-Item -Path "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
+        if (Test-Path -Path $cerPath) { Remove-Item -Path $cerPath -Force -ErrorAction SilentlyContinue }
+        throw "Certificate export failed; generated certificate removed from store. $($_.Exception.Message)"
     }
 
     return [PSCustomObject]@{
@@ -299,8 +311,13 @@ function Get-DeviceCodeGraphToken {
     Write-Host -ForegroundColor $Colors.SystemMessage "Paste the code in the browser and sign in, then return here."
     Write-Host -ForegroundColor $Colors.SystemMessage "-------------------------------------`n"
 
-    ## Open the verification URL in the default browser
-    Start-Process $deviceCodeResponse.verification_uri
+    ## Open the verification URL in the default browser; fall back to manual on headless/locked-down hosts.
+    try {
+        Start-Process $deviceCodeResponse.verification_uri -ErrorAction Stop
+    }
+    catch {
+        Write-Host -ForegroundColor $Colors.WarningMessage "Could not open a browser automatically. Browse to $($deviceCodeResponse.verification_uri) on any device and enter the code above."
+    }
 
     $tokenBody = @{
         grant_type  = "urn:ietf:params:oauth:grant-type:device_code"
@@ -1059,6 +1076,11 @@ try {
         Start-Process $elevatedShellPath -Verb runAs -ArgumentList "Install-Module PowershellGet -Force" -Wait -WindowStyle Hidden
         Write-Host -ForegroundColor $Colors.ProcessMessage "Installing Exchange Online PowerShell module - Administration escalation required"
         Start-Process $elevatedShellPath -Verb runAs -ArgumentList "Install-Module -Name ExchangeOnlineManagement -Force -Confirm:`$false" -Wait -WindowStyle Hidden
+
+        ## The elevated window runs hidden, so verify the outcome rather than trusting it.
+        if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
+            throw "Exchange Online module installation did not complete (module still not found). Install it manually from an elevated session: Install-Module ExchangeOnlineManagement"
+        }
         Write-Host -ForegroundColor $Colors.ProcessMessage "Exchange Online PowerShell module installed"
     }
 
@@ -1246,10 +1268,19 @@ try {
         throw "UseCertificateAuth requires Organization, AppId, and CertificateThumbprint (directly or via CertificateMapPath profile)."
     }
 
+    ## Thumbprints copied from certificate UIs often carry spaces or invisible characters - normalise first.
+    $CertificateThumbprint = ($CertificateThumbprint -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
+    if ($CertificateThumbprint -notmatch '^[0-9A-F]{40}$') {
+        throw "CertificateThumbprint '$CertificateThumbprint' is not a valid 40-character SHA-1 thumbprint."
+    }
+
     ## Verify the certificate is present in the local store before attempting to connect.
     $localCert = Get-Item "Cert:\CurrentUser\My\$CertificateThumbprint" -ErrorAction SilentlyContinue
     if ($null -eq $localCert) {
         throw "Certificate with thumbprint '$CertificateThumbprint' not found in Cert:\CurrentUser\My. Import the PFX or run -GenerateLocalCertificate -ProvisionEntraApp on this machine first."
+    }
+    if (-not $localCert.HasPrivateKey) {
+        throw "Certificate '$CertificateThumbprint' is in the store but has no private key (was the .cer imported instead of the .pfx?). Import the PFX with its private key and retry."
     }
 
     ## Warn if the cert expires within 30 days.

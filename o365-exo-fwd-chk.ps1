@@ -18,6 +18,7 @@ More scripts available by joining http://www.ciaopspatron.com
 [CmdletBinding()]
 param(
     [string]$LogFile = (Join-Path -Path $PSScriptRoot -ChildPath "o365-exo-fwd-chk-log.txt"),
+    [string]$CsvFile,                              # Optional path to export findings as CSV
     [switch]$VerboseOutput = $false                # Enable verbose output
 )
 
@@ -73,88 +74,124 @@ try {
 
     ## Get all mailboxes
     Write-LogMessage "[INFO] Get all mailbox details - Start" $processmessagecolor
-    $mailboxes = Get-Mailbox -ResultSize Unlimited -ErrorAction Stop
+    if (Get-Command -Name Get-EXOMailbox -ErrorAction SilentlyContinue) {
+        # REST-based cmdlet with a minimal property set is much faster in large tenants
+        $mailboxes = Get-EXOMailbox -ResultSize Unlimited -Properties DisplayName, UserPrincipalName, DeliverToMailboxAndForward, ForwardingSmtpAddress, ForwardingAddress -ErrorAction Stop
+    }
+    else {
+        $mailboxes = Get-Mailbox -ResultSize Unlimited -ErrorAction Stop
+    }
     $mailboxCount = @($mailboxes).Count
     Write-LogMessage "[INFO] Retrieved $mailboxCount mailbox entries" $processmessagecolor
     Write-LogMessage "[INFO] Get all mailbox details - Finish`n" $processmessagecolor
 
-    $mailboxForwardEnabledCount = 0
-    $mailboxForwardDisabledCount = 0
+    $mailboxForwardKeepCopyCount = 0
+    $mailboxForwardOnlyCount = 0
     $inboxForwardRuleCount = 0
+    $inboxForwardAttachmentRuleCount = 0
     $inboxRedirectRuleCount = 0
     $inboxRuleErrorCount = 0
     $sweepRuleCount = 0
     $sweepRuleErrorCount = 0
+    $findings = [System.Collections.Generic.List[object]]::new()
 
-    ## Check Mailbox Forwards
-    Write-LogMessage "Check Mailbox Forwards - Start`n" $processmessagecolor
+    ## Check each mailbox for mailbox-level forwards, inbox rules and sweep rules
+    Write-LogMessage "Check mailbox forwards, inbox rules and sweep rules - Start`n" $processmessagecolor
 
+    $index = 0
     foreach ($mailbox in $mailboxes) {
+        $index++
         $shortenedName = Get-ShortText -Text $mailbox.DisplayName -MaxLength 40
         $shortenedUPN = Get-ShortText -Text $mailbox.UserPrincipalName -MaxLength 60
-        if ($VerboseOutput) { Write-LogMessage "Mailbox forwards for $shortenedName - $shortenedUPN" "Gray" }
+        Write-Progress -Activity "Checking mailboxes for forwards" -Status "$index of $mailboxCount - $shortenedUPN" -PercentComplete (($index / $mailboxCount) * 100)
+        if ($VerboseOutput) { Write-LogMessage "Checking $shortenedName - $shortenedUPN" "Gray" }
 
-        if ($mailbox.DeliverToMailboxAndForward) {
-            $mailboxForwardEnabledCount++
-            Write-LogMessage "    Forwarding enabled for $shortenedName - Forwarding = $($mailbox.delivertomailboxandforward)" $errormessagecolor
-            Write-LogMessage "    Forwarding address = $($mailbox.forwardingsmtpaddress)" $errormessagecolor
-        } elseif ($mailbox.forwardingsmtpaddress) {
-            $mailboxForwardDisabledCount++
-            Write-LogMessage "    Forwarding address set but disabled for $shortenedName - Forwarding = $($mailbox.delivertomailboxandforward)" $warnmessagecolor
-            Write-LogMessage "    Forwarding address = $($mailbox.forwardingsmtpaddress)" $warnmessagecolor
+        ## Mailbox-level forwarding. ForwardingAddress (admin-set) forwards even when DeliverToMailboxAndForward is false
+        $forwardTarget = if ($mailbox.ForwardingSmtpAddress) { $mailbox.ForwardingSmtpAddress } elseif ($mailbox.ForwardingAddress) { $mailbox.ForwardingAddress } else { $null }
+        if ($forwardTarget) {
+            if ($mailbox.DeliverToMailboxAndForward) {
+                $mailboxForwardKeepCopyCount++
+                $detail = "Forwards and keeps a copy in mailbox"
+            } else {
+                $mailboxForwardOnlyCount++
+                $detail = "Forwards without keeping a copy in mailbox"
+            }
+            Write-LogMessage "    Mailbox forwarding set for $shortenedName - $detail" $errormessagecolor
+            Write-LogMessage "    Forwarding address = $forwardTarget" $errormessagecolor
+            $findings.Add([pscustomobject]@{
+                Mailbox     = $mailbox.DisplayName
+                UPN         = $mailbox.UserPrincipalName
+                FindingType = "Mailbox forwarding"
+                RuleName    = ""
+                Target      = "$forwardTarget"
+                Detail      = $detail
+            })
         }
-    }
 
-    Write-LogMessage "`nCheck Mailbox Forwards - Finish`n" $processmessagecolor
-
-    ## Check Outlook Rule Forwards
-    Write-LogMessage "Check Outlook Rule Forwards - Start`n" $processmessagecolor
-
-    foreach ($mailbox in $mailboxes) {
-        $shortenedName = Get-ShortText -Text $mailbox.DisplayName -MaxLength 40
-        $shortenedUPN = Get-ShortText -Text $mailbox.UserPrincipalName -MaxLength 60
-        if ($VerboseOutput) { Write-LogMessage "Outlook forwards for $shortenedName - $shortenedUPN" "Gray" }
-
+        ## Inbox rules set via Outlook / OWA
         try {
             $rules = Get-InboxRule -Mailbox $mailbox.UserPrincipalName -ErrorAction Stop
             foreach ($rule in $rules) {
-                if ($rule.Enabled) {
-                    if ($rule.ForwardTo) {
-                        $inboxForwardRuleCount++
-                        Write-LogMessage "    Forward to: $($rule.ForwardTo -join ', ')" $errormessagecolor
-                    }
-                    if ($rule.RedirectTo) {
-                        $inboxRedirectRuleCount++
-                        Write-LogMessage "    Redirect to: $($rule.RedirectTo -join ', ')" $errormessagecolor
-                    }
+                if (-not $rule.Enabled) { continue }
+                if ($rule.ForwardTo) {
+                    $inboxForwardRuleCount++
+                    Write-LogMessage "    Inbox rule '$($rule.Name)' on $shortenedName - Forward to: $($rule.ForwardTo -join ', ')" $errormessagecolor
+                    $findings.Add([pscustomobject]@{
+                        Mailbox     = $mailbox.DisplayName
+                        UPN         = $mailbox.UserPrincipalName
+                        FindingType = "Inbox rule forward"
+                        RuleName    = $rule.Name
+                        Target      = ($rule.ForwardTo -join ', ')
+                        Detail      = "Rule forwards a copy"
+                    })
+                }
+                if ($rule.ForwardAsAttachmentTo) {
+                    $inboxForwardAttachmentRuleCount++
+                    Write-LogMessage "    Inbox rule '$($rule.Name)' on $shortenedName - Forward as attachment to: $($rule.ForwardAsAttachmentTo -join ', ')" $errormessagecolor
+                    $findings.Add([pscustomobject]@{
+                        Mailbox     = $mailbox.DisplayName
+                        UPN         = $mailbox.UserPrincipalName
+                        FindingType = "Inbox rule forward as attachment"
+                        RuleName    = $rule.Name
+                        Target      = ($rule.ForwardAsAttachmentTo -join ', ')
+                        Detail      = "Rule forwards message as attachment"
+                    })
+                }
+                if ($rule.RedirectTo) {
+                    $inboxRedirectRuleCount++
+                    Write-LogMessage "    Inbox rule '$($rule.Name)' on $shortenedName - Redirect to: $($rule.RedirectTo -join ', ')" $errormessagecolor
+                    $findings.Add([pscustomobject]@{
+                        Mailbox     = $mailbox.DisplayName
+                        UPN         = $mailbox.UserPrincipalName
+                        FindingType = "Inbox rule redirect"
+                        RuleName    = $rule.Name
+                        Target      = ($rule.RedirectTo -join ', ')
+                        Detail      = "Rule redirects message"
+                    })
                 }
             }
         } catch {
             $inboxRuleErrorCount++
             Write-LogMessage "    Error retrieving rules for ${shortenedName}: $($_.Exception.Message)" $errormessagecolor
         }
-    }
 
-    Write-LogMessage "`nCheck Outlook Rule Forwards - Finish`n" $processmessagecolor
-
-    ## Check Sweep Rules
-    Write-LogMessage "Check Sweep Rules - Start`n" $processmessagecolor
-
-    foreach ($mailbox in $mailboxes) {
-        $shortenedName = Get-ShortText -Text $mailbox.DisplayName -MaxLength 40
-        $shortenedUPN = Get-ShortText -Text $mailbox.UserPrincipalName -MaxLength 60
-        if ($VerboseOutput) { Write-LogMessage "Sweep forwards for $shortenedName - $shortenedUPN" "Gray" }
-
+        ## Sweep rules set via OWA
         try {
             $rules = Get-SweepRule -Mailbox $mailbox.UserPrincipalName -ErrorAction Stop
             foreach ($rule in $rules) {
-                if ($rule.Enabled) {
-                    $sweepRuleCount++
-                    Write-LogMessage "    Sweep rule enabled for $shortenedName" $errormessagecolor
-                    Write-LogMessage "    Name = $($rule.Name)" $errormessagecolor
-                    Write-LogMessage "    Source Folder = $($rule.SourceFolder)" $errormessagecolor
-                    Write-LogMessage "    Destination Folder = $($rule.DestinationFolder)" $errormessagecolor
-                }
+                if (-not $rule.Enabled) { continue }
+                $sweepRuleCount++
+                Write-LogMessage "    Sweep rule '$($rule.Name)' enabled for $shortenedName" $errormessagecolor
+                Write-LogMessage "    Source Folder = $($rule.SourceFolder)" $errormessagecolor
+                Write-LogMessage "    Destination Folder = $($rule.DestinationFolder)" $errormessagecolor
+                $findings.Add([pscustomobject]@{
+                    Mailbox     = $mailbox.DisplayName
+                    UPN         = $mailbox.UserPrincipalName
+                    FindingType = "Sweep rule"
+                    RuleName    = $rule.Name
+                    Target      = "$($rule.SourceFolder) -> $($rule.DestinationFolder)"
+                    Detail      = "Sweep rule enabled"
+                })
             }
         } catch {
             $sweepRuleErrorCount++
@@ -162,16 +199,24 @@ try {
         }
     }
 
-    Write-LogMessage "`nCheck Sweep Rules - Finish`n" $processmessagecolor
+    Write-Progress -Activity "Checking mailboxes for forwards" -Completed
+    Write-LogMessage "`nCheck mailbox forwards, inbox rules and sweep rules - Finish`n" $processmessagecolor
 
     Write-LogMessage "Summary" $systemmessagecolor
-    Write-LogMessage "    Mailbox forwarding enabled = $mailboxForwardEnabledCount" $systemmessagecolor
-    Write-LogMessage "    Mailbox forwarding address set but disabled = $mailboxForwardDisabledCount" $systemmessagecolor
+    Write-LogMessage "    Mailbox forwarding (forward and keep copy) = $mailboxForwardKeepCopyCount" $systemmessagecolor
+    Write-LogMessage "    Mailbox forwarding (forward only, no copy) = $mailboxForwardOnlyCount" $systemmessagecolor
     Write-LogMessage "    Inbox rules with ForwardTo = $inboxForwardRuleCount" $systemmessagecolor
+    Write-LogMessage "    Inbox rules with ForwardAsAttachmentTo = $inboxForwardAttachmentRuleCount" $systemmessagecolor
     Write-LogMessage "    Inbox rules with RedirectTo = $inboxRedirectRuleCount" $systemmessagecolor
     Write-LogMessage "    Inbox rule retrieval errors = $inboxRuleErrorCount" $warnmessagecolor
     Write-LogMessage "    Sweep rules enabled = $sweepRuleCount" $systemmessagecolor
     Write-LogMessage "    Sweep rule retrieval errors = $sweepRuleErrorCount" $warnmessagecolor
+    Write-LogMessage "    Total findings = $($findings.Count)" $systemmessagecolor
+
+    if ($CsvFile) {
+        $findings | Export-Csv -Path $CsvFile -NoTypeInformation -Encoding UTF8
+        Write-LogMessage "`nFindings exported to $CsvFile" $processmessagecolor
+    }
 
 } catch {
     Write-LogMessage "An error occurred: $($_.Exception.Message)" $errormessagecolor

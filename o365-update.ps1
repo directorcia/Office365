@@ -143,12 +143,27 @@ param(
     Also offers comprehensive cleanup at the end of processing.
 
 .NOTES
-    Author: CIAOPS    Version: 2.13
-    Last Updated: May 2026
+    Author: CIAOPS    Version: 2.14
+    Last Updated: July 2026
     Requires: PowerShell 7.X or higher, Administrator privileges
     
     IMPORTANT: This version removes deprecated Azure AD and MSOnline modules in favor of Microsoft Graph PowerShell SDK
     
+    Major Changes in v2.14 (31 July 2026):
+    - Fixed banner showing v2.9 regardless of the actual script version
+    - Fixed call to non-existent Update-PackageProvider cmdlet (now uses Install-PackageProvider)
+    - Wired NuGet package provider check into main execution (Test-PackageProvider was never called)
+    - Completed the broken administrator check in Test-Prerequisites (dead code produced no output)
+    - Implemented -CheckSessions to list other PowerShell sessions and moved it before the
+      network connectivity check; -TerminateConflicts now warns that it is ignored
+    - Removed cross-process function calls from the background job script block
+      (Remove-OldModuleVersions is not defined inside Start-Job child processes;
+      cleanup is handled by the parent after job completion)
+    - Fixed progress-file name mismatch between the background job and the monitor loop
+      (job used its own $PID while the monitor looked for the job Id)
+    - Renamed transcript log variable to avoid clobbering the -LogPath parameter
+      (PowerShell variable names are case-insensitive)
+
     Major Changes in v2.13 (5 May 2026):
     - Added PS7 bundled-module detection to Get-ModuleVersionInfo
       Get-InstalledModule only sees modules registered by PowerShellGet; modules that
@@ -530,7 +545,8 @@ function Test-PackageProvider {
                 $oldWarningPreference = $WarningPreference
                 $WarningPreference = 'SilentlyContinue'
                 try {
-                    Update-PackageProvider -Name $PackageName -Force -Confirm:$false -WarningAction SilentlyContinue 2>$null
+                    # There is no Update-PackageProvider cmdlet; Install-PackageProvider -Force installs the newer version side-by-side
+                    Install-PackageProvider -Name $PackageName -Force -Confirm:$false -WarningAction SilentlyContinue 2>$null
                     Write-ColorOutput "    Successfully updated $PackageName" -Type Process
                 }
                 finally {
@@ -1385,7 +1401,7 @@ function Install-ModuleWithProgress {
     Write-ColorOutput "" -Type Info
       # Create a background job for the actual installation with phase tracking
     $jobScript = {
-        param($ModuleName, $InstallParams, $Operation, $LanguageMode)
+        param($ModuleName, $InstallParams, $Operation, $LanguageMode, $ProgressFilePath)
         
         try {
             # Set the same optimizations in the job
@@ -1398,7 +1414,7 @@ function Install-ModuleWithProgress {
             $progressFile = $null
             
             if ($isConstrainedLargeModule) {
-                $progressFile = Join-Path $env:TEMP "ModuleProgress_$($ModuleName)_$PID.txt"
+                $progressFile = $ProgressFilePath
                 "Starting $Operation of $ModuleName at $(Get-Date -Format 'HH:mm:ss') | Phase: Download and Installation" | Out-File $progressFile -Force
             }
             
@@ -1461,20 +1477,8 @@ function Install-ModuleWithProgress {
                 Start-Sleep -Seconds 1  # Reduced from 2s for faster completion
             }
             
-            # Perform automatic cleanup of old module versions after successful installation/update
-            if (($Operation -eq 'Install' -or $Operation -eq 'Update') -and -not $SkipVersionCleanup) {
-                Write-Verbose "Starting automatic cleanup of old versions for $ModuleName"
-                $cleanupResult = Remove-OldModuleVersions -ModuleName $ModuleName -KeepLatestOnly
-                
-                if ($cleanupResult.Success -and $cleanupResult.RemovedCount -gt 0) {
-                    if ($isConstrainedLargeModule) {
-                        "Phase: Cleaning up old versions | Status: Cleaned up $($cleanupResult.RemovedCount) old version(s)" | Out-File $progressFile -Append
-                    }
-                } elseif ($isConstrainedLargeModule) {
-                    "Phase: Cleanup complete | Status: No old versions to remove" | Out-File $progressFile -Append
-                }
-            }
-            
+            # Old-version cleanup is performed by the parent process after the job completes;
+            # script functions like Remove-OldModuleVersions are not available inside this job.
             return @{ Success = $true; Message = "$Operation completed successfully" }
         }
         catch {
@@ -1718,9 +1722,10 @@ function Install-ModuleWithProgress {
     }
     
     # Background job implementation for environments that support it
-    # Start the background job
+    # Start the background job (progress file path is generated here and passed in so both sides agree)
+    $progressFile = Join-Path $env:TEMP "ModuleProgress_$($ModuleName)_$([guid]::NewGuid().ToString('N')).txt"
     try {
-        $job = Start-Job -ScriptBlock $jobScript -ArgumentList $ModuleName, $InstallParams, $Operation, $languageMode
+        $job = Start-Job -ScriptBlock $jobScript -ArgumentList $ModuleName, $InstallParams, $Operation, $languageMode, $progressFile
     }
     catch {
         Write-ColorOutput "    Background job creation failed - falling back to direct execution" -Type Warning
@@ -1864,7 +1869,6 @@ function Install-ModuleWithProgress {
     
     $iteration = 0
     $maxIterations = [Math]::Max(10, [Math]::Ceiling($estimate.EstimatedTime / 3))
-    $progressFile = Join-Path $env:TEMP "ModuleProgress_$($ModuleName)_$($job.Id).txt"
     $lastProgressUpdate = Get-Date
     $verificationPhaseStarted = $false
     $isConstrainedLargeModule = ($languageMode -eq 'ConstrainedLanguage' -and 
@@ -2547,11 +2551,11 @@ function Test-Prerequisites {
         $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
         $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
         
-        if (-not $isAdmin) {
-            $scriptPath = $PSCommandPath
-            $pathForDisplay = ($scriptPath -replace "'", "''")
-            $elevateCmd = "Start-Process -Verb RunAs pwsh -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File', '$pathForDisplay')"
-
+        if ($isAdmin) {
+            Write-ColorOutput "✅ Running with administrator privileges" -Type Success
+        } else {
+            Write-ColorOutput "❌ Administrator privileges are required (AllUsers scope installs)" -Type Error
+            $allPrerequisitesMet = $false
         }
     }
     catch {
@@ -2979,13 +2983,13 @@ try {
 
     # Start transcript logging if requested
     if ($CreateLog) {
-        $logPath = Join-Path $LogPath "o365-update-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
-        Start-Transcript -Path $logPath -Append
-        Write-ColorOutput "📋 Logging to: $logPath" -Type System
+        $logFile = Join-Path $LogPath "o365-update-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+        Start-Transcript -Path $logFile -Append
+        Write-ColorOutput "📋 Logging to: $logFile" -Type System
     }
     
     # Show header (Clear-Host removed to avoid console issues in some environments)
-    Write-ProgressHeader "Microsoft Cloud PowerShell Module Updater v2.9" "Enhanced version with improved module management and version cleanup"
+    Write-ProgressHeader "Microsoft Cloud PowerShell Module Updater v2.14" "Enhanced version with improved module management and version cleanup"
     
     # Display configuration
     Write-ColorOutput "Configuration:" -Type Info
@@ -2999,6 +3003,12 @@ try {
     Write-ColorOutput "  Timeout: $TimeoutMinutes minutes" -Type Info
     Write-ColorOutput ""
     
+    if ($TerminateConflicts) {
+        Write-ColorOutput "⚠️ -TerminateConflicts is not supported in this version and will be ignored" -Type Warning
+        Write-ColorOutput "   Close other PowerShell sessions manually before updating" -Type Info
+        Write-ColorOutput ""
+    }
+    
     # Check prerequisites
     Write-ColorOutput "🔍 Checking prerequisites..." -Type System
     $prerequisitesMet = Test-Prerequisites
@@ -3007,6 +3017,24 @@ try {
         exit 1
     }
     Write-ColorOutput "✅ Prerequisites check passed" -Type Process
+    
+    # Handle session check mode (before slower network checks)
+    if ($CheckSessions) {
+        Write-ProgressHeader "PowerShell Session Check Mode"
+        $otherSessions = Get-Process -Name 'pwsh', 'powershell', 'powershell_ise' -ErrorAction SilentlyContinue |
+                         Where-Object { $_.Id -ne $PID }
+        if ($otherSessions) {
+            Write-ColorOutput "⚠️ Other PowerShell sessions detected that may lock modules during updates:" -Type Warning
+            foreach ($session in $otherSessions) {
+                Write-ColorOutput "  • $($session.ProcessName) (PID $($session.Id))" -Type Info
+            }
+            Write-ColorOutput "Close these sessions before updating to avoid 'module in use' conflicts." -Type Info
+        } else {
+            Write-ColorOutput "✅ No other PowerShell sessions detected" -Type Process
+        }
+        Write-ColorOutput "Run the script without -CheckSessions to proceed with updates." -Type Info
+        exit 0
+    }
     
     # Test network connectivity unless skipped
     if (-not $SkipConnectivityCheck) {
@@ -3024,14 +3052,6 @@ try {
         Write-ColorOutput "⏭️ Network connectivity check skipped" -Type Warning
     }
     
-    # Handle session check mode
-    if ($CheckSessions) {
-        Write-ProgressHeader "PowerShell Session Check Mode"
-        # Add session check logic here if needed
-        Write-ColorOutput "Session check completed. Run the script without -CheckSessions to proceed with updates." -Type Info
-        exit 0
-    }
-    
     # Filter modules based on scope
     Write-ColorOutput "📋 Filtering modules based on scope..." -Type System
     $Script:FilteredModuleList = Get-FilteredModuleList -Scope $ModuleScope
@@ -3042,6 +3062,10 @@ try {
     }
     
     Write-ColorOutput "✅ Found $($Script:FilteredModuleList.Count) module(s) to process" -Type Process
+    
+    # Ensure the NuGet package provider is available before any module installs
+    Write-ColorOutput "📦 Verifying package provider..." -Type System
+    Test-PackageProvider -PackageName 'NuGet'
     
     # Clean up deprecated modules first
     if (-not $SkipDeprecatedCleanup) {
