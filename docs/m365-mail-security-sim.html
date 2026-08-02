@@ -1117,6 +1117,11 @@
       color: var(--cp-text-muted);
     }
 
+    .bar-track-wrap {
+      display: grid;
+      gap: 4px;
+    }
+
     .bar-track {
       height: 8px;
       border: 1px solid var(--cp-border-strong);
@@ -1150,6 +1155,21 @@
 
     .bar-fill.muted {
       background: var(--cp-link);
+    }
+
+    .bar-axis {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.68rem;
+      color: var(--cp-text-soft);
+      padding: 0 2px;
+    }
+
+    .bar-current {
+      text-align: right;
+      white-space: nowrap;
+      color: var(--cp-text);
+      font-weight: 600;
     }
 
     .stage-stats {
@@ -3921,9 +3941,9 @@
     }
 
     function levelToPercent(level) {
-      if (level === "High") return 100;
-      if (level === "Medium") return 66;
-      return 33;
+      if (level === "High") return 90;
+      if (level === "Medium") return 55;
+      return 20;
     }
 
     function levelToScore(level) {
@@ -3950,13 +3970,19 @@
         <div class="bars">
           <div class="bar-row">
             <span>Prevention</span>
-            <div class="bar-track"><div class="bar-fill ${preventionClass}" style="width:${preventionPct}%"></div></div>
-            <span>${preventionLabel}</span>
+            <div class="bar-track-wrap">
+              <div class="bar-track"><div class="bar-fill ${preventionClass}" style="width:${preventionPct}%"></div></div>
+              <div class="bar-axis"><span>Limited</span><span>Strong</span></div>
+            </div>
+            <span class="bar-current">Now: ${preventionLabel}</span>
           </div>
           <div class="bar-row">
             <span>Residual user risk</span>
-            <div class="bar-track"><div class="bar-fill ${exposureClass}" style="width:${exposurePct}%"></div></div>
-            <span>${exposureLabel}</span>
+            <div class="bar-track-wrap">
+              <div class="bar-track"><div class="bar-fill ${exposureClass}" style="width:${exposurePct}%"></div></div>
+              <div class="bar-axis"><span>Low</span><span>Elevated</span></div>
+            </div>
+            <span class="bar-current">Now: ${exposureLabel}</span>
           </div>
         </div>
 
