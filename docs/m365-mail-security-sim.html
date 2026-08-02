@@ -1110,7 +1110,7 @@
 
     .bar-row {
       display: grid;
-      grid-template-columns: 196px 1fr 48px;
+      grid-template-columns: 196px minmax(0, 1fr) max-content;
       gap: 8px;
       align-items: center;
       font-size: 0.78rem;
@@ -1174,6 +1174,7 @@
       white-space: nowrap;
       color: var(--cp-text);
       font-weight: 600;
+      font-size: 0.72rem;
     }
 
     .stage-stats {
@@ -1214,6 +1215,12 @@
       gap: 8px;
       font-size: 0.72rem;
       color: var(--cp-text-soft);
+    }
+
+    .outcome-legend.prevention {
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px dashed var(--cp-border);
     }
 
     .legend-head {
@@ -3999,7 +4006,7 @@
               <div class="bar-track"><div class="bar-fill ${preventionClass}" style="width:${preventionPct}%"></div></div>
               <div class="bar-axis"><span>Limited</span><span>Strong</span></div>
             </div>
-            <span class="bar-current">Now: ${preventionLabel}</span>
+            <span class="bar-current">${preventionLabel}</span>
           </div>
           <div class="bar-row">
             <span>Residual user risk</span>
@@ -4007,7 +4014,7 @@
               <div class="bar-track"><div class="bar-fill ${exposureClass}" style="width:${exposurePct}%"></div></div>
               <div class="bar-axis"><span>Low</span><span>Elevated</span></div>
             </div>
-            <span class="bar-current">Now: ${exposureLabel}</span>
+            <span class="bar-current">${exposureLabel}</span>
           </div>
         </div>
 
@@ -4019,7 +4026,7 @@
           <span><i class="legend-dot high"></i>Elevated risk</span>
         </div>
         <div class="legend-head">Prevention colors</div>
-        <div class="outcome-legend" aria-label="Prevention legend">
+        <div class="outcome-legend prevention" aria-label="Prevention legend">
           <span><i class="legend-dot prevention-limited"></i>Limited prevention</span>
           <span><i class="legend-dot prevention-moderate"></i>Moderate prevention</span>
           <span><i class="legend-dot prevention-strong"></i>Strong prevention</span>
