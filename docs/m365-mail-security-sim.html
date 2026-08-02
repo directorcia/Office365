@@ -369,7 +369,7 @@
 
     .auth-signal-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(180px, 1fr));
+      grid-template-columns: repeat(4, minmax(170px, 1fr));
       gap: 8px;
       margin-top: 10px;
       padding-top: 10px;
@@ -1844,6 +1844,7 @@
       <div class="toggles" id="toggleGrid">
         <label class="toggle"><input type="checkbox" data-key="enforceSpf"> SPF enforcement</label>
         <label class="toggle"><input type="checkbox" data-key="enforceDkim"> DKIM enforcement</label>
+        <label class="toggle"><input type="checkbox" data-key="enforceDmarc"> DMARC enforcement</label>
         <label class="toggle"><input type="checkbox" data-key="antiPhishStrict"> EOP anti-phishing strict actions</label>
         <label class="toggle"><input type="checkbox" data-key="eopAntiMalware"> EOP anti-malware policy</label>
         <label class="toggle"><input type="checkbox" data-key="keywordBlocking"> Transport rule: keyword blocking</label>
@@ -1867,14 +1868,6 @@
       <div class="auth-signal-grid" aria-label="Authentication result overrides">
         <div class="auth-signal-title">Authentication Result Overrides for Simulation</div>
         <div class="auth-signal-field">
-          <label for="dmarcPolicy">DMARC policy</label>
-          <select id="dmarcPolicy">
-            <option value="none">p=none (monitor only)</option>
-            <option value="quarantine">p=quarantine</option>
-            <option value="reject">p=reject</option>
-          </select>
-        </div>
-        <div class="auth-signal-field">
           <label for="spfSignal">SPF signal</label>
           <select id="spfSignal">
             <option value="auto" selected>Auto from scenario</option>
@@ -1896,6 +1889,14 @@
             <option value="auto" selected>Auto from scenario</option>
             <option value="pass">Force pass</option>
             <option value="fail">Force fail</option>
+          </select>
+        </div>
+        <div class="auth-signal-field">
+          <label for="dmarcPolicy">DMARC policy</label>
+          <select id="dmarcPolicy">
+            <option value="none">p=none (monitor only)</option>
+            <option value="quarantine">p=quarantine</option>
+            <option value="reject">p=reject</option>
           </select>
         </div>
       </div>
@@ -2166,6 +2167,7 @@
       eopDefault: {
         enforceSpf: true,
         enforceDkim: true,
+        enforceDmarc: true,
         dmarcPolicy: "quarantine",
         antiPhishStrict: false,
         eopAntiMalware: true,
@@ -2189,6 +2191,7 @@
       standard: {
         enforceSpf: true,
         enforceDkim: true,
+        enforceDmarc: true,
         dmarcPolicy: "quarantine",
         antiPhishStrict: false,
         eopAntiMalware: true,
@@ -2212,6 +2215,7 @@
       strict: {
         enforceSpf: true,
         enforceDkim: true,
+        enforceDmarc: true,
         dmarcPolicy: "reject",
         antiPhishStrict: true,
         eopAntiMalware: true,
@@ -2235,6 +2239,7 @@
       legacy: {
         enforceSpf: false,
         enforceDkim: false,
+        enforceDmarc: false,
         dmarcPolicy: "none",
         antiPhishStrict: false,
         eopAntiMalware: false,
@@ -3654,14 +3659,17 @@
       if (profile !== "custom" && profiles[profile]) {
         return {
           ...profiles[profile],
-          dmarcPolicy: dmarcPolicySelect?.value || profiles[profile].dmarcPolicy || "quarantine"
+          dmarcPolicy: profiles[profile].dmarcPolicy || "quarantine"
         };
       }
       const values = {};
       toggleGrid.querySelectorAll("input[type='checkbox']").forEach((box) => {
         values[box.dataset.key] = box.checked;
       });
-      values.dmarcPolicy = dmarcPolicySelect?.value || "quarantine";
+      const selectedPolicy = dmarcPolicySelect?.value || "quarantine";
+      values.dmarcPolicy = values.enforceDmarc
+        ? (selectedPolicy === "none" ? "quarantine" : selectedPolicy)
+        : "none";
       return values;
     }
 
@@ -3679,7 +3687,7 @@
       });
       if (dmarcPolicySelect) {
         dmarcPolicySelect.value = getEffectiveDmarcPolicy(settings);
-        dmarcPolicySelect.disabled = usingPreset;
+        dmarcPolicySelect.disabled = usingPreset || !settings.enforceDmarc;
       }
 
       renderProfileHint();
@@ -4410,6 +4418,25 @@
 
     profileSelect.addEventListener("change", syncTogglesFromProfile);
     licenseSelect.addEventListener("change", syncTogglesFromProfile);
+    toggleGrid.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (profileSelect.value !== "custom") return;
+      if (target.dataset.key !== "enforceDmarc") return;
+
+      if (dmarcPolicySelect) {
+        if (target.checked) {
+          if (dmarcPolicySelect.value === "none") {
+            dmarcPolicySelect.value = "quarantine";
+          }
+          dmarcPolicySelect.disabled = false;
+        } else {
+          dmarcPolicySelect.value = "none";
+          dmarcPolicySelect.disabled = true;
+        }
+      }
+      resetAll();
+    });
     dmarcPolicySelect.addEventListener("change", resetAll);
     spfSignalSelect.addEventListener("change", resetAll);
     dkimSignalSelect.addEventListener("change", resetAll);
