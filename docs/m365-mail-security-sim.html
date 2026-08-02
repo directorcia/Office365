@@ -1141,11 +1141,11 @@
     }
 
     .bar-fill.bad {
-      background: var(--cp-danger);
+      background: #f59e0b;
     }
 
     .bar-fill.risk-high {
-      background: #f97316;
+      background: #f59e0b;
     }
 
     .bar-fill.muted {
@@ -1175,6 +1175,46 @@
       color: var(--cp-text-muted);
       font-size: 0.8rem;
       line-height: 1.35;
+    }
+
+    .outcome-note {
+      margin-top: 8px;
+      font-size: 0.74rem;
+      color: var(--cp-text-soft);
+    }
+
+    .outcome-legend {
+      margin-top: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.72rem;
+      color: var(--cp-text-soft);
+    }
+
+    .outcome-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
+    .legend-dot.low {
+      background: var(--cp-success);
+    }
+
+    .legend-dot.medium {
+      background: var(--cp-warning);
+    }
+
+    .legend-dot.high {
+      background: #f59e0b;
     }
 
     .story-panel {
@@ -3898,6 +3938,8 @@
       const terminalClass = journey.terminal === "blocked" ? "bad" : journey.warnCount > 0 ? "warn" : "good";
       const preventionClass = journey.prevented === "High" ? "good" : journey.prevented === "Medium" ? "warn" : "muted";
       const exposureClass = journey.userExposure === "Low" ? "good" : journey.userExposure === "Medium" ? "warn" : "risk-high";
+      const preventionLabel = journey.prevented === "High" ? "Strong" : journey.prevented === "Medium" ? "Moderate" : "Limited";
+      const exposureLabel = journey.userExposure === "High" ? "Elevated" : journey.userExposure;
 
       target.innerHTML = `
         <div class="outcome-head">
@@ -3909,13 +3951,20 @@
           <div class="bar-row">
             <span>Prevention</span>
             <div class="bar-track"><div class="bar-fill ${preventionClass}" style="width:${preventionPct}%"></div></div>
-            <span>${journey.prevented}</span>
+            <span>${preventionLabel}</span>
           </div>
           <div class="bar-row">
-            <span>User exposure (lower is better)</span>
+            <span>Residual user risk</span>
             <div class="bar-track"><div class="bar-fill ${exposureClass}" style="width:${exposurePct}%"></div></div>
-            <span>${journey.userExposure}</span>
+            <span>${exposureLabel}</span>
           </div>
+        </div>
+
+        <div class="outcome-note">Interpretation: these bars show relative risk posture, not pass/fail.</div>
+        <div class="outcome-legend" aria-label="Outcome legend">
+          <span><i class="legend-dot low"></i>Low risk</span>
+          <span><i class="legend-dot medium"></i>Medium risk</span>
+          <span><i class="legend-dot high"></i>Elevated risk</span>
         </div>
 
         <div class="stage-stats">
