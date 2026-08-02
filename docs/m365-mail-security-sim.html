@@ -2315,6 +2315,8 @@
         suspiciousBulk: false,
         hasMalwareAttachment: false,
         hasMaliciousLink: true,
+        usesOAuthAbuse: true,
+        usesQrEmbeddedUrl: false,
         autoForwardAttempt: true,
         hasSensitiveData: true,
         hasInsiderRiskSignal: true
@@ -2328,6 +2330,8 @@
         suspiciousBulk: false,
         hasMalwareAttachment: false,
         hasMaliciousLink: true,
+        usesOAuthAbuse: true,
+        usesQrEmbeddedUrl: true,
         autoForwardAttempt: true,
         hasSensitiveData: true,
         hasInsiderRiskSignal: true
@@ -2341,6 +2345,8 @@
         suspiciousBulk: false,
         hasMalwareAttachment: false,
         hasMaliciousLink: true,
+        usesOAuthAbuse: false,
+        usesQrEmbeddedUrl: true,
         autoForwardAttempt: false,
         hasSensitiveData: false,
         hasInsiderRiskSignal: false
@@ -2879,7 +2885,11 @@
       coachStage.textContent = `Learning Coach - ${stageTitle}`;
       coachResult.className = resultClass ? `pill ${resultClass}` : "pill";
       coachResult.textContent = resultText;
-      coachWhat.textContent = `What happened: ${guidance.what}`;
+      const selectedScenario = scenarios[scenarioSelect.value] || {};
+      const qrCoachLine = stageKey === "mdoLinks" && selectedScenario.usesQrEmbeddedUrl
+        ? " QR note: QR-embedded destinations are often hidden in images, so Safe Links visibility is stronger at user click time than in pre-click URL rewrite checks."
+        : "";
+      coachWhat.textContent = `What happened: ${guidance.what}${qrCoachLine}`;
       coachWhy.textContent = `Why this matters: ${guidance.why}`;
       coachContinue.textContent = getCoachAdvanceLabel(nextStageKey, isTerminalStep);
       coachContinue.disabled = false;
@@ -2976,11 +2986,17 @@
         case "purviewInsider":
           return scenario.hasInsiderRiskSignal ? (settings.insiderRisk ? -6 : 9) : -2;
         case "mdoPhish":
+          if (scenario.usesOAuthAbuse) {
+            return 6;
+          }
           return scenario.spoofedDisplay ? (settings.mdoMailboxIntelligence || settings.mdoUserImpersonationProtection || settings.mdoDomainImpersonationProtection ? -6 : 9) : -4;
         case "mdoAttachments":
           if (status === "block") return -100;
           return scenario.hasMalwareAttachment ? (settings.mdoSafeAttachments ? -8 : 11) : -5;
         case "mdoLinks":
+          if (scenario.usesQrEmbeddedUrl && scenario.hasMaliciousLink) {
+            return settings.mdoSafeLinks ? -3 : 12;
+          }
           return scenario.hasMaliciousLink ? (settings.mdoSafeLinks ? -5 : 10) : -4;
         case "mdoAir":
           return (scenario.hasMaliciousLink || scenario.hasMalwareAttachment || scenario.spoofedDisplay)
@@ -3172,6 +3188,10 @@
           break;
         case "mdoPhish":
           lines.push(`Signal: spoofedDisplay=${scenario.spoofedDisplay ? "true" : "false"}`);
+          lines.push(`Signal: usesOAuthAbuse=${scenario.usesOAuthAbuse ? "true" : "false"}`);
+          if (scenario.usesOAuthAbuse) {
+            lines.push("Behavior note: OAuth-consent abuse can appear with legitimate sender/authentication signals, so impersonation-only checks provide limited containment.");
+          }
           lines.push(`Policy settings: mailboxIntel=${settings.mdoMailboxIntelligence ? "on" : "off"}, userImpersonation=${settings.mdoUserImpersonationProtection ? "on" : "off"}, domainImpersonation=${settings.mdoDomainImpersonationProtection ? "on" : "off"}`);
           break;
         case "mdoAttachments":
@@ -3180,7 +3200,11 @@
           break;
         case "mdoLinks":
           lines.push(`Signal: hasMaliciousLink=${scenario.hasMaliciousLink ? "true" : "false"}`);
+          lines.push(`Signal: usesQrEmbeddedUrl=${scenario.usesQrEmbeddedUrl ? "true" : "false"}`);
           lines.push("Behavior note: Safe Links may act at delivery, at time-of-click, or after a later verdict change.");
+          if (scenario.usesQrEmbeddedUrl) {
+            lines.push("Behavior note: QR phishing can hide the destination URL inside an image, so traditional in-message URL rewrite visibility is reduced until user interaction reveals the target.");
+          }
           lines.push(`Policy setting: mdoSafeLinks=${settings.mdoSafeLinks ? "on" : "off"}`);
           break;
         case "mdoAir":
@@ -3532,6 +3556,13 @@
             settings.mdoUserImpersonationProtection ||
             settings.mdoDomainImpersonationProtection;
 
+          if (scenario.usesOAuthAbuse) {
+            return {
+              status: "warn",
+              text: "OAuth-consent abuse can bypass classic sender impersonation checks. This stage raises risk context, but containment typically depends on identity controls and later correlation."
+            };
+          }
+
           if (scenario.spoofedDisplay && hasMdoImpersonationDefenses) {
             return { status: "warn", text: "MDO impersonation engine flagged sender pattern and contained delivery." };
           }
@@ -3563,6 +3594,18 @@
             if (licenseWarning) {
               return { status: "na", text: licenseWarning };
             }
+          }
+          if (scenario.hasMaliciousLink && scenario.usesQrEmbeddedUrl && settings.mdoSafeLinks) {
+            return {
+              status: "warn",
+              text: "QR-embedded destinations are often not rewritten in-message like plain text URLs. Safe Links still helps at click time, but early pre-click visibility is weaker for image-encoded links."
+            };
+          }
+          if (scenario.hasMaliciousLink && scenario.usesQrEmbeddedUrl && !settings.mdoSafeLinks) {
+            return {
+              status: "warn",
+              text: "QR-embedded destinations bypass traditional URL rewriting and this profile has no Safe Links click-time protection, leaving user interaction fully exposed."
+            };
           }
           if (scenario.hasMaliciousLink && settings.mdoSafeLinks) {
             return { status: "warn", text: "MDO Safe Links can rewrite the URL at delivery and block later at time-of-click or after verdict updates." };
@@ -3779,7 +3822,7 @@
       const exposurePct = levelToPercent(journey.userExposure);
       const terminalClass = journey.terminal === "blocked" ? "bad" : journey.warnCount > 0 ? "warn" : "good";
       const preventionClass = journey.prevented === "High" ? "good" : journey.prevented === "Medium" ? "warn" : "muted";
-      const exposureClass = journey.userExposure === "Low" ? "good" : journey.userExposure === "Medium" ? "warn" : "warn";
+      const exposureClass = journey.userExposure === "Low" ? "good" : journey.userExposure === "Medium" ? "warn" : "bad";
 
       target.innerHTML = `
         <div class="outcome-head">
