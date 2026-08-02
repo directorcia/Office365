@@ -1110,7 +1110,7 @@
 
     .bar-row {
       display: grid;
-      grid-template-columns: 120px 1fr 48px;
+      grid-template-columns: 196px 1fr 48px;
       gap: 8px;
       align-items: center;
       font-size: 0.78rem;
@@ -1142,6 +1142,10 @@
 
     .bar-fill.bad {
       background: var(--cp-danger);
+    }
+
+    .bar-fill.risk-high {
+      background: #f97316;
     }
 
     .bar-fill.muted {
@@ -3686,8 +3690,58 @@
       const warnCount = results.filter((r) => r.status === "warn").length;
       const blockCount = results.filter((r) => r.status === "block").length;
       const passCount = results.filter((r) => r.status === "pass").length;
+      const activeThreat = Boolean(
+        scenario.spoofedDisplay ||
+        scenario.hasMalwareAttachment ||
+        scenario.hasMaliciousLink ||
+        scenario.autoForwardAttempt ||
+        scenario.highValuePaymentRequest ||
+        scenario.usesOAuthAbuse ||
+        scenario.usesQrEmbeddedUrl
+      );
+
+      // Scenario-family thresholds: stricter for identity/BEC abuse, softer for low-threat bulk traffic.
+      const isBecFamily = Boolean(scenario.highValuePaymentRequest || (scenario.spoofedDisplay && scenario.hasSensitiveData));
+      const isOauthIdentityFamily = Boolean(scenario.usesOAuthAbuse);
+      const isQrSocialFamily = Boolean(scenario.usesQrEmbeddedUrl && scenario.hasMaliciousLink);
+      const isGraymailFamily = Boolean(
+        scenario.suspiciousBulk &&
+        !scenario.hasMaliciousLink &&
+        !scenario.hasMalwareAttachment &&
+        !scenario.highValuePaymentRequest &&
+        !scenario.usesOAuthAbuse
+      );
+
+      let exposureThresholds = { medium: 3, high: 7 };
+      if (isBecFamily || isOauthIdentityFamily) {
+        exposureThresholds = { medium: 2, high: 5 };
+      } else if (isQrSocialFamily) {
+        exposureThresholds = { medium: 3, high: 6 };
+      } else if (isGraymailFamily) {
+        exposureThresholds = { medium: 4, high: 9 };
+      }
+
       const prevented = blockCount > 0 ? "High" : warnCount > 1 ? "Medium" : "Low";
-      const userExposure = blockCount > 0 ? "Low" : warnCount > 1 ? "Medium" : "High";
+      const unresolvedWarnings = results.filter((r) => r.status === "warn" && r.stage !== "post" && r.stage !== "purviewInsider").length;
+      // Score unresolved warning stages more heavily than static scenario signals.
+      const signalWeight =
+        (scenario.spoofedDisplay ? 1 : 0) +
+        (scenario.hasMaliciousLink ? 1 : 0) +
+        (scenario.hasMalwareAttachment ? 1 : 0) +
+        (scenario.autoForwardAttempt ? 1 : 0) +
+        (scenario.highValuePaymentRequest ? 1 : 0) +
+        (scenario.usesOAuthAbuse ? 1 : 0) +
+        (scenario.usesQrEmbeddedUrl ? 1 : 0);
+      const exposureScore = unresolvedWarnings * 2 + signalWeight;
+
+      let userExposure = "Low";
+      if (activeThreat && blockCount === 0) {
+        if (exposureScore >= exposureThresholds.high) {
+          userExposure = "High";
+        } else if (exposureScore >= exposureThresholds.medium) {
+          userExposure = "Medium";
+        }
+      }
       const firstBlock = results.find((r) => r.status === "block");
       const blockedStageTitle = firstBlock
         ? (stages.find((s) => s.key === firstBlock.stage)?.title || firstBlock.stage)
@@ -3843,12 +3897,12 @@
       const exposurePct = levelToPercent(journey.userExposure);
       const terminalClass = journey.terminal === "blocked" ? "bad" : journey.warnCount > 0 ? "warn" : "good";
       const preventionClass = journey.prevented === "High" ? "good" : journey.prevented === "Medium" ? "warn" : "muted";
-      const exposureClass = journey.userExposure === "Low" ? "good" : journey.userExposure === "Medium" ? "warn" : "bad";
+      const exposureClass = journey.userExposure === "Low" ? "good" : journey.userExposure === "Medium" ? "warn" : "risk-high";
 
       target.innerHTML = `
         <div class="outcome-head">
           <div class="outcome-title">${title}</div>
-          <span class="pill ${terminalClass}">Final: ${journey.terminal}</span>
+          <span class="pill ${terminalClass}">Delivery state: ${journey.terminal}</span>
         </div>
 
         <div class="bars">
@@ -3858,7 +3912,7 @@
             <span>${journey.prevented}</span>
           </div>
           <div class="bar-row">
-            <span>User exposure</span>
+            <span>User exposure (lower is better)</span>
             <div class="bar-track"><div class="bar-fill ${exposureClass}" style="width:${exposurePct}%"></div></div>
             <span>${journey.userExposure}</span>
           </div>
@@ -3894,6 +3948,15 @@
 
       const preventionGain = levelToScore(bestJourney.prevented) - levelToScore(selectedJourney.prevented);
       const exposureReduction = levelToScore(selectedJourney.userExposure) - levelToScore(bestJourney.userExposure);
+      const activeThreatScenario = Boolean(
+        scenario.spoofedDisplay ||
+        scenario.hasMalwareAttachment ||
+        scenario.hasMaliciousLink ||
+        scenario.autoForwardAttempt ||
+        scenario.highValuePaymentRequest ||
+        scenario.usesOAuthAbuse ||
+        scenario.usesQrEmbeddedUrl
+      );
 
       let deltaInsight = "Selected profile is close to baseline for this scenario.";
       if (preventionGain > 0 || exposureReduction > 0) {
@@ -3907,7 +3970,9 @@
         selectedOutcome,
         `Scenario: ${scenario.name}`,
         selectedJourney,
-        `Current profile behavior for this scenario path.`
+        activeThreatScenario
+          ? "Current profile behavior for this attack path."
+          : "No active threat signal in this scenario; delivery is expected and user exposure should remain low."
       );
       renderOutcome(
         comparisonOutcome,
