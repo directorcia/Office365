@@ -1111,22 +1111,25 @@
 
     .bar-row {
       display: grid;
-      grid-template-columns: 180px minmax(0, 1fr) minmax(56px, 80px);
-      gap: 8px;
+      grid-template-columns: 140px minmax(320px, 1fr) max-content;
+      gap: 12px;
       align-items: center;
       font-size: 0.78rem;
       color: var(--cp-text-muted);
       width: 100%;
+      min-width: 0;
     }
 
     .bar-track-wrap {
       display: grid;
       gap: 4px;
       width: 100%;
+      min-width: 0;
     }
 
     .bar-track {
       height: 8px;
+      width: 100%;
       border: 1px solid var(--cp-border-strong);
       border-radius: 999px;
       background: var(--cp-bg-elevated);
@@ -1178,7 +1181,7 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 80px;
+      max-width: 96px;
       color: var(--cp-text);
       font-weight: 600;
       font-size: 0.72rem;
