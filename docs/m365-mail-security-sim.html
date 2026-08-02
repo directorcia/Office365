@@ -367,6 +367,36 @@
       border-top: 1px dashed var(--cp-border);
     }
 
+    .auth-signal-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(180px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--cp-border);
+    }
+
+    .auth-signal-title {
+      grid-column: 1 / -1;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--cp-text-soft);
+    }
+
+    .auth-signal-field {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .auth-signal-field label {
+      font-size: 0.8rem;
+      color: var(--cp-text-muted);
+      font-weight: 600;
+    }
+
     .toggle {
       display: flex;
       align-items: center;
@@ -1693,6 +1723,10 @@
         grid-template-columns: 1fr;
       }
 
+      .auth-signal-grid {
+        grid-template-columns: 1fr;
+      }
+
       .coach {
         top: 8px;
       }
@@ -1742,6 +1776,7 @@
             <option value="bec">Business Email Compromise impersonation attempt</option>
             <option value="becInvoiceFraud">BEC Invoice Fraud (display spoof + wire transfer request)</option>
             <option value="spoofFail">CEO spoof with SPF/DKIM/DMARC failure</option>
+            <option value="dmarcMisaligned">DMARC misaligned sender (SPF/DKIM pass, alignment fail)</option>
             <option value="malLinkCombo">Invoice with malware attachment and malicious link</option>
             <option value="trustedCompromise">Trusted partner account compromise (auth passes, threat content)</option>
             <option value="silentForward">Credential theft and silent external forwarding setup</option>
@@ -1807,7 +1842,9 @@
       </section>
 
       <div class="toggles" id="toggleGrid">
-        <label class="toggle"><input type="checkbox" data-key="enforceDmarc"> SPF/DKIM/DMARC enforcement</label>
+        <label class="toggle"><input type="checkbox" data-key="enforceSpf"> SPF enforcement</label>
+        <label class="toggle"><input type="checkbox" data-key="enforceDkim"> DKIM enforcement</label>
+        <label class="toggle"><input type="checkbox" data-key="enforceDmarc"> DMARC enforcement</label>
         <label class="toggle"><input type="checkbox" data-key="antiPhishStrict"> EOP anti-phishing strict actions</label>
         <label class="toggle"><input type="checkbox" data-key="eopAntiMalware"> EOP anti-malware policy</label>
         <label class="toggle"><input type="checkbox" data-key="keywordBlocking"> Transport rule: keyword blocking</label>
@@ -1826,6 +1863,34 @@
         <label class="toggle"><input type="checkbox" data-key="mdoAir"> MDO AIR (Automated Investigation & Response)</label>
         <label class="toggle"><input type="checkbox" data-key="zap"> Zero-hour Auto Purge (ZAP)</label>
         <label class="toggle"><input type="checkbox" data-key="blockExternalForwarding"> External auto-forward block rule</label>
+      </div>
+
+      <div class="auth-signal-grid" aria-label="Authentication result overrides">
+        <div class="auth-signal-title">Authentication Result Overrides for Simulation</div>
+        <div class="auth-signal-field">
+          <label for="spfSignal">SPF signal</label>
+          <select id="spfSignal">
+            <option value="auto" selected>Auto from scenario</option>
+            <option value="pass">Force pass</option>
+            <option value="fail">Force fail</option>
+          </select>
+        </div>
+        <div class="auth-signal-field">
+          <label for="dkimSignal">DKIM signal</label>
+          <select id="dkimSignal">
+            <option value="auto" selected>Auto from scenario</option>
+            <option value="pass">Force pass</option>
+            <option value="fail">Force fail</option>
+          </select>
+        </div>
+        <div class="auth-signal-field">
+          <label for="dmarcSignal">DMARC signal</label>
+          <select id="dmarcSignal">
+            <option value="auto" selected>Auto from scenario</option>
+            <option value="pass">Force pass</option>
+            <option value="fail">Force fail</option>
+          </select>
+        </div>
       </div>
 
       <div class="mode-row">
@@ -2092,6 +2157,8 @@
 
     const profiles = {
       eopDefault: {
+        enforceSpf: true,
+        enforceDkim: true,
         enforceDmarc: true,
         antiPhishStrict: false,
         eopAntiMalware: true,
@@ -2113,6 +2180,8 @@
         blockExternalForwarding: false
       },
       standard: {
+        enforceSpf: true,
+        enforceDkim: true,
         enforceDmarc: true,
         antiPhishStrict: false,
         eopAntiMalware: true,
@@ -2134,6 +2203,8 @@
         blockExternalForwarding: true
       },
       strict: {
+        enforceSpf: true,
+        enforceDkim: true,
         enforceDmarc: true,
         antiPhishStrict: true,
         eopAntiMalware: true,
@@ -2155,6 +2226,8 @@
         blockExternalForwarding: true
       },
       legacy: {
+        enforceSpf: false,
+        enforceDkim: false,
         enforceDmarc: false,
         antiPhishStrict: false,
         eopAntiMalware: false,
@@ -2420,6 +2493,19 @@
         hasSensitiveData: false,
         hasInsiderRiskSignal: false
       },
+      dmarcMisaligned: {
+        name: "DMARC misaligned sender (SPF/DKIM pass, alignment fail)",
+        spoofedDisplay: false,
+        spfPass: true,
+        dkimPass: true,
+        dmarcAligned: false,
+        suspiciousBulk: false,
+        hasMalwareAttachment: false,
+        hasMaliciousLink: false,
+        autoForwardAttempt: false,
+        hasSensitiveData: false,
+        hasInsiderRiskSignal: false
+      },
       malLinkCombo: {
         name: "Invoice with malware attachment and malicious link",
         spoofedDisplay: false,
@@ -2557,6 +2643,9 @@
     const profileSelect = document.getElementById("profile");
     const profileHint = document.getElementById("profileHint");
     const licenseSelect = document.getElementById("license");
+    const spfSignalSelect = document.getElementById("spfSignal");
+    const dkimSignalSelect = document.getElementById("dkimSignal");
+    const dmarcSignalSelect = document.getElementById("dmarcSignal");
     const licenseSummaryTitle = document.getElementById("licenseSummaryTitle");
     const licenseSummaryPill = document.getElementById("licenseSummaryPill");
     const licenseIncludedList = document.getElementById("licenseIncludedList");
@@ -2861,6 +2950,19 @@
     function getMisconfigurationFindings(settings, scenario, journey) {
       const findings = [];
 
+      if (!settings.enforceSpf && !scenario.spfPass) {
+        findings.push({
+          label: "SPF enforcement is off",
+          detail: "Unauthorized sending infrastructure may pass deeper into the message pipeline without stronger SPF-based actions."
+        });
+      }
+      if (!settings.enforceDkim && !scenario.dkimPass) {
+        findings.push({
+          label: "DKIM enforcement is off",
+          detail: "Messages with invalid or missing signatures are less likely to trigger stronger integrity-based handling."
+        });
+      }
+
       if (!settings.enforceDmarc && !scenario.dmarcAligned) {
         findings.push({
           label: "DMARC enforcement is off",
@@ -3004,6 +3106,7 @@
 
       const failStory = {
         spoofFail: "Without strict DMARC enforcement, a CEO spoof can look credible enough to trigger a fraudulent payment request.",
+        dmarcMisaligned: "A DMARC alignment gap can allow messages with otherwise valid authentication signals to continue deeper into user-facing workflows.",
         phish: "A spoofed phishing email that is delivered can drive credential theft, leading to account takeover and lateral movement.",
         malLinkCombo: "If both the malicious attachment and link path remain open, users face dual compromise routes from a single email.",
         trustedCompromise: "When a trusted sender is compromised, malicious links can bypass user suspicion and lead to business system access.",
@@ -3020,6 +3123,7 @@
 
       const successStory = {
         spoofFail: "DMARC and layered controls stopped a spoof path before inbox delivery, reducing fraud and impersonation risk.",
+        dmarcMisaligned: "DMARC policy enforcement contained a misalignment condition before it could be leveraged for sender trust abuse.",
         phish: "Layered controls disrupted the phishing chain, lowering the probability of credential theft and account abuse.",
         malLinkCombo: "Defense-in-depth blocked multi-vector payload paths, preventing one email from becoming a major incident.",
         trustedCompromise: "Time-of-click and post-delivery controls reduced impact even when sender authentication looked legitimate.",
@@ -3105,6 +3209,21 @@
       setBadgeState(badgeSpf, "SPF", "--", "");
       setBadgeState(badgeDkim, "DKIM", "--", "");
       setBadgeState(badgeDmarc, "DMARC", "--", "");
+    }
+
+    function applyAuthSignalOverrides(baseScenario) {
+      const pickSignal = (baseValue, selectedValue) => {
+        if (selectedValue === "pass") return true;
+        if (selectedValue === "fail") return false;
+        return baseValue;
+      };
+
+      return {
+        ...baseScenario,
+        spfPass: pickSignal(baseScenario.spfPass, spfSignalSelect?.value || "auto"),
+        dkimPass: pickSignal(baseScenario.dkimPass, dkimSignalSelect?.value || "auto"),
+        dmarcAligned: pickSignal(baseScenario.dmarcAligned, dmarcSignalSelect?.value || "auto")
+      };
     }
 
     function clampRisk(value) {
@@ -3317,10 +3436,11 @@
           break;
         case "spf":
           lines.push(`Signal: spfPass=${scenario.spfPass ? "true" : "false"}`);
-          lines.push(`Policy setting: enforceDmarc=${settings.enforceDmarc ? "on" : "off"}`);
+          lines.push(`Policy setting: enforceSpf=${settings.enforceSpf ? "on" : "off"}`);
           break;
         case "dkim":
           lines.push(`Signal: dkimPass=${scenario.dkimPass ? "true" : "false"}`);
+          lines.push(`Policy setting: enforceDkim=${settings.enforceDkim ? "on" : "off"}`);
           lines.push("Policy check: cryptographic signature and message integrity.");
           break;
         case "dmarc":
@@ -3609,16 +3729,19 @@
           }
           return { status: "pass", text: "Connection accepted and reputation baseline applied." };
         case "spf":
-          if (!scenario.spfPass && settings.enforceDmarc) {
-            return { status: "warn", text: "SPF failed: sender IP is not authorized for the envelope domain." };
+          if (!scenario.spfPass && settings.enforceSpf) {
+            return { status: "warn", text: "SPF failed and SPF enforcement is enabled: sender IP is not authorized for the envelope domain." };
           }
           if (!scenario.spfPass) {
-            return { status: "warn", text: "SPF failed, but no strict rejection at this point." };
+            return { status: "warn", text: "SPF failed, but SPF enforcement is off so this stage allows continued processing." };
           }
           return { status: "pass", text: "SPF passed: sending infrastructure is authorized." };
         case "dkim":
+          if (!scenario.dkimPass && settings.enforceDkim) {
+            return { status: "warn", text: "DKIM failed and DKIM enforcement is enabled: signature integrity could not be verified." };
+          }
           if (!scenario.dkimPass) {
-            return { status: "warn", text: "DKIM failed: signature missing/invalid or message integrity cannot be verified." };
+            return { status: "warn", text: "DKIM failed, but DKIM enforcement is off so this stage allows continued processing." };
           }
           return { status: "pass", text: "DKIM passed: signature validated and message integrity confirmed." };
         case "dmarc":
@@ -4119,7 +4242,8 @@
       const learningMode = isLearningMode();
 
       clearVisualState();
-      const scenario = scenarios[scenarioSelect.value];
+      const scenarioBase = scenarios[scenarioSelect.value];
+      const scenario = applyAuthSignalOverrides(scenarioBase);
       const scenarioKey = scenarioSelect.value;
       const profileValue = profileSelect.value;
       const profileLabel = profileSelect.options[profileSelect.selectedIndex]?.text || profileSelect.value;
@@ -4151,7 +4275,7 @@
 
       renderOutcome(
         selectedOutcome,
-        `Scenario: ${scenario.name}`,
+        `Scenario: ${scenarioBase.name}`,
         selectedJourney,
         activeThreatScenario
           ? "Current profile behavior for this attack path."
@@ -4233,8 +4357,13 @@
       running = false;
     }
 
-    function resetAll() {
+    function resetAll(resetAuthSignals = false) {
       clearVisualState();
+      if (resetAuthSignals) {
+        if (spfSignalSelect) spfSignalSelect.value = "auto";
+        if (dkimSignalSelect) dkimSignalSelect.value = "auto";
+        if (dmarcSignalSelect) dmarcSignalSelect.value = "auto";
+      }
       selectedOutcome.textContent = "Run a simulation to populate outcomes.";
       comparisonOutcome.textContent = "Run a simulation to compare with best-practice behavior.";
       renderLicenseCoverageSummary();
@@ -4243,9 +4372,12 @@
 
     profileSelect.addEventListener("change", syncTogglesFromProfile);
     licenseSelect.addEventListener("change", syncTogglesFromProfile);
+    spfSignalSelect.addEventListener("change", resetAll);
+    dkimSignalSelect.addEventListener("change", resetAll);
+    dmarcSignalSelect.addEventListener("change", resetAll);
     simMode.addEventListener("change", syncModeUI);
     runBtn.addEventListener("click", runSimulation);
-    resetBtn.addEventListener("click", resetAll);
+    resetBtn.addEventListener("click", () => resetAll(true));
     window.addEventListener("resize", () => movePacketToStage(stages[0].key));
 
     buildStages();
@@ -4253,7 +4385,7 @@
     syncTogglesFromProfile();
     renderLicenseCoverageSummary();
     syncModeUI();
-    resetAll();
+    resetAll(true);
   </script>
 </body>
 </html>
