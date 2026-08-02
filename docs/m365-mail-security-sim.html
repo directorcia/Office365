@@ -4017,11 +4017,17 @@
             <span class="bar-current">${preventionLabel}</span>
           </div>
           <div class="inline-legend">
+            <div class="legend-head">Risk colors</div>
+            <div class="outcome-legend" aria-label="Risk legend">
+              <span><i class="legend-dot low"></i>Low</span>
+              <span><i class="legend-dot medium"></i>Medium</span>
+              <span><i class="legend-dot high"></i>Elevated</span>
+            </div>
             <div class="legend-head">Prevention colors</div>
             <div class="outcome-legend prevention" aria-label="Prevention legend">
-              <span><i class="legend-dot prevention-limited"></i>Limited prevention</span>
-              <span><i class="legend-dot prevention-moderate"></i>Moderate prevention</span>
-              <span><i class="legend-dot prevention-strong"></i>Strong prevention</span>
+              <span><i class="legend-dot prevention-limited"></i>Limited</span>
+              <span><i class="legend-dot prevention-moderate"></i>Moderate</span>
+              <span><i class="legend-dot prevention-strong"></i>Strong</span>
             </div>
           </div>
           <div class="bar-row">
@@ -4035,12 +4041,6 @@
         </div>
 
         <div class="outcome-note">Interpretation: these bars show relative risk posture, not pass/fail.</div>
-        <div class="legend-head">Risk colors</div>
-        <div class="outcome-legend" aria-label="Outcome legend">
-          <span><i class="legend-dot low"></i>Low risk</span>
-          <span><i class="legend-dot medium"></i>Medium risk</span>
-          <span><i class="legend-dot high"></i>Elevated risk</span>
-        </div>
 
         <div class="stage-stats">
           <span class="mini-stat">Pass: ${journey.passCount}</span>
