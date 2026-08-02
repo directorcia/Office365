@@ -1110,7 +1110,7 @@
 
     .bar-row {
       display: grid;
-      grid-template-columns: 196px minmax(0, 1fr) minmax(64px, 88px);
+      grid-template-columns: 180px minmax(0, 1fr) minmax(56px, 80px);
       gap: 8px;
       align-items: center;
       font-size: 0.78rem;
@@ -1164,7 +1164,7 @@
     .bar-axis {
       display: flex;
       justify-content: space-between;
-      font-size: 0.68rem;
+      font-size: 0.66rem;
       color: var(--cp-text-soft);
       padding: 0 2px;
     }
@@ -1174,14 +1174,15 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      max-width: 80px;
       color: var(--cp-text);
       font-weight: 600;
       font-size: 0.72rem;
     }
 
-    .inline-legend {
+    .bar-legend-row {
       grid-column: 2 / 4;
-      margin-top: -2px;
+      margin-top: 2px;
       margin-bottom: 2px;
     }
 
@@ -1227,8 +1228,6 @@
 
     .outcome-legend.prevention {
       margin-top: 4px;
-      padding-top: 4px;
-      border-top: 1px dashed var(--cp-border);
     }
 
     .legend-head {
@@ -4016,13 +4015,7 @@
             </div>
             <span class="bar-current">${preventionLabel}</span>
           </div>
-          <div class="inline-legend">
-            <div class="legend-head">Risk colors</div>
-            <div class="outcome-legend" aria-label="Risk legend">
-              <span><i class="legend-dot low"></i>Low</span>
-              <span><i class="legend-dot medium"></i>Medium</span>
-              <span><i class="legend-dot high"></i>Elevated</span>
-            </div>
+          <div class="bar-legend-row">
             <div class="legend-head">Prevention colors</div>
             <div class="outcome-legend prevention" aria-label="Prevention legend">
               <span><i class="legend-dot prevention-limited"></i>Limited</span>
@@ -4037,6 +4030,14 @@
               <div class="bar-axis"><span>Low</span><span>Elevated</span></div>
             </div>
             <span class="bar-current">${exposureLabel}</span>
+          </div>
+          <div class="bar-legend-row">
+            <div class="legend-head">Risk colors</div>
+            <div class="outcome-legend" aria-label="Risk legend">
+              <span><i class="legend-dot low"></i>Low</span>
+              <span><i class="legend-dot medium"></i>Medium</span>
+              <span><i class="legend-dot high"></i>High</span>
+            </div>
           </div>
         </div>
 
