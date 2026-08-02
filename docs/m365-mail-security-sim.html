@@ -1844,7 +1844,6 @@
       <div class="toggles" id="toggleGrid">
         <label class="toggle"><input type="checkbox" data-key="enforceSpf"> SPF enforcement</label>
         <label class="toggle"><input type="checkbox" data-key="enforceDkim"> DKIM enforcement</label>
-        <label class="toggle"><input type="checkbox" data-key="enforceDmarc"> DMARC enforcement</label>
         <label class="toggle"><input type="checkbox" data-key="antiPhishStrict"> EOP anti-phishing strict actions</label>
         <label class="toggle"><input type="checkbox" data-key="eopAntiMalware"> EOP anti-malware policy</label>
         <label class="toggle"><input type="checkbox" data-key="keywordBlocking"> Transport rule: keyword blocking</label>
@@ -1867,6 +1866,14 @@
 
       <div class="auth-signal-grid" aria-label="Authentication result overrides">
         <div class="auth-signal-title">Authentication Result Overrides for Simulation</div>
+        <div class="auth-signal-field">
+          <label for="dmarcPolicy">DMARC policy</label>
+          <select id="dmarcPolicy">
+            <option value="none">p=none (monitor only)</option>
+            <option value="quarantine">p=quarantine</option>
+            <option value="reject">p=reject</option>
+          </select>
+        </div>
         <div class="auth-signal-field">
           <label for="spfSignal">SPF signal</label>
           <select id="spfSignal">
@@ -2159,7 +2166,7 @@
       eopDefault: {
         enforceSpf: true,
         enforceDkim: true,
-        enforceDmarc: true,
+        dmarcPolicy: "quarantine",
         antiPhishStrict: false,
         eopAntiMalware: true,
         keywordBlocking: false,
@@ -2182,7 +2189,7 @@
       standard: {
         enforceSpf: true,
         enforceDkim: true,
-        enforceDmarc: true,
+        dmarcPolicy: "quarantine",
         antiPhishStrict: false,
         eopAntiMalware: true,
         keywordBlocking: true,
@@ -2205,7 +2212,7 @@
       strict: {
         enforceSpf: true,
         enforceDkim: true,
-        enforceDmarc: true,
+        dmarcPolicy: "reject",
         antiPhishStrict: true,
         eopAntiMalware: true,
         keywordBlocking: true,
@@ -2228,7 +2235,7 @@
       legacy: {
         enforceSpf: false,
         enforceDkim: false,
-        enforceDmarc: false,
+        dmarcPolicy: "none",
         antiPhishStrict: false,
         eopAntiMalware: false,
         keywordBlocking: false,
@@ -2643,6 +2650,7 @@
     const profileSelect = document.getElementById("profile");
     const profileHint = document.getElementById("profileHint");
     const licenseSelect = document.getElementById("license");
+    const dmarcPolicySelect = document.getElementById("dmarcPolicy");
     const spfSignalSelect = document.getElementById("spfSignal");
     const dkimSignalSelect = document.getElementById("dkimSignal");
     const dmarcSignalSelect = document.getElementById("dmarcSignal");
@@ -2949,6 +2957,7 @@
 
     function getMisconfigurationFindings(settings, scenario, journey) {
       const findings = [];
+      const dmarcPolicy = getEffectiveDmarcPolicy(settings);
 
       if (!settings.enforceSpf && !scenario.spfPass) {
         findings.push({
@@ -2963,10 +2972,10 @@
         });
       }
 
-      if (!settings.enforceDmarc && !scenario.dmarcAligned) {
+      if (dmarcPolicy === "none" && !scenario.dmarcAligned) {
         findings.push({
-          label: "DMARC enforcement is off",
-          detail: "Spoofed sender domains can pass deeper into the pipeline instead of being rejected early."
+          label: "DMARC policy is p=none",
+          detail: "Alignment failures are monitor-only, so spoofed sender domains can pass deeper into the pipeline."
         });
       }
       if (!settings.mdoSafeLinks && scenario.hasMaliciousLink) {
@@ -3226,6 +3235,14 @@
       };
     }
 
+    function getEffectiveDmarcPolicy(settings) {
+      const rawPolicy = settings.dmarcPolicy;
+      if (rawPolicy === "none" || rawPolicy === "quarantine" || rawPolicy === "reject") {
+        return rawPolicy;
+      }
+      return settings.enforceDmarc ? "reject" : "none";
+    }
+
     function clampRisk(value) {
       return Math.max(0, Math.min(100, Math.round(value)));
     }
@@ -3256,7 +3273,12 @@
           return !scenario.dkimPass ? 8 : -3;
         case "dmarc":
           if (status === "block") return -100;
-          return !scenario.dmarcAligned ? 12 : -5;
+          if (!scenario.dmarcAligned) {
+            const dmarcPolicy = getEffectiveDmarcPolicy(settings);
+            if (dmarcPolicy === "quarantine") return 7;
+            return 12;
+          }
+          return -5;
         case "eopPhish":
           return scenario.spoofedDisplay ? (settings.antiPhishStrict ? 5 : 10) : -4;
         case "eopSpam":
@@ -3445,7 +3467,7 @@
           break;
         case "dmarc":
           lines.push(`Signal: dmarcAligned=${scenario.dmarcAligned ? "true" : "false"}`);
-          lines.push(`Policy setting: enforceDmarc=${settings.enforceDmarc ? "on" : "off"}`);
+          lines.push(`Policy setting: dmarcPolicy=p=${getEffectiveDmarcPolicy(settings)}`);
           break;
         case "eopPhish":
           lines.push(`Signal: spoofedDisplay=${scenario.spoofedDisplay ? "true" : "false"}`);
@@ -3629,11 +3651,17 @@
 
     function getSettings() {
       const profile = profileSelect.value;
-      if (profile !== "custom" && profiles[profile]) return { ...profiles[profile] };
+      if (profile !== "custom" && profiles[profile]) {
+        return {
+          ...profiles[profile],
+          dmarcPolicy: dmarcPolicySelect?.value || profiles[profile].dmarcPolicy || "quarantine"
+        };
+      }
       const values = {};
       toggleGrid.querySelectorAll("input[type='checkbox']").forEach((box) => {
         values[box.dataset.key] = box.checked;
       });
+      values.dmarcPolicy = dmarcPolicySelect?.value || "quarantine";
       return values;
     }
 
@@ -3649,6 +3677,10 @@
         box.checked = !!settings[box.dataset.key];
         box.disabled = usingPreset || unavailableInLicense;
       });
+      if (dmarcPolicySelect) {
+        dmarcPolicySelect.value = getEffectiveDmarcPolicy(settings);
+        dmarcPolicySelect.disabled = usingPreset;
+      }
 
       renderProfileHint();
       renderLicenseCoverageSummary();
@@ -3745,13 +3777,19 @@
           }
           return { status: "pass", text: "DKIM passed: signature validated and message integrity confirmed." };
         case "dmarc":
-          if (!scenario.dmarcAligned && settings.enforceDmarc) {
-            return { status: "block", text: "DMARC alignment failed and policy enforcement rejected the message." };
+          {
+            const dmarcPolicy = getEffectiveDmarcPolicy(settings);
+            if (!scenario.dmarcAligned && dmarcPolicy === "reject") {
+              return { status: "block", text: "DMARC alignment failed and policy p=reject rejected the message." };
+            }
+            if (!scenario.dmarcAligned && dmarcPolicy === "quarantine") {
+              return { status: "warn", text: "DMARC alignment failed and policy p=quarantine routed message for containment review." };
+            }
+            if (!scenario.dmarcAligned) {
+              return { status: "warn", text: "DMARC alignment failed, but policy p=none allowed continued processing." };
+            }
+            return { status: "pass", text: `DMARC passed under policy p=${dmarcPolicy}.` };
           }
-          if (!scenario.dmarcAligned) {
-            return { status: "warn", text: "DMARC alignment failed, but weak policy allowed continued processing." };
-          }
-          return { status: "pass", text: "DMARC passed: From domain alignment and policy checks succeeded." };
         case "eopPhish":
           if (scenario.spoofedDisplay && settings.antiPhishStrict) {
             return { status: "warn", text: "EOP anti-phish action quarantined potential impersonation." };
@@ -4372,6 +4410,7 @@
 
     profileSelect.addEventListener("change", syncTogglesFromProfile);
     licenseSelect.addEventListener("change", syncTogglesFromProfile);
+    dmarcPolicySelect.addEventListener("change", resetAll);
     spfSignalSelect.addEventListener("change", resetAll);
     dkimSignalSelect.addEventListener("change", resetAll);
     dmarcSignalSelect.addEventListener("change", resetAll);
