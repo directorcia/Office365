@@ -209,6 +209,13 @@
       color: var(--cp-text-soft);
     }
 
+    .ciaops-footer-version {
+      margin: 0;
+      font-size: 0.72rem;
+      line-height: 1.35;
+      color: var(--cp-text-muted);
+    }
+
     h1 {
       margin: 0;
       font-size: clamp(1.4rem, 2.2vw, 2rem);
@@ -1946,6 +1953,7 @@
         </nav>
       </div>
       <p class="ciaops-footer-copy">Copyright © <span id="ciaopsYear"></span> CIAOPS. All rights reserved.</p>
+      <p class="ciaops-footer-version" id="footerVersion">Version: loading...</p>
     </section>
   </main>
 
@@ -2575,9 +2583,24 @@
     const confidenceList = document.getElementById("confidenceList");
     const referenceHub = document.getElementById("referenceHub");
     const ciaopsYear = document.getElementById("ciaopsYear");
+    const footerVersion = document.getElementById("footerVersion");
 
     if (ciaopsYear) {
       ciaopsYear.textContent = String(new Date().getFullYear());
+    }
+
+    if (footerVersion) {
+      const lastModifiedValue = new Date(document.lastModified);
+      const hasValidDate = !Number.isNaN(lastModifiedValue.getTime());
+      const modifiedDate = hasValidDate ? lastModifiedValue : new Date();
+      const formattedDate = modifiedDate.toLocaleString();
+      const year = modifiedDate.getFullYear();
+      const month = String(modifiedDate.getMonth() + 1).padStart(2, "0");
+      const day = String(modifiedDate.getDate()).padStart(2, "0");
+      const hours = String(modifiedDate.getHours()).padStart(2, "0");
+      const minutes = String(modifiedDate.getMinutes()).padStart(2, "0");
+      const versionToken = `v${year}.${month}.${day}.${hours}${minutes}`;
+      footerVersion.textContent = `Version: ${versionToken} | Last updated: ${formattedDate}`;
     }
 
     let running = false;
