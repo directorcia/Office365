@@ -1182,8 +1182,18 @@
 
     .bar-legend-row {
       grid-column: 1 / 4;
+      width: 100%;
+      justify-self: stretch;
+      text-align: left;
       margin-top: 2px;
       margin-bottom: 2px;
+    }
+
+    .bar-legend-row .legend-head,
+    .bar-legend-row .outcome-legend {
+      margin-left: 0;
+      justify-content: flex-start;
+      text-align: left;
     }
 
     .stage-stats {
