@@ -1145,12 +1145,16 @@
       background: var(--cp-warning);
     }
 
+    .bar-fill.risk-medium {
+      background: #facc15;
+    }
+
     .bar-fill.bad {
       background: #f59e0b;
     }
 
     .bar-fill.risk-high {
-      background: #f59e0b;
+      background: #f97316;
     }
 
     .bar-fill.muted {
@@ -1212,6 +1216,15 @@
       color: var(--cp-text-soft);
     }
 
+    .legend-head {
+      margin-top: 8px;
+      font-size: 0.66rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--cp-text-soft);
+    }
+
     .outcome-legend span {
       display: inline-flex;
       align-items: center;
@@ -1230,11 +1243,23 @@
     }
 
     .legend-dot.medium {
-      background: var(--cp-warning);
+      background: #facc15;
     }
 
     .legend-dot.high {
-      background: #f59e0b;
+      background: #f97316;
+    }
+
+    .legend-dot.prevention-limited {
+      background: var(--cp-link);
+    }
+
+    .legend-dot.prevention-moderate {
+      background: var(--cp-warning);
+    }
+
+    .legend-dot.prevention-strong {
+      background: var(--cp-success);
     }
 
     .story-panel {
@@ -3957,7 +3982,7 @@
       const exposurePct = levelToPercent(journey.userExposure);
       const terminalClass = journey.terminal === "blocked" ? "bad" : journey.warnCount > 0 ? "warn" : "good";
       const preventionClass = journey.prevented === "High" ? "good" : journey.prevented === "Medium" ? "warn" : "muted";
-      const exposureClass = journey.userExposure === "Low" ? "good" : journey.userExposure === "Medium" ? "warn" : "risk-high";
+      const exposureClass = journey.userExposure === "Low" ? "good" : journey.userExposure === "Medium" ? "risk-medium" : "risk-high";
       const preventionLabel = journey.prevented === "High" ? "Strong" : journey.prevented === "Medium" ? "Moderate" : "Limited";
       const exposureLabel = journey.userExposure === "High" ? "Elevated" : journey.userExposure;
 
@@ -3987,10 +4012,17 @@
         </div>
 
         <div class="outcome-note">Interpretation: these bars show relative risk posture, not pass/fail.</div>
+        <div class="legend-head">Risk colors</div>
         <div class="outcome-legend" aria-label="Outcome legend">
           <span><i class="legend-dot low"></i>Low risk</span>
           <span><i class="legend-dot medium"></i>Medium risk</span>
           <span><i class="legend-dot high"></i>Elevated risk</span>
+        </div>
+        <div class="legend-head">Prevention colors</div>
+        <div class="outcome-legend" aria-label="Prevention legend">
+          <span><i class="legend-dot prevention-limited"></i>Limited prevention</span>
+          <span><i class="legend-dot prevention-moderate"></i>Moderate prevention</span>
+          <span><i class="legend-dot prevention-strong"></i>Strong prevention</span>
         </div>
 
         <div class="stage-stats">
