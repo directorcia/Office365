@@ -1110,8 +1110,7 @@
     }
 
     .bar-row {
-      display: grid;
-      grid-template-columns: 140px minmax(320px, 1fr) max-content;
+      display: flex;
       gap: 12px;
       align-items: center;
       font-size: 0.78rem;
@@ -1120,9 +1119,14 @@
       min-width: 0;
     }
 
+    .bar-row > span:first-child {
+      flex: 0 0 140px;
+    }
+
     .bar-track-wrap {
       display: grid;
       gap: 4px;
+      flex: 1 1 auto;
       width: 100%;
       min-width: 0;
     }
@@ -1176,7 +1180,7 @@
     }
 
     .bar-current {
-      justify-self: end;
+      flex: 0 0 auto;
       text-align: right;
       white-space: nowrap;
       overflow: hidden;
@@ -1188,7 +1192,6 @@
     }
 
     .bar-legend-row {
-      grid-column: 1 / 4;
       width: 100%;
       justify-self: stretch;
       text-align: left;
@@ -1210,7 +1213,6 @@
     }
 
     .settings-divider {
-      grid-column: 1 / 4;
       width: 100%;
       height: 0;
       border-top: 1px solid var(--cp-border-strong);
