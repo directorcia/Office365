@@ -1110,7 +1110,7 @@
 
     .bar-row {
       display: grid;
-      grid-template-columns: 196px minmax(0, 1fr) max-content;
+      grid-template-columns: 196px minmax(0, 1fr) minmax(64px, 88px);
       gap: 8px;
       align-items: center;
       font-size: 0.78rem;
@@ -1172,9 +1172,17 @@
     .bar-current {
       text-align: right;
       white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
       color: var(--cp-text);
       font-weight: 600;
       font-size: 0.72rem;
+    }
+
+    .inline-legend {
+      grid-column: 2 / 4;
+      margin-top: -2px;
+      margin-bottom: 2px;
     }
 
     .stage-stats {
@@ -4008,6 +4016,14 @@
             </div>
             <span class="bar-current">${preventionLabel}</span>
           </div>
+          <div class="inline-legend">
+            <div class="legend-head">Prevention colors</div>
+            <div class="outcome-legend prevention" aria-label="Prevention legend">
+              <span><i class="legend-dot prevention-limited"></i>Limited prevention</span>
+              <span><i class="legend-dot prevention-moderate"></i>Moderate prevention</span>
+              <span><i class="legend-dot prevention-strong"></i>Strong prevention</span>
+            </div>
+          </div>
           <div class="bar-row">
             <span>Residual user risk</span>
             <div class="bar-track-wrap">
@@ -4024,12 +4040,6 @@
           <span><i class="legend-dot low"></i>Low risk</span>
           <span><i class="legend-dot medium"></i>Medium risk</span>
           <span><i class="legend-dot high"></i>Elevated risk</span>
-        </div>
-        <div class="legend-head">Prevention colors</div>
-        <div class="outcome-legend prevention" aria-label="Prevention legend">
-          <span><i class="legend-dot prevention-limited"></i>Limited prevention</span>
-          <span><i class="legend-dot prevention-moderate"></i>Moderate prevention</span>
-          <span><i class="legend-dot prevention-strong"></i>Strong prevention</span>
         </div>
 
         <div class="stage-stats">
