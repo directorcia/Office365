@@ -3241,6 +3241,21 @@
       };
     }
 
+    function updateInheritedSignalLabels() {
+      const selectedScenario = scenarios[scenarioSelect?.value] || scenarios.clean;
+      const toSignalLabel = (value) => (value ? "pass" : "fail");
+      const setAutoLabel = (selectEl, baseValue) => {
+        if (!selectEl) return;
+        const autoOption = selectEl.querySelector("option[value='auto']");
+        if (!autoOption) return;
+        autoOption.textContent = `Inherit scenario (${toSignalLabel(baseValue)})`;
+      };
+
+      setAutoLabel(spfSignalSelect, !!selectedScenario.spfPass);
+      setAutoLabel(dkimSignalSelect, !!selectedScenario.dkimPass);
+      setAutoLabel(dmarcSignalSelect, !!selectedScenario.dmarcAligned);
+    }
+
     function getEffectiveDmarcPolicy(settings) {
       const rawPolicy = settings.dmarcPolicy;
       if (rawPolicy === "none" || rawPolicy === "quarantine" || rawPolicy === "reject") {
@@ -4406,6 +4421,7 @@
 
     function resetAll(resetAuthSignals = false) {
       clearVisualState();
+      updateInheritedSignalLabels();
       if (resetAuthSignals) {
         if (spfSignalSelect) spfSignalSelect.value = "auto";
         if (dkimSignalSelect) dkimSignalSelect.value = "auto";
@@ -4439,6 +4455,10 @@
       resetAll();
     });
     dmarcPolicySelect.addEventListener("change", resetAll);
+    scenarioSelect.addEventListener("change", () => {
+      updateInheritedSignalLabels();
+      resetAll();
+    });
     spfSignalSelect.addEventListener("change", resetAll);
     dkimSignalSelect.addEventListener("change", resetAll);
     dmarcSignalSelect.addEventListener("change", resetAll);
@@ -4452,6 +4472,7 @@
     syncTogglesFromProfile();
     renderLicenseCoverageSummary();
     syncModeUI();
+    updateInheritedSignalLabels();
     resetAll(true);
   </script>
 </body>
