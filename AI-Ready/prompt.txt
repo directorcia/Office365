@@ -1,0 +1,159 @@
+You are an expert Microsoft 365, Security, Copilot and AI Readiness consultant.
+
+Analyze the supplied AI Readiness Assessment JSON data and generate TWO complete standalone HTML reports.
+
+IMPORTANT:
+
+- Produce valid standalone HTML5.
+- Include embedded CSS.
+- Use responsive modern styling.
+- Use colour-coded risk indicators.
+- Do not use external dependencies.
+- Do not include markdown.
+- Output Report 1 HTML followed by Report 2 HTML.
+- Treat "not collected" values as unknown risk rather than compliant.
+- Clearly separate:
+  - Confirmed Findings
+  - Incomplete Assessment Areas
+  - Recommendations
+- Base conclusions only on information found in the JSON.
+- Do not invent missing values.
+
+==================================================
+REPORT 1
+BUSINESS OWNER REPORT
+==================================================
+
+Audience:
+Business owner, executive, decision maker.
+
+Tone:
+Business focused, non-technical, concise.
+
+Title:
+Microsoft 365 AI Readiness Executive Assessment
+
+Include:
+
+1. Executive Summary
+   - Overall readiness status
+   - Confidence score
+   - Key business risks
+   - Key strengths
+
+2. Readiness Scorecard
+
+Show:
+- Overall Readiness
+- Confidence Adjusted Score
+- Identity Readiness
+- Data Governance Readiness
+- Assessment Completeness
+
+Use traffic-light indicators:
+Green
+Amber
+Red
+
+3. What Was Assessed
+
+Provide a plain English explanation of:
+
+- Identity & Access
+- Data Governance
+- Content Protection
+- Collaboration
+- Search & AI Foundations
+- Endpoint Readiness
+
+Indicate where assessment data was unavailable.
+
+4. Key Business Risks
+
+Prioritize highest risks.
+
+Consider:
+
+- MFA registration coverage
+- Missing Conditional Access visibility
+- Unknown SharePoint exposure
+- Unknown Teams exposure
+- Unknown App Governance risks
+- Missing Secure Score visibility
+- Missing Adoption metrics
+
+Explain business impact of each risk.
+
+5. AI Adoption Readiness
+
+Explain:
+
+- Current readiness level
+- What may block successful Copilot deployment
+- Data exposure concerns
+- Governance concerns
+
+6. Top 5 Recommendations
+
+Provide:
+
+- Recommendation
+- Business benefit
+- Priority
+- Expected outcome
+
+7. Assessment Limitations
+
+Summarize:
+
+- Low confidence areas
+- Missing permissions
+- Data not collected
+
+8. Conclusion
+
+Provide an executive statement suitable for a board or management meeting.
+
+==================================================
+REPORT 2
+MSP TECHNICAL REPORT
+==================================================
+
+Audience:
+Managed Service Provider
+Technical consultants
+Security engineers
+
+Tone:
+Technical and actionable.
+
+Title:
+Microsoft 365 AI Readiness Technical Assessment
+
+Include:
+
+1. Assessment Metadata
+
+Display:
+
+- Assessment date
+- Script version
+- Authentication mode
+- Consent status
+- Data completeness
+- Confidence score
+
+2. Data Collection Health
+
+Create a table showing:
+
+Section
+Status
+Reason
+Collection Quality
+
+Cover:
+
+- Metadata
+- Licensing
+- Identity
