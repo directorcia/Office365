@@ -3,25 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Office365 Script Landing Page</title>
-  <meta name="description" content="Landing page for Office365 scripts, simulators, analysis assets, and operational resources.">
+  <title>Office365 Docs Experience Hub</title>
+  <meta name="description" content="Visual launchpad for docs experiences in this directory.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f3efe6;
-      --bg-alt: #e7f0ee;
-      --surface: #fffdf8;
-      --surface-2: #f9f4ea;
-      --border: #d3c7b3;
-      --text: #202224;
-      --muted: #5b6570;
-      --accent: #146c73;
-      --accent-2: #c4511b;
-      --tag: #f0e6d6;
-      --shadow: 0 24px 48px rgba(24, 38, 35, 0.14);
-      --radius: 16px;
+      --ink-1: #1a2033;
+      --ink-2: #4b5371;
+      --line: #d7ccbb;
+      --sand: #f7f0e4;
+      --cream: #fffaf2;
+      --blue-hero: #13325e;
+      --blue-hero-2: #1f4c8a;
+      --teal: #0f9a91;
+      --orange: #db6a32;
+      --rose: #bc385f;
+      --violet: #4e4fbd;
+      --glow: 0 24px 56px rgba(11, 23, 46, 0.28);
+      --radius-xl: 24px;
+      --radius-lg: 18px;
+      --radius-md: 12px;
     }
 
     * {
@@ -30,115 +33,374 @@
 
     body {
       margin: 0;
-      font-family: "Space Grotesk", "Segoe UI", sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(1200px 450px at 10% -5%, #d6ece8 0%, transparent 60%),
-        radial-gradient(1000px 400px at 95% 0%, #f6d8bd 0%, transparent 50%),
-        linear-gradient(145deg, var(--bg), var(--bg-alt));
+      font-family: "Outfit", "Segoe UI", sans-serif;
+      color: var(--ink-1);
       min-height: 100vh;
+      overflow-x: hidden;
+      background:
+        radial-gradient(1400px 700px at -5% -20%, rgba(87, 136, 232, 0.33), transparent 58%),
+        radial-gradient(980px 540px at 110% -8%, rgba(34, 201, 196, 0.26), transparent 56%),
+        linear-gradient(150deg, #0f1f3c 0%, #17345e 45%, #21437a 100%);
+      transition: background 420ms ease;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: -18% -10%;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    body::before {
+      background:
+        radial-gradient(34% 30% at 20% 30%, rgba(48, 193, 180, 0.22), transparent 72%),
+        radial-gradient(34% 30% at 78% 26%, rgba(255, 152, 88, 0.18), transparent 74%),
+        radial-gradient(40% 40% at 50% 80%, rgba(118, 126, 255, 0.2), transparent 70%);
+      filter: blur(8px);
+      animation: driftLayerA 26s linear infinite;
+      opacity: 0.7;
+      transform-origin: center;
+    }
+
+    body::after {
+      background:
+        conic-gradient(from 0deg at 10% 20%, rgba(255, 255, 255, 0.08), transparent 46%),
+        conic-gradient(from 90deg at 82% 14%, rgba(123, 222, 215, 0.08), transparent 42%),
+        conic-gradient(from 180deg at 54% 82%, rgba(255, 173, 109, 0.07), transparent 45%);
+      mix-blend-mode: screen;
+      animation: driftLayerB 38s linear infinite;
+      opacity: 0.55;
+    }
+
+    body[data-energy="calm"] {
+      background:
+        radial-gradient(1400px 700px at -5% -20%, rgba(87, 136, 232, 0.25), transparent 60%),
+        radial-gradient(980px 540px at 110% -8%, rgba(34, 201, 196, 0.18), transparent 58%),
+        linear-gradient(150deg, #122240 0%, #19365e 48%, #254778 100%);
+    }
+
+    body[data-energy="calm"]::before {
+      opacity: 0.42;
+      animation-duration: 44s;
+      filter: blur(10px);
+    }
+
+    body[data-energy="calm"]::after {
+      opacity: 0.32;
+      animation-duration: 58s;
+    }
+
+    body[data-energy="vivid"] {
+      background:
+        radial-gradient(1450px 740px at -8% -25%, rgba(87, 136, 232, 0.42), transparent 57%),
+        radial-gradient(1020px 600px at 112% -10%, rgba(34, 201, 196, 0.35), transparent 54%),
+        linear-gradient(150deg, #0d1d39 0%, #153765 42%, #24508f 100%);
+    }
+
+    body[data-energy="vivid"]::before {
+      opacity: 0.84;
+      animation-duration: 20s;
+      filter: blur(7px);
+    }
+
+    body[data-energy="vivid"]::after {
+      opacity: 0.72;
+      animation-duration: 30s;
     }
 
     .shell {
-      width: min(1200px, calc(100% - 2rem));
-      margin: 1.25rem auto 2rem;
+      width: min(1120px, calc(100% - 2rem));
+      margin: 1.1rem auto 2.3rem;
       display: grid;
-      gap: 1rem;
+      gap: 1.05rem;
     }
 
     .panel {
-      background: linear-gradient(180deg, rgba(255, 253, 248, 0.95), rgba(249, 244, 234, 0.9));
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 1.1rem;
-      backdrop-filter: blur(3px);
+      background: linear-gradient(165deg, var(--sand), var(--cream));
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--glow);
+      padding: 1.2rem;
+      position: relative;
+      overflow: hidden;
     }
 
     .hero {
-      position: relative;
-      overflow: hidden;
+      background:
+        radial-gradient(500px 220px at 20% -10%, rgba(255, 255, 255, 0.25), transparent 70%),
+        linear-gradient(150deg, var(--blue-hero), var(--blue-hero-2));
+      color: #f7fbff;
+      border: 1px solid rgba(203, 223, 255, 0.34);
+      padding: 1.35rem;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      width: 300px;
+      height: 300px;
+      border-radius: 999px;
+      right: -110px;
+      top: -130px;
+      border: 2px dashed rgba(151, 206, 255, 0.45);
+      transform: rotate(-16deg);
+      pointer-events: none;
     }
 
     .hero::after {
       content: "";
       position: absolute;
-      inset: auto -80px -80px auto;
-      width: 230px;
-      height: 230px;
+      width: 240px;
+      height: 12px;
       border-radius: 999px;
-      border: 2px dashed rgba(20, 108, 115, 0.25);
-      transform: rotate(-14deg);
+      left: 1.35rem;
+      bottom: 1.15rem;
+      background: linear-gradient(90deg, rgba(61, 219, 213, 0.9), rgba(255, 196, 102, 0.85));
       pointer-events: none;
     }
 
-    h1 {
+    .kicker {
       margin: 0;
-      font-size: clamp(1.45rem, 3vw, 2.4rem);
-      letter-spacing: 0.02em;
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      font-size: 0.72rem;
+      color: #b8ddff;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0.5rem 0 0;
+      font-size: clamp(1.75rem, 4.6vw, 3rem);
+      line-height: 1.1;
+      max-width: 20ch;
     }
 
     .subtitle {
-      margin: 0.55rem 0 0;
-      max-width: 84ch;
-      line-height: 1.5;
-      color: var(--muted);
+      margin: 0.65rem 0 0;
+      font-size: 1.02rem;
+      color: #d6e8ff;
+      max-width: 64ch;
+      line-height: 1.55;
     }
 
     .meta-row {
       margin-top: 1rem;
       display: flex;
       flex-wrap: wrap;
-      gap: 0.55rem;
+      gap: 0.5rem;
     }
 
     .chip {
       display: inline-flex;
       align-items: center;
-      border: 1px solid var(--border);
-      background: var(--tag);
-      color: #394047;
       border-radius: 999px;
-      padding: 0.26rem 0.65rem;
-      font-size: 0.78rem;
-      letter-spacing: 0.01em;
+      border: 1px solid #b7cbe8;
+      background: rgba(255, 255, 255, 0.16);
+      color: #ecf6ff;
+      font-size: 0.76rem;
+      padding: 0.26rem 0.6rem;
     }
 
     .quick-links {
-      margin-top: 0.95rem;
+      margin-top: 1rem;
       display: flex;
       flex-wrap: wrap;
       gap: 0.55rem;
     }
 
-    .quick-link {
-      text-decoration: none;
+    .energy-row {
+      margin-top: 0.8rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.55rem;
+    }
+
+    .energy-label {
+      margin: 0;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #c7e2ff;
+      font-family: "IBM Plex Mono", Consolas, monospace;
+    }
+
+    .energy-toggle {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid rgba(183, 209, 242, 0.5);
+      border-radius: 999px;
+      padding: 0.2rem;
+      background: rgba(255, 255, 255, 0.12);
+      gap: 0.2rem;
+    }
+
+    .energy-btn {
       border: 1px solid transparent;
       border-radius: 999px;
-      padding: 0.38rem 0.78rem;
-      font-weight: 600;
-      font-size: 0.84rem;
-      transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
-      color: #ffffff;
-      background: linear-gradient(120deg, var(--accent), #2098a0);
+      background: transparent;
+      color: #dbeeff;
+      font: inherit;
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      padding: 0.3rem 0.62rem;
+      cursor: pointer;
+      transition: background 180ms ease, color 180ms ease, transform 180ms ease;
+    }
+
+    .energy-btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .energy-btn.active {
+      background: linear-gradient(120deg, rgba(29, 189, 178, 0.95), rgba(108, 220, 186, 0.95));
+      color: #053437;
+      border-color: rgba(174, 244, 219, 0.6);
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .quick-link {
+      text-decoration: none;
+      border-radius: 999px;
+      padding: 0.47rem 0.92rem;
+      font-weight: 700;
+      font-size: 0.81rem;
+      color: #fff;
+      transition: transform 180ms ease, box-shadow 180ms ease;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      box-shadow: 0 10px 18px rgba(0, 0, 0, 0.2);
+    }
+
+    .quick-link.primary {
+      background: linear-gradient(125deg, var(--teal), #1ec3b9);
     }
 
     .quick-link.secondary {
-      color: #ffffff;
-      background: linear-gradient(120deg, var(--accent-2), #df6d2e);
+      background: linear-gradient(125deg, var(--orange), #ec8d54);
     }
 
     .quick-link:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 10px 20px rgba(20, 108, 115, 0.22);
-      border-color: rgba(255, 255, 255, 0.5);
+      transform: translateY(-2px);
+      box-shadow: 0 14px 22px rgba(14, 22, 33, 0.26);
     }
 
-    .controls {
+    .stats {
+      margin-top: 0.92rem;
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.6rem;
+    }
+
+    .stat {
+      border: 1px solid rgba(181, 206, 238, 0.45);
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.12);
+      padding: 0.55rem 0.65rem;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 1.15rem;
+      line-height: 1.05;
+      color: #ffffff;
+    }
+
+    .stat span {
+      font-size: 0.76rem;
+      color: #d6e8ff;
+    }
+
+    .composer {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      gap: 0.95rem;
+      align-items: stretch;
+    }
+
+    .spotlight {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(160deg, #fff6e8, #fffdf7);
+      padding: 0.9rem;
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    .spotlight-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .spotlight-title {
+      margin: 0;
+      font-size: 1.24rem;
+      line-height: 1.2;
+    }
+
+    .spotlight-copy {
+      margin: 0;
+      color: var(--ink-2);
+      line-height: 1.5;
+      font-size: 0.95rem;
+      min-height: 3rem;
+    }
+
+    .spotlight-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    .spotlight-tag {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid #cdbca0;
+      background: #f7ebd6;
+      color: #4f5365;
+      font-size: 0.68rem;
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      padding: 0.15rem 0.45rem;
+    }
+
+    .spotlight-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .spotlight-cta {
+      text-decoration: none;
+      border-radius: 10px;
+      background: linear-gradient(125deg, #1a9089, #29bbb2);
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.84rem;
+      padding: 0.48rem 0.75rem;
+      border: 1px solid rgba(22, 112, 108, 0.45);
+      transition: transform 170ms ease;
+    }
+
+    .spotlight-cta:hover {
+      transform: translateY(-1px);
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1fr 200px;
       gap: 0.7rem;
-      align-items: end;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(160deg, rgba(255, 248, 236, 0.9), rgba(255, 255, 255, 0.72));
+      padding: 0.9rem;
     }
 
     .search-wrap {
@@ -147,126 +409,260 @@
     }
 
     label {
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: var(--muted);
+      font-size: 0.78rem;
+      color: var(--ink-2);
+      font-weight: 700;
+      letter-spacing: 0.02em;
     }
 
     input,
     select {
       width: 100%;
-      border: 1px solid var(--border);
-      background: #fffdf9;
-      border-radius: 10px;
+      border: 1px solid #cfbea1;
+      background: #fffdfa;
+      color: var(--ink-1);
+      border-radius: 11px;
       height: 2.5rem;
       font: inherit;
       padding: 0 0.7rem;
-      color: var(--text);
     }
 
     .summary {
-      margin-top: 0.65rem;
-      color: var(--muted);
-      font-size: 0.88rem;
+      margin: 0.3rem 0 0;
+      color: var(--ink-2);
+      font-size: 0.85rem;
+    }
+
+    .legend-row {
+      margin-top: 0.7rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
     }
 
     .legend {
-      margin-top: 0.6rem;
       display: flex;
       flex-wrap: wrap;
-      gap: 0.45rem;
+      gap: 0.4rem;
     }
 
     .legend .chip {
       font-family: "IBM Plex Mono", Consolas, monospace;
-      font-size: 0.72rem;
-      background: #f7efdf;
+      border: 1px solid #d4c7b0;
+      background: #f4e8d5;
+      color: #46556d;
+      font-size: 0.69rem;
     }
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 0.75rem;
     }
 
     .entry {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: var(--surface);
-      padding: 0.8rem;
-      animation: riseIn 340ms ease both;
+      border-radius: var(--radius-lg);
+      border: 1px solid #cdbd9f;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(248, 239, 223, 0.86));
+      padding: 0.95rem;
+      animation: cardLift 380ms ease both;
+      transition: transform 180ms ease, box-shadow 180ms ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .entry::after {
+      content: "";
+      position: absolute;
+      top: -28px;
+      right: -28px;
+      width: 90px;
+      height: 90px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(27, 154, 145, 0.2), transparent 70%);
+      pointer-events: none;
+    }
+
+    .entry.variant-navigation::after {
+      background: radial-gradient(circle, rgba(78, 79, 189, 0.22), transparent 72%);
+    }
+
+    .entry.variant-simulator::after {
+      background: radial-gradient(circle, rgba(219, 106, 50, 0.2), transparent 70%);
+    }
+
+    .entry:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 16px 24px rgba(14, 21, 33, 0.14);
     }
 
     .entry h3 {
       margin: 0;
-      font-size: 0.94rem;
-      line-height: 1.35;
+      font-size: 1.02rem;
+      line-height: 1.28;
     }
 
     .entry h3 a {
-      color: #11484f;
+      color: #1c3350;
       text-decoration: none;
-      border-bottom: 1px solid transparent;
     }
 
     .entry h3 a:hover {
-      border-bottom-color: #11484f;
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+
+    .entry-summary {
+      margin: 0.5rem 0 0;
+      font-size: 0.86rem;
+      color: var(--ink-2);
+      line-height: 1.4;
+      min-height: 2.45rem;
+    }
+
+    .entry-track {
+      margin-top: 0.55rem;
+      height: 6px;
+      border-radius: 999px;
+      background: #eadbc2;
+      overflow: hidden;
+    }
+
+    .entry-track span {
+      display: block;
+      height: 100%;
+      width: var(--track, 72%);
+      border-radius: 999px;
+      background: linear-gradient(90deg, #1a9c93, #3ab5ae);
+    }
+
+    .entry.variant-navigation .entry-track span {
+      background: linear-gradient(90deg, #5459c5, #7678d8);
+      width: 58%;
+    }
+
+    .entry.variant-simulator .entry-track span {
+      background: linear-gradient(90deg, #d16635, #ef9654);
+      width: 88%;
     }
 
     .entry-meta {
-      margin-top: 0.45rem;
+      margin-top: 0.55rem;
       display: flex;
       flex-wrap: wrap;
       gap: 0.4rem;
     }
 
     .badge {
-      font-size: 0.7rem;
-      font-family: "IBM Plex Mono", Consolas, monospace;
-      color: #3c4348;
-      border: 1px solid var(--border);
+      display: inline-flex;
+      align-items: center;
       border-radius: 999px;
+      border: 1px solid #ccb998;
+      background: #f4e8d3;
+      color: #41526a;
+      font-size: 0.67rem;
+      font-family: "IBM Plex Mono", Consolas, monospace;
       padding: 0.15rem 0.45rem;
-      background: #f6ebd9;
     }
 
     .badge.group {
-      background: #ddeeed;
-      border-color: #b7dad8;
-    }
-
-    .footer-note {
-      color: var(--muted);
-      font-size: 0.8rem;
-      line-height: 1.45;
+      border-color: #b9cae6;
+      background: #e6effa;
+      color: #35507c;
     }
 
     .empty {
-      border: 1px dashed var(--border);
-      border-radius: 12px;
+      border: 1px dashed #c8b594;
+      border-radius: var(--radius-md);
       padding: 0.9rem;
-      color: var(--muted);
-      background: rgba(255, 255, 255, 0.6);
+      color: var(--ink-2);
+      background: rgba(255, 255, 255, 0.45);
     }
 
-    @keyframes riseIn {
+    .footer-note {
+      color: var(--ink-2);
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+
+    @keyframes cardLift {
       from {
         opacity: 0;
-        transform: translateY(4px);
+        transform: translateY(7px) scale(0.99);
       }
       to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
       }
     }
 
-    @media (max-width: 900px) {
+    @keyframes driftLayerA {
+      0% {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      50% {
+        transform: translate3d(-1.2%, 1.5%, 0) scale(1.03);
+      }
+      100% {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+    }
+
+    @keyframes driftLayerB {
+      0% {
+        transform: translate3d(0, 0, 0) rotate(0deg);
+      }
+      50% {
+        transform: translate3d(1.5%, -1.1%, 0) rotate(2deg);
+      }
+      100% {
+        transform: translate3d(0, 0, 0) rotate(0deg);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      body::before,
+      body::after {
+        animation: none;
+      }
+
+      .entry,
+      .quick-link,
+      .spotlight-cta,
+      .energy-btn {
+        transition: none;
+      }
+    }
+
+    @media (max-width: 940px) {
+      .composer {
+        grid-template-columns: 1fr;
+      }
+
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .stats {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 700px) {
       .grid {
         grid-template-columns: 1fr;
       }
 
-      .controls {
-        grid-template-columns: 1fr;
+      h1 {
+        max-width: none;
       }
     }
   </style>
@@ -274,220 +670,122 @@
 <body>
   <main class="shell">
     <section class="panel hero">
-      <h1>Office365 Operations Hub</h1>
+      <p class="kicker">Office365 Documentation Experience Hub</p>
+      <h1>Explore your simulation experiences with a cleaner, richer launch page</h1>
       <p class="subtitle">
-        This page is the navigation front door for the repository. It indexes scripts, simulators, analysis assets, and support documents so you can publish and browse everything directly from GitHub Pages.
+        Pick a path, open it instantly, and jump between identity and mail security walkthroughs without scanning a technical file index.
       </p>
       <div class="meta-row">
-        <span class="chip">Repository landing page</span>
+        <span class="chip">Docs-only scope</span>
         <span class="chip">Built for GitHub Pages</span>
         <span class="chip" id="updatedChip">Updated: loading</span>
       </div>
       <div class="quick-links">
-        <a class="quick-link" href="README.md">Open README</a>
-        <a class="quick-link secondary" href="docs/m365-login-sim.html">Sign-In Simulator</a>
-        <a class="quick-link secondary" href="docs/m365-mail-security-sim.html">Mail Security Simulator</a>
+        <a class="quick-link primary" href="m365-login-sim.html">Sign-In Simulator</a>
+        <a class="quick-link secondary" href="m365-mail-security-sim.html">Mail Security Simulator</a>
+      </div>
+      <div class="energy-row" aria-label="Background mode selector">
+        <p class="energy-label">Background mode</p>
+        <div class="energy-toggle" role="radiogroup" aria-label="Background energy mode">
+          <button class="energy-btn" type="button" id="energyCalm" role="radio" aria-checked="false">Calm</button>
+          <button class="energy-btn" type="button" id="energyVivid" role="radio" aria-checked="false">Vivid</button>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <strong id="statTotal">0</strong>
+          <span>Docs pages indexed</span>
+        </div>
+        <div class="stat">
+          <strong id="statSim">0</strong>
+          <span>Interactive simulators</span>
+        </div>
+        <div class="stat">
+          <strong>100%</strong>
+          <span>Content from docs directory</span>
+        </div>
       </div>
     </section>
 
     <section class="panel">
-      <div class="controls">
-        <div class="search-wrap">
-          <label for="searchInput">Search by file or folder name</label>
-          <input id="searchInput" type="search" placeholder="Example: o365, graph, simulator, Secure Score">
-        </div>
-        <div class="search-wrap">
-          <label for="groupSelect">Filter by group</label>
-          <select id="groupSelect">
-            <option value="all">All groups</option>
-          </select>
+      <div class="composer">
+        <article class="spotlight" id="spotlight">
+          <div class="spotlight-top">
+            <p class="kicker" id="spotlightKicker">Now featuring</p>
+            <span class="spotlight-tag" id="spotlightType">Simulator</span>
+          </div>
+          <h2 class="spotlight-title" id="spotlightTitle">Loading...</h2>
+          <p class="spotlight-copy" id="spotlightCopy">Loading description...</p>
+          <div class="spotlight-tags" id="spotlightTags"></div>
+          <div class="spotlight-actions">
+            <a class="spotlight-cta" id="spotlightLink" href="index.html" target="_blank" rel="noopener noreferrer">Open experience</a>
+          </div>
+        </article>
+
+        <div class="toolbar">
+          <div class="search-wrap">
+            <label for="searchInput">Find an experience</label>
+            <input id="searchInput" type="search" placeholder="Try: login, mail, simulator, docs home">
+          </div>
+          <div class="search-wrap">
+            <label for="groupSelect">View</label>
+            <select id="groupSelect">
+              <option value="all">All experiences</option>
+            </select>
+          </div>
         </div>
       </div>
-      <p class="summary" id="summaryLine"></p>
-      <div class="legend">
-        <span class="chip">Click any item to open it</span>
-        <span class="chip">Folder cards list curated files for that path</span>
+
+      <div class="legend-row">
+        <p class="summary" id="summaryLine"></p>
+        <div class="legend">
+          <span class="chip">Hover or click cards to change spotlight</span>
+          <span class="chip">Every link opens a docs file</span>
+        </div>
       </div>
     </section>
 
     <section class="panel">
       <div class="grid" id="entryGrid"></div>
-      <div class="empty" id="emptyState" hidden>No matches found. Try a broader search or switch to All groups.</div>
+      <div class="empty" id="emptyState" hidden>No matches found. Try a broader search or switch to All experiences.</div>
     </section>
 
     <section class="panel footer-note">
-      Static pages can only link to existing files. For folders without their own index page, use the listed child links from this hub.
+      Scope lock: this page intentionally surfaces docs files only, so navigation stays simple and focused.
     </section>
   </main>
 
   <script>
     const inventory = [
-      ".github/",
-      "AI-Ready/",
-      "Analysis/",
-      "Cowork-Skills/",
-      "docs/",
-      "asd-ca-get.ps1",
-      "asd-ioscomp-get.ps1",
-      "asd-mailflow-get.ps1",
-      "asd-owamail-get.ps1",
-      "asd-remotedomain-get.ps1",
-      "asd-wincomp-get.ps1",
-      "az-connect-si.ps1",
-      "az-connect.ps1",
-      "az-keyvault-saveto.exe",
-      "az-sentinel-ruleget.ps1",
-      "best-practices.txt",
-      "c.ps1",
-      "Cleanup AzureAD device registration.ps1",
-      "eid-resetapp-set-direct.ps1",
-      "eid-resetapp-set.ps1",
-      "email-header-report.ps1",
-      "enable-location-services.ps1",
-      "endpoint-api-svbm.ps1",
-      "find-name-conflict.ps1",
-      "graph-adapp-add.exe",
-      "graph-adapp-del.exe",
-      "graph-adapp-per-add.exe",
-      "graph-adapp-per.exe",
-      "graph-adapp-set.txt",
-      "graph-adappperm-del.ps1",
-      "graph-asr-set.exe",
-      "graph-connect.ps1",
-      "graph-devices-get.ps1",
-      "graph-diraudit-get.ps1",
-      "graph-globaladmins-get.ps1",
-      "graph-idauthpolicy-get.ps1",
-      "graph-licenses-get.ps1",
-      "graph-mbx-rules.exe",
-      "graph-odfb-get.exe",
-      "graph-odfb-get.ps1",
-      "graph-signins-get.ps1",
-      "graph-summary-get.exe",
-      "graph-summarymx-get.exe",
-      "graph-summaryodfb-get.exe",
-      "graph-users-get.ps1",
-      "Intune-connect.ps1",
-      "intune-policy-get.ps1",
-      "ipget.ps1",
-      "ipinf.ps1",
-      "m365-inactiveusers-get.ps1",
-      "m365-ir.ps1",
-      "m365-senslabel-get.ps1",
-      "mde-apioffboard.ps1",
-      "mde-offboard-check.ps1",
-      "mde-vul-get.ps1",
-      "mggraph-connect.ps1",
-      "mggraph-disconnect.ps1",
-      "mggraph-sscore-get.ps1",
-      "mggraph-ssdescpt-get.ps1",
-      "msgraph-connect.ps1",
-      "o365-addin-deploy.ps1",
-      "o365-atp-timer.ps1",
-      "o365-azure-usage.xlsx",
-      "O365-connect-aad.ps1",
-      "o365-connect-aip.ps1",
-      "o365-connect-ctrldply.ps1",
-      "o365-connect-exo-cert.ps1",
-      "o365-connect-exo.ps1",
-      "o365-connect-mfa-s4b.ps1",
-      "o365-connect-msc.ps1",
-      "o365-connect-pa.ps1",
-      "o365-connect-pnp-cert.ps1",
-      "o365-connect-pnp.ps1",
-      "o365-connect-s4b.ps1",
-      "o365-connect-sac.ps1",
-      "o365-connect-spo-cert.ps1",
-      "o365-connect-spo.ps1",
-      "o365-connect-tms-cert.ps1",
-      "o365-connect-tms.ps1",
-      "o365-connect.ps1",
-      "o365-email-pwned.ps1",
-      "o365-exo-addins.ps1",
-      "o365-exo-fwd-chk.ps1",
-      "o365-exo-sharedblock.ps1",
-      "o365-getrepo.ps1",
-      "o365-login-audit.ps1",
-      "o365-logs.txt",
-      "o365-malware-policy.ps1",
-      "o365-mblogin-audit.ps1",
-      "o365-mcas-api.ps1",
-      "o365-modern-auth.ps1",
-      "o365-msgtrace.ps1",
-      "o365-mx-check.ps1",
-      "o365-mx-usr-all.ps1",
-      "o365-setup.ps1",
-      "o365-skus.ps1",
-      "o365-spam-policy.ps1",
-      "o365-spo-admins.ps1",
-      "o365-spo-extusr.ps1",
-      "o365-spo-getsharing.ps1",
-      "o365-spo-getusage.ps1",
-      "o365-ssdescpt-get.ps1",
-      "O365-suite-usage.xlsx",
-      "o365-tms-import.csv",
-      "o365-tms-import.ps1",
-      "o365-update.ps1",
-      "o365-user-off.ps1",
-      "office-macro-get.ps1",
-      "psmodules-del.ps1",
-      "psmodules-get.ps1",
-      "r.ps1",
-      "README.md",
-      "save-cred-file.ps1",
-      "sc-config.ps1",
-      "sec-test.ps1",
-      "spo-doclib-reset.ps1",
-      "test-m365-connect-speed.ps1",
-      "text-colour.ps1",
-      "tms-attend-get.ps1",
-      "urls.txt",
-      "win10-asr-get.ps1",
-      "win10-audit-get.ps1",
-      "win10-def-get.ps1",
-      ".github/copilot-instructions.md",
-      "AI-Ready/m365-ai-ready-export.ps1",
-      "AI-Ready/prompt.txt",
-      "Analysis/Exchange/exo-extract.ps1",
-      "Analysis/Exchange/prompt-long.txt",
-      "Analysis/Secure Score/o365-secure-score-extract.ps1",
-      "Analysis/Secure Score/prompt-asd.txt",
-      "Analysis/Secure Score/prompt-e8.txt",
-      "Analysis/Secure Score/prompt-long.txt",
-      "Analysis/Secure Score/prompt-short.txt",
-      "Cowork-Skills/client-onboarding.md",
-      "Cowork-Skills/employee-onboarding.md",
-      "Cowork-Skills/incident-comms.md",
-      "Cowork-Skills/license-rightsizing.md",
-      "Cowork-Skills/qbr-prep.md",
-      "Cowork-Skills/security-baseline-check.md",
-      "Cowork-Skills/ticket-triage.md",
-      "docs/m365-login-sim.html",
-      "docs/m365-mail-security-sim.html"
+      {
+        path: "index.html",
+        title: "Docs Home",
+        summary: "Your visual home screen for docs content and quick experience switching.",
+        group: "Navigation",
+        intensity: 58,
+        tags: ["launchpad", "overview", "docs"]
+      },
+      {
+        path: "m365-login-sim.html",
+        title: "M365 Sign-In and Conditional Access Simulator",
+        summary: "Follow identity signals, policy checks, and access decisions through guided scenario paths.",
+        group: "Simulator",
+        intensity: 88,
+        tags: ["identity", "conditional-access", "security"]
+      },
+      {
+        path: "m365-mail-security-sim.html",
+        title: "Exchange + Defender Mail Security Simulator",
+        summary: "Visualize message handling across authentication, filtering, and post-delivery protection stages.",
+        group: "Simulator",
+        intensity: 92,
+        tags: ["exchange", "defender", "mailflow"]
+      }
     ];
 
     function extOf(path) {
-      if (path.endsWith("/")) return "folder";
       const i = path.lastIndexOf(".");
       return i >= 0 ? path.slice(i + 1).toLowerCase() : "file";
-    }
-
-    function groupOf(path) {
-      const low = path.toLowerCase();
-      if (path.endsWith("/")) return "Folders";
-      if (low.startsWith("docs/")) return "Interactive Docs";
-      if (low.startsWith("analysis/")) return "Analysis";
-      if (low.startsWith("cowork-skills/")) return "Cowork Skills";
-      if (low.startsWith("ai-ready/")) return "AI Ready";
-      if (low.startsWith(".github/")) return "GitHub Config";
-      if (low.startsWith("o365-") || low.startsWith("o365") || low.startsWith("o365-")) return "O365 Scripts";
-      if (low.startsWith("graph-") || low.startsWith("msgraph-") || low.startsWith("mggraph-")) return "Graph Scripts";
-      if (low.startsWith("az-")) return "Azure Scripts";
-      if (low.startsWith("intune-") || low.startsWith("intune")) return "Intune Scripts";
-      if (low.startsWith("asd-")) return "ASD Scripts";
-      if (low.startsWith("mde-")) return "MDE Scripts";
-      if (low.startsWith("win10-")) return "Windows Scripts";
-      return "Utilities";
     }
 
     function slug(path) {
@@ -497,25 +795,27 @@
         .join("/");
     }
 
-    const data = inventory.map((path) => ({
-      path,
-      ext: extOf(path),
-      group: groupOf(path)
+    const data = inventory.map((item) => ({
+      path: item.path,
+      title: item.title,
+      summary: item.summary,
+      ext: extOf(item.path),
+      group: item.group
     }));
-
-    const folderTargets = {
-      ".github/": ".github/copilot-instructions.md",
-      "AI-Ready/": "AI-Ready/m365-ai-ready-export.ps1",
-      "Analysis/": "Analysis/Exchange/exo-extract.ps1",
-      "Cowork-Skills/": "Cowork-Skills/client-onboarding.md",
-      "docs/": "docs/m365-login-sim.html"
-    };
 
     const groupSelect = document.getElementById("groupSelect");
     const searchInput = document.getElementById("searchInput");
     const entryGrid = document.getElementById("entryGrid");
     const summaryLine = document.getElementById("summaryLine");
     const emptyState = document.getElementById("emptyState");
+    const spotlightKicker = document.getElementById("spotlightKicker");
+    const spotlightType = document.getElementById("spotlightType");
+    const spotlightTitle = document.getElementById("spotlightTitle");
+    const spotlightCopy = document.getElementById("spotlightCopy");
+    const spotlightTags = document.getElementById("spotlightTags");
+    const spotlightLink = document.getElementById("spotlightLink");
+    const energyCalm = document.getElementById("energyCalm");
+    const energyVivid = document.getElementById("energyVivid");
 
     const groups = [...new Set(data.map((item) => item.group))].sort((a, b) => a.localeCompare(b));
     groups.forEach((group) => {
@@ -525,12 +825,43 @@
       groupSelect.appendChild(option);
     });
 
+    function setSpotlight(item) {
+      spotlightKicker.textContent = item.group === "Simulator" ? "Featured walkthrough" : "Navigation";
+      spotlightType.textContent = item.group;
+      spotlightTitle.textContent = item.title;
+      spotlightCopy.textContent = item.summary;
+      spotlightLink.href = slug(item.path);
+      spotlightLink.textContent = "Open " + item.title;
+
+      spotlightTags.innerHTML = "";
+      item.tags.forEach((tag) => {
+        const el = document.createElement("span");
+        el.className = "spotlight-tag";
+        el.textContent = tag;
+        spotlightTags.appendChild(el);
+      });
+    }
+
+    function applyEnergyMode(mode) {
+      const selected = mode === "vivid" ? "vivid" : "calm";
+      document.body.setAttribute("data-energy", selected);
+      energyCalm.classList.toggle("active", selected === "calm");
+      energyVivid.classList.toggle("active", selected === "vivid");
+      energyCalm.setAttribute("aria-checked", String(selected === "calm"));
+      energyVivid.setAttribute("aria-checked", String(selected === "vivid"));
+      try {
+        localStorage.setItem("docsHub.energyMode", selected);
+      } catch {
+      }
+    }
+
     function render() {
       const search = searchInput.value.trim().toLowerCase();
       const selectedGroup = groupSelect.value;
       const filtered = data.filter((item) => {
         const groupMatch = selectedGroup === "all" || item.group === selectedGroup;
-        const searchMatch = !search || item.path.toLowerCase().includes(search);
+        const searchPool = (item.path + " " + item.title + " " + item.summary).toLowerCase();
+        const searchMatch = !search || searchPool.includes(search);
         return groupMatch && searchMatch;
       });
 
@@ -541,34 +872,61 @@
         .sort((a, b) => a.path.localeCompare(b.path, undefined, { sensitivity: "base" }))
         .forEach((item, index) => {
           const card = document.createElement("article");
-          card.className = "entry";
+          card.className = "entry " + (item.group === "Simulator" ? "variant-simulator" : "variant-navigation");
           card.style.animationDelay = String(Math.min(index * 12, 220)) + "ms";
+          card.style.setProperty("--track", String(item.intensity) + "%");
 
-          const isFolder = item.ext === "folder";
-          const title = isFolder ? item.path.slice(0, -1) : item.path;
-          const linkTarget = isFolder ? slug(folderTargets[item.path] || "README.md") : slug(item.path);
+          const title = item.title;
+          const linkTarget = slug(item.path);
           const linkAttr = "target=\"_blank\" rel=\"noopener noreferrer\"";
-          const clickHint = isFolder ? "Open representative file" : "Open file";
+          const clickHint = "Open";
 
           card.innerHTML = [
             "<h3><a href=\"" + linkTarget + "\" " + linkAttr + ">" + title + "</a></h3>",
+            "<p class=\"entry-summary\">" + item.summary + "</p>",
+            "<div class=\"entry-track\"><span></span></div>",
             "<div class=\"entry-meta\">",
             "<span class=\"badge group\">" + item.group + "</span>",
             "<span class=\"badge\">" + item.ext + "</span>",
+            "<span class=\"badge\">" + item.path + "</span>",
             "<span class=\"badge\">" + clickHint + "</span>",
             "</div>"
           ].join("");
 
+          card.addEventListener("mouseenter", () => setSpotlight(item));
+          card.addEventListener("focusin", () => setSpotlight(item));
+          card.addEventListener("click", () => setSpotlight(item));
+
           entryGrid.appendChild(card);
         });
 
-      summaryLine.textContent = "Showing " + filtered.length + " of " + data.length + " items.";
+      summaryLine.textContent = "Showing " + filtered.length + " of " + data.length + " docs experiences.";
+
+      if (filtered.length > 0) {
+        setSpotlight(filtered[0]);
+      }
     }
 
     searchInput.addEventListener("input", render);
     groupSelect.addEventListener("change", render);
+    energyCalm.addEventListener("click", () => applyEnergyMode("calm"));
+    energyVivid.addEventListener("click", () => applyEnergyMode("vivid"));
 
     document.getElementById("updatedChip").textContent = "Updated: " + new Date().toLocaleDateString();
+    document.getElementById("statTotal").textContent = String(data.length);
+    document.getElementById("statSim").textContent = String(data.filter((item) => item.group === "Simulator").length);
+    let initialEnergyMode = "calm";
+    try {
+      const storedMode = localStorage.getItem("docsHub.energyMode");
+      if (storedMode === "calm" || storedMode === "vivid") {
+        initialEnergyMode = storedMode;
+      } else if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: no-preference)").matches) {
+        initialEnergyMode = "vivid";
+      }
+    } catch {
+    }
+    applyEnergyMode(initialEnergyMode);
+    setSpotlight(data[0]);
     render();
   </script>
 </body>
