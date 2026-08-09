@@ -5,7 +5,6 @@ Practical scripts, tools, and simulation assets for Microsoft 365 administration
 ## Start Here
 
 - Project wiki: [Get Started](https://github.com/directorcia/Office365/wiki)
-- Docs hub: [docs/index.html](docs/index.html)
 
 ## Simulators
 
@@ -13,8 +12,8 @@ Use these interactive simulators to walk through common Microsoft 365 security s
 
 | Simulator | What it helps with |
 | --- | --- |
-| [m365-login-sim.html](docs/m365-login-sim.html) | Visualizes Microsoft 365 sign-in behavior, authentication stages, and Conditional Access decision points. |
-| [m365-mail-security-sim.html](docs/m365-mail-security-sim.html) | Demonstrates Exchange Online and Defender for Office 365 mail flow, filtering, and policy evaluation order. |
+| [M365 Login](https://directorcia.github.io/Office365/m365-login-sim.html) | Visualizes Microsoft 365 sign-in behavior, authentication stages, and Conditional Access decision points. |
+| [M365 Mail Security](https://directorcia.github.io/Office365/m365-mail-security-sim.html) | Demonstrates Exchange Online and Defender for Office 365 mail flow, filtering, and policy evaluation order. |
 
 ## Connect
 
