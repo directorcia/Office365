@@ -67,10 +67,17 @@ if ($logDirectory -and -not (Test-Path -Path $logDirectory)) {
 "" | Set-Content -Path $script:LogFile
 Write-LogMessage "Script started`n" $systemmessagecolor
 
+$fatalError = $false
 try {
     if (-not (Get-Command -Name Get-Mailbox -ErrorAction SilentlyContinue)) {
         throw "Exchange Online cmdlets are not available. Connect first by running Connect-ExchangeOnline."
     }
+
+    # Check optional cmdlets once rather than failing on every mailbox
+    $canCheckInboxRules = [bool](Get-Command -Name Get-InboxRule -ErrorAction SilentlyContinue)
+    $canCheckSweepRules = [bool](Get-Command -Name Get-SweepRule -ErrorAction SilentlyContinue)
+    if (-not $canCheckInboxRules) { Write-LogMessage "[WARN] Get-InboxRule not available - inbox rule checks will be skipped" $warnmessagecolor }
+    if (-not $canCheckSweepRules) { Write-LogMessage "[WARN] Get-SweepRule not available - sweep rule checks will be skipped" $warnmessagecolor }
 
     ## Get all mailboxes
     Write-LogMessage "[INFO] Get all mailbox details - Start" $processmessagecolor
@@ -103,12 +110,16 @@ try {
         $index++
         $shortenedName = Get-ShortText -Text $mailbox.DisplayName -MaxLength 40
         $shortenedUPN = Get-ShortText -Text $mailbox.UserPrincipalName -MaxLength 60
-        Write-Progress -Activity "Checking mailboxes for forwards" -Status "$index of $mailboxCount - $shortenedUPN" -PercentComplete (($index / $mailboxCount) * 100)
+        $percentComplete = if ($mailboxCount -gt 0) { ($index / $mailboxCount) * 100 } else { 100 }
+        Write-Progress -Activity "Checking mailboxes for forwards" -Status "$index of $mailboxCount - $shortenedUPN" -PercentComplete $percentComplete
         if ($VerboseOutput) { Write-LogMessage "Checking $shortenedName - $shortenedUPN" "Gray" }
 
-        ## Mailbox-level forwarding. ForwardingAddress (admin-set) forwards even when DeliverToMailboxAndForward is false
-        $forwardTarget = if ($mailbox.ForwardingSmtpAddress) { $mailbox.ForwardingSmtpAddress } elseif ($mailbox.ForwardingAddress) { $mailbox.ForwardingAddress } else { $null }
-        if ($forwardTarget) {
+        ## Mailbox-level forwarding. ForwardingSmtpAddress (user-set) and ForwardingAddress (admin-set) can both be present
+        $forwardTargets = @()
+        if ($mailbox.ForwardingSmtpAddress) { $forwardTargets += "$($mailbox.ForwardingSmtpAddress)" -replace '^smtp:', '' }
+        if ($mailbox.ForwardingAddress) { $forwardTargets += "$($mailbox.ForwardingAddress)" }
+        if ($forwardTargets) {
+            $forwardTarget = $forwardTargets -join ', '
             if ($mailbox.DeliverToMailboxAndForward) {
                 $mailboxForwardKeepCopyCount++
                 $detail = "Forwards and keeps a copy in mailbox"
@@ -130,6 +141,7 @@ try {
 
         ## Inbox rules set via Outlook / OWA
         try {
+            if (-not $canCheckInboxRules) { throw "skip" }
             $rules = Get-InboxRule -Mailbox $mailbox.UserPrincipalName -ErrorAction Stop
             foreach ($rule in $rules) {
                 if (-not $rule.Enabled) { continue }
@@ -171,12 +183,15 @@ try {
                 }
             }
         } catch {
-            $inboxRuleErrorCount++
-            Write-LogMessage "    Error retrieving rules for ${shortenedName}: $($_.Exception.Message)" $errormessagecolor
+            if ($_.Exception.Message -ne "skip") {
+                $inboxRuleErrorCount++
+                Write-LogMessage "    Error retrieving rules for ${shortenedName}: $($_.Exception.Message)" $errormessagecolor
+            }
         }
 
         ## Sweep rules set via OWA
         try {
+            if (-not $canCheckSweepRules) { throw "skip" }
             $rules = Get-SweepRule -Mailbox $mailbox.UserPrincipalName -ErrorAction Stop
             foreach ($rule in $rules) {
                 if (-not $rule.Enabled) { continue }
@@ -194,8 +209,10 @@ try {
                 })
             }
         } catch {
-            $sweepRuleErrorCount++
-            Write-LogMessage "    Error retrieving sweep rules for ${shortenedName}: $($_.Exception.Message)" $errormessagecolor
+            if ($_.Exception.Message -ne "skip") {
+                $sweepRuleErrorCount++
+                Write-LogMessage "    Error retrieving sweep rules for ${shortenedName}: $($_.Exception.Message)" $errormessagecolor
+            }
         }
     }
 
@@ -214,13 +231,24 @@ try {
     Write-LogMessage "    Total findings = $($findings.Count)" $systemmessagecolor
 
     if ($CsvFile) {
-        $findings | Export-Csv -Path $CsvFile -NoTypeInformation -Encoding UTF8
-        Write-LogMessage "`nFindings exported to $CsvFile" $processmessagecolor
+        try {
+            $csvDirectory = Split-Path -Path $CsvFile -Parent
+            if ($csvDirectory -and -not (Test-Path -Path $csvDirectory)) {
+                New-Item -Path $csvDirectory -ItemType Directory -Force | Out-Null
+            }
+            $findings | Export-Csv -Path $CsvFile -NoTypeInformation -Encoding UTF8
+            Write-LogMessage "`nFindings exported to $CsvFile" $processmessagecolor
+        } catch {
+            Write-LogMessage "`nFailed to export CSV to ${CsvFile}: $($_.Exception.Message)" $errormessagecolor
+        }
     }
 
 } catch {
+    $fatalError = $true
     Write-LogMessage "An error occurred: $($_.Exception.Message)" $errormessagecolor
 } finally {
     Write-LogMessage "Script complete" $systemmessagecolor
     Write-LogMessage "Log file: $script:LogFile`n" $processmessagecolor
 }
+
+if ($fatalError) { exit 1 }

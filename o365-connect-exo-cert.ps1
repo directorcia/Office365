@@ -343,7 +343,7 @@ function Get-DeviceCodeGraphToken {
         }
         catch {
             $errorContent = $null
-            try { $errorContent = ($_.ErrorDetails.Message | ConvertFrom-Json) } catch {}
+            try { $errorContent = ($_.ErrorDetails.Message | ConvertFrom-Json) } catch { Write-Debug "Token poll error body was not JSON." }
             if ($null -ne $errorContent) {
                 switch ($errorContent.error) {
                     "authorization_pending" {
@@ -402,15 +402,15 @@ function Invoke-ExoGraphRequest {
             $attempt++
 
             $detail = $null
-            try { $detail = ($_.ErrorDetails.Message | ConvertFrom-Json).error.message } catch {}
+            try { $detail = ($_.ErrorDetails.Message | ConvertFrom-Json).error.message } catch { Write-Debug "Graph error body was not JSON." }
             $msg = if ($null -ne $detail) { $detail } else { $_.Exception.Message }
 
             $statusCode = $null
             $retryAfterSeconds = $null
             $response = $null
-            try { $response = $_.Exception.Response } catch {}
+            try { $response = $_.Exception.Response } catch { Write-Debug "No HTTP response object on exception." }
             if ($null -ne $response) {
-                try { $statusCode = [int]$response.StatusCode } catch {}
+                try { $statusCode = [int]$response.StatusCode } catch { Write-Debug "Could not read response status code." }
                 try {
                     $retryAfterValue = $response.Headers['Retry-After']
                     if ($null -ne $retryAfterValue) {
@@ -423,7 +423,7 @@ function Invoke-ExoGraphRequest {
                         }
                     }
                 }
-                catch {}
+                catch { Write-Debug "Could not read Retry-After header." }
             }
 
             $isRetriableStatus = ($statusCode -in @(429, 500, 502, 503, 504))
@@ -485,7 +485,10 @@ function Set-ExoProfileMapEntry {
         if (Test-Path -Path $fullMapPath) {
             try {
                 $raw = Get-Content -Path $fullMapPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-                if ($null -ne $raw.profiles) { $mapData = $raw }
+                ## Accept both supported map formats (bare array and { profiles = [...] })
+                ## so an array-format map is not silently wiped on update.
+                if ($raw -is [System.Array]) { $mapData = @{ profiles = @($raw) } }
+                elseif ($null -ne $raw.profiles) { $mapData = $raw }
             }
             catch {
                 Write-Debug "Could not parse existing profile map inside lock - will overwrite."
@@ -584,7 +587,7 @@ function Get-CertClientAssertionToken {
     }
     catch {
         $detail = $null
-        try { $detail = ($_.ErrorDetails.Message | ConvertFrom-Json).error_description } catch {}
+        try { $detail = ($_.ErrorDetails.Message | ConvertFrom-Json).error_description } catch { Write-Debug "Token error body was not JSON." }
         throw "Client assertion token request failed: $(if ($detail) { $detail } else { $_.Exception.Message })"
     }
 }
@@ -1072,10 +1075,11 @@ try {
             }
         }
 
+        ## Pass -Command explicitly: pwsh treats a bare first argument as -File, not -Command.
         Write-Host -ForegroundColor $Colors.ProcessMessage "Installing PowerShellGet module - Administration escalation required"
-        Start-Process $elevatedShellPath -Verb runAs -ArgumentList "Install-Module PowershellGet -Force" -Wait -WindowStyle Hidden
+        Start-Process $elevatedShellPath -Verb runAs -ArgumentList '-NoProfile', '-Command', 'Install-Module PowershellGet -Force' -Wait -WindowStyle Hidden
         Write-Host -ForegroundColor $Colors.ProcessMessage "Installing Exchange Online PowerShell module - Administration escalation required"
-        Start-Process $elevatedShellPath -Verb runAs -ArgumentList "Install-Module -Name ExchangeOnlineManagement -Force -Confirm:`$false" -Wait -WindowStyle Hidden
+        Start-Process $elevatedShellPath -Verb runAs -ArgumentList '-NoProfile', '-Command', 'Install-Module -Name ExchangeOnlineManagement -Force -Confirm:$false' -Wait -WindowStyle Hidden
 
         ## The elevated window runs hidden, so verify the outcome rather than trusting it.
         if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
@@ -1097,19 +1101,27 @@ try {
         }
         elseif ([version]$localVersion -lt [version]$onlineVersion) {
             Write-Host -ForegroundColor $Colors.WarningMessage "Local module $localVersion is lower than Gallery module $onlineVersion"
+            $doUpdate = $noprompt
             if (-not $noprompt) {
                 do {
                     $updateResponse = Read-Host -Prompt "`nDo you wish to update the Exchange Online PowerShell module (Y/N)?"
                 } until (-not [string]::IsNullOrWhiteSpace($updateResponse))
-
-                if ($updateResponse -eq 'Y' -or $updateResponse -eq 'y') {
-                    Write-Host -ForegroundColor $Colors.ProcessMessage "Updating Exchange Online module - Administration escalation required"
-                    Start-Process $elevatedShellPath -Verb runAs -ArgumentList "Update-Module -Name ExchangeOnlineManagement -Force -Confirm:`$false" -Wait -WindowStyle Hidden
-                }
+                $doUpdate = ($updateResponse -eq 'Y')
             }
-            else {
+
+            if ($doUpdate) {
                 Write-Host -ForegroundColor $Colors.ProcessMessage "Updating Exchange Online module - Administration escalation required"
-                Start-Process $elevatedShellPath -Verb runAs -ArgumentList "Update-Module -Name ExchangeOnlineManagement -Force -Confirm:`$false" -Wait -WindowStyle Hidden
+                ## Pass -Command explicitly: pwsh treats a bare first argument as -File, not -Command.
+                Start-Process $elevatedShellPath -Verb runAs -ArgumentList '-NoProfile', '-Command', 'Update-Module -Name ExchangeOnlineManagement -Force -Confirm:$false' -Wait -WindowStyle Hidden
+
+                ## The elevated window runs hidden, so verify the outcome rather than trusting it.
+                $updatedModule = Get-InstalledModule -Name ExchangeOnlineManagement -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+                if ($null -ne $updatedModule -and [version]($updatedModule.Version -as [string]) -ge [version]$onlineVersion) {
+                    Write-Host -ForegroundColor $Colors.ProcessMessage "Module updated to $($updatedModule.Version)"
+                }
+                else {
+                    Write-Host -ForegroundColor $Colors.WarningMessage "Module update could not be verified - continuing with installed version $localVersion."
+                }
             }
         }
         else {
@@ -1118,6 +1130,59 @@ try {
     }
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Loading Exchange Online PowerShell module"
+
+    ## Fail fast on the Microsoft.IdentityModel.Abstractions version conflict. Modules loaded
+    ## earlier in this session (PnP.PowerShell, Az, Microsoft.Graph) may have loaded an older
+    ## copy, and .NET cannot unload assemblies, so Connect-ExchangeOnline is doomed to fail.
+    $identityAbstractions = [System.AppDomain]::CurrentDomain.GetAssemblies() |
+        Where-Object { $_.GetName().Name -eq 'Microsoft.IdentityModel.Abstractions' } |
+        Select-Object -First 1
+    if ($null -ne $identityAbstractions) {
+        $exoModuleInfo = Get-Module -ListAvailable -Name ExchangeOnlineManagement | Sort-Object Version -Descending | Select-Object -First 1
+        $runtimeFolder = if ($PSVersionTable.PSEdition -eq 'Core') { 'netCore' } else { 'netFramework' }
+        $bundledDllPath = Join-Path (Join-Path $exoModuleInfo.ModuleBase $runtimeFolder) 'Microsoft.IdentityModel.Abstractions.dll'
+        if (Test-Path -Path $bundledDllPath) {
+            $requiredVersion = [System.Reflection.AssemblyName]::GetAssemblyName($bundledDllPath).Version
+            $loadedVersion = $identityAbstractions.GetName().Version
+            if ($loadedVersion -lt $requiredVersion) {
+                Write-Host -ForegroundColor $Colors.WarningMessage "Assembly conflict detected: Microsoft.IdentityModel.Abstractions $loadedVersion is already loaded in this session (typically by PnP.PowerShell, Az, or Microsoft.Graph loaded earlier), but ExchangeOnlineManagement $($exoModuleInfo.Version) requires $requiredVersion."
+                Write-Host -ForegroundColor $Colors.WarningMessage ".NET cannot unload assemblies, so this session cannot connect to Exchange Online."
+
+                ## Guard against a relaunch loop if the fresh session still hits the conflict.
+                if ($env:EXO_CERT_RELAUNCHED -eq '1') {
+                    throw "Assembly conflict persists after relaunch: Microsoft.IdentityModel.Abstractions $loadedVersion loaded but $requiredVersion required. Something in the new session is still pre-loading an old assembly - investigate manually."
+                }
+
+                ## Auto-relaunch in a fresh window, re-passing the original invocation. -NoProfile
+                ## prevents the user's profile from reloading the very modules that caused this conflict.
+                $relaunchArgs = [System.Collections.Generic.List[string]]::new()
+                foreach ($relaunchArg in @('-NoProfile', '-NoExit', '-File', $PSCommandPath)) { $relaunchArgs.Add($relaunchArg) }
+                foreach ($boundParam in $PSBoundParameters.GetEnumerator()) {
+                    if ($boundParam.Value -is [securestring]) { continue }  ## cannot marshal across processes; new session will prompt
+                    if ($boundParam.Value -is [System.Management.Automation.SwitchParameter] -or $boundParam.Value -is [bool]) {
+                        if ($boundParam.Value) { $relaunchArgs.Add("-$($boundParam.Key)") }
+                    }
+                    else {
+                        $relaunchArgs.Add("-$($boundParam.Key)")
+                        $relaunchValue = "$($boundParam.Value)"
+                        if ($relaunchValue -match '\s') { $relaunchValue = '"' + $relaunchValue + '"' }
+                        $relaunchArgs.Add($relaunchValue)
+                    }
+                }
+                $env:EXO_CERT_RELAUNCHED = '1'  ## inherited by the child process
+                try {
+                    Start-Process $elevatedShellPath -ArgumentList $relaunchArgs
+                }
+                finally {
+                    Remove-Item Env:\EXO_CERT_RELAUNCHED -ErrorAction SilentlyContinue
+                }
+                Write-Host -ForegroundColor $Colors.SystemMessage "New PowerShell window launched automatically - continue there. The Exchange Online session will live in that window."
+                exit 0
+            }
+            Write-Debug "Microsoft.IdentityModel.Abstractions $loadedVersion already loaded; EXO requires $requiredVersion - compatible."
+        }
+    }
+
     Import-Module ExchangeOnlineManagement -ErrorAction Stop | Out-Null
 
     if ($GenerateLocalCertificate) {
@@ -1295,20 +1360,21 @@ try {
         Write-Debug "Certificate valid for $daysUntilExpiry more day(s)."
     }
 
-    ## Check for any existing Exchange Online connection.
-    $existingConnection = Get-ConnectionInformation -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($null -ne $existingConnection) {
-        if ($existingConnection.Organization -eq $Organization) {
-            Write-Host -ForegroundColor $Colors.ProcessMessage "Already connected to $Organization - skipping reconnect."
-            Write-ExoConnectedOrganization -RequestedOrganization $Organization -Colors $Colors
-            Write-Host -ForegroundColor $Colors.SystemMessage "Exchange Online certificate auth flow finished`n"
-            exit 0
-        }
-        else {
-            Write-Host -ForegroundColor $Colors.WarningMessage "Currently connected to '$($existingConnection.Organization)'. A new connection to '$Organization' will be made and the existing connection will be ended."
-            Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
-            Write-Host -ForegroundColor $Colors.ProcessMessage "Previous connection disconnected."
-        }
+    ## Check all existing Exchange Online connections, not just the first, so a
+    ## matching session is reused even when other tenant connections are also open.
+    $existingConnections = @(Get-ConnectionInformation -ErrorAction SilentlyContinue)
+    $matchingConnection = $existingConnections | Where-Object { $_.Organization -eq $Organization } | Select-Object -First 1
+    if ($null -ne $matchingConnection) {
+        Write-Host -ForegroundColor $Colors.ProcessMessage "Already connected to $Organization - skipping reconnect."
+        Write-ExoConnectedOrganization -RequestedOrganization $Organization -Colors $Colors
+        Write-Host -ForegroundColor $Colors.SystemMessage "Exchange Online certificate auth flow finished`n"
+        exit 0
+    }
+    elseif ($existingConnections.Count -gt 0) {
+        $connectedOrgList = ($existingConnections | ForEach-Object { $_.Organization }) -join "', '"
+        Write-Host -ForegroundColor $Colors.WarningMessage "Currently connected to '$connectedOrgList'. A new connection to '$Organization' will be made and the existing connection(s) will be ended."
+        Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+        Write-Host -ForegroundColor $Colors.ProcessMessage "Previous connection(s) disconnected."
     }
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Connecting to Exchange Online with certificate authentication"
@@ -1328,6 +1394,10 @@ catch {
     Write-Host -ForegroundColor $Colors.ErrorMessage "Script failed: $($_.Exception.Message)"
     if ($UseCertificateAuth -and $_.Exception.Message -match '(?i)access denied|forbidden|unauthorized|insufficient privileges|aadsts|permission|not authorized') {
         Write-Host -ForegroundColor $Colors.WarningMessage "If this app/certificate was just provisioned, wait 15-30 minutes and retry due to RBAC replication lag."
+    }
+    if ($_.Exception.Message -match '(?i)could not load file or assembly|assembly.s manifest definition does not match') {
+        Write-Host -ForegroundColor $Colors.WarningMessage "This is a .NET assembly version conflict caused by another module loaded earlier in this session (e.g. PnP.PowerShell, Az, Microsoft.Graph)."
+        Write-Host -ForegroundColor $Colors.WarningMessage "Open a NEW PowerShell session and run this script there first - assemblies cannot be unloaded from a running session."
     }
     exit 1
 }
