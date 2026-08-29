@@ -1,3 +1,114 @@
+<#
+.SYNOPSIS
+    Connect to the SharePoint Online admin center using certificate-based (app-only) authentication,
+    or generate and provision the certificate/Entra ID app required to do so.
+
+.DESCRIPTION
+    This script operates in exactly one of two mutually exclusive modes:
+
+    MODE 1: -GenerateLocalCertificate
+        Creates a self-signed RSA-2048 certificate in the CurrentUser\My store and exports the
+        public .cer file (and optionally a .pfx with private key). When combined with
+        -ProvisionEntraApp it also:
+          1. Authenticates to Microsoft Graph via the device-code flow (delegated, interactive).
+          2. Creates (or reuses) an Entra ID app registration.
+          3. Uploads the certificate as a key credential on that app.
+          4. Grants and consents SharePoint Sites.FullControl.All plus Microsoft Graph
+             Application.Read.All and Group.Read.All application permissions.
+          5. Saves the resulting tenant/app/thumbprint details to a JSON profile map so future
+             connections need no parameters.
+
+    MODE 2: -UseCertificateAuth
+        Connects to the SharePoint admin center non-interactively using an existing app + certificate.
+        Connection values are resolved in this order of precedence:
+          1. Explicit parameters (-Tenant, -AdminUrl, -AppId, -CertificateThumbprint).
+          2. A matching profile in the JSON profile map (see -CertificateMapPath).
+          3. Derivation/discovery (admin URL derived from tenant name; thumbprint discovered in the
+             local certificate store; missing private keys re-imported from an exported PFX).
+
+.PARAMETER noprompt
+    Suppress all interactive prompts (for automation). Ambiguous situations become errors instead.
+
+.PARAMETER noupdate
+    Skip the check for a newer version of the SharePoint Online PowerShell module.
+
+.PARAMETER enableLog
+    Write a transcript log file (o365-connect-spo-admin.txt) in the script's parent directory.
+
+.PARAMETER GenerateLocalCertificate
+    Mode 1: generate a self-signed certificate for app-only authentication.
+
+.PARAMETER UseCertificateAuth
+    Mode 2: connect to the SharePoint admin center using an existing app registration and certificate.
+
+.PARAMETER GeneratedCertSubject
+    Subject (CN) for the generated certificate. Default: O365-SPO-AppAuth.
+
+.PARAMETER GeneratedCertYearsValid
+    Validity period in years for the generated certificate. Default: 2.
+
+.PARAMETER GeneratedCertOutputPath
+    Folder for exported certificate files. Defaults to the parent of the script directory.
+
+.PARAMETER ExportGeneratedPfx
+    Also export the private key as a .pfx file (needed to use the certificate on other machines).
+
+.PARAMETER GeneratedPfxPassword
+    SecureString password protecting the exported PFX. If omitted interactively you are prompted;
+    with -noprompt an EMPTY password is used (a warning is shown).
+
+.PARAMETER Tenant
+    Tenant identifier: a GUID, .onmicrosoft.com domain, or custom domain. Used for authentication
+    and for deriving the admin URL when -AdminUrl is not supplied.
+
+.PARAMETER ProfileName
+    Name of a profile entry in the JSON profile map to select (Mode 2).
+
+.PARAMETER AdminUrl
+    SharePoint admin center URL (e.g. https://contoso-admin.sharepoint.com). Derived from -Tenant
+    when omitted.
+
+.PARAMETER AppId
+    Application (client) ID of the Entra ID app registration used for certificate authentication.
+
+.PARAMETER CertificateThumbprint
+    Thumbprint of the authentication certificate in Cert:\CurrentUser\My or Cert:\LocalMachine\My.
+
+.PARAMETER CertificateMapPath
+    Path to the JSON profile map file. Defaults to o365-spo-admin-cert-auth.json under the
+    parent of the script directory (cert-export subfolder preferred).
+
+.PARAMETER ProvisionEntraApp
+    With -GenerateLocalCertificate: also create the Entra app, upload the certificate, grant
+    permissions with admin consent, and update the profile map (requires Global Admin or
+    equivalent to consent).
+
+.PARAMETER AppDisplayName
+    Display name for the provisioned Entra app. Defaults to the certificate subject.
+
+.PARAMETER SetupClientId
+    Client ID of a public client app used for the interactive device-code Graph sign-in during
+    provisioning. Defaults to the well-known Azure PowerShell public client.
+
+.PARAMETER CopyDeviceCodeToClipboard
+    Opt-in: copy the device code to the clipboard. Disabled by default because clipboard contents
+    can leak on shared/RDP sessions.
+
+.EXAMPLE
+    .\o365-connect-spo-cert.ps1 -GenerateLocalCertificate -ProvisionEntraApp -Tenant contoso.onmicrosoft.com
+    One-time setup: creates the certificate, the Entra app, grants permissions, and saves a profile.
+
+.EXAMPLE
+    .\o365-connect-spo-cert.ps1 -UseCertificateAuth
+    Connects using the single profile stored in the JSON profile map (prompts if several match).
+
+.EXAMPLE
+    .\o365-connect-spo-cert.ps1 -UseCertificateAuth -Tenant contoso.onmicrosoft.com -AppId <guid> -CertificateThumbprint <thumb> -noprompt
+    Fully explicit, non-interactive connection suitable for scheduled automation.
+
+.NOTES
+    Script provided as is. Use at own risk. No guarantees or warranty provided.
+#>
 [CmdletBinding()]  ## FIX #15: enables -Debug and -Verbose switches at script level
 param(
     [switch]$noprompt = $false,   ## if -noprompt used then user will not be asked for any input
@@ -254,6 +365,10 @@ function Resolve-SpoAdminCertificate {
         }
     }
 
+    ## Cert not in either store - fall back to searching for a previously exported PFX file.
+    ## A PFX is only considered a match if its file name contains the requested thumbprint
+    ## (the export naming convention is <subject>-<thumbprint>.pfx), and import is attempted
+    ## with an empty password only, matching the script's own no-password export default.
     $pfxSearchRoots = @(
         $script:scriptDir,
         $script:scriptParentDir,
@@ -498,6 +613,10 @@ function Get-DeviceCodeGraphToken {
     ## FIX #7: Explicitly cast to [int] to avoid type-widening from JSON long on PS7.
     $pollInterval = [int]$deviceCodeResponse.interval
 
+    ## Poll the token endpoint per RFC 8628 until the user completes browser sign-in:
+    ##  - 'authorization_pending' -> keep polling at the server-suggested interval
+    ##  - 'slow_down'             -> back off by 5 seconds and keep polling
+    ##  - any other error, or reaching the device-code expiry deadline -> abort
     :pollLoop while ((Get-Date) -lt $deadline) {
         Start-Sleep -Seconds $pollInterval
         try {
@@ -596,6 +715,9 @@ function Invoke-SpoAdminGraphRequest {
                 catch {}
             }
 
+            ## Retry only transient failures: HTTP 429 (throttling) and 5xx (server errors), or
+            ## throttling-flavoured messages when no status code is available. A Retry-After header,
+            ## when present, overrides the exponential backoff (2s, 4s, 8s, ... capped at 30s).
             $isRetriableStatus  = ($statusCode -in @(429, 500, 502, 503, 504))
             $isRetriableMessage = ($msg -match '(?i)too many requests|throttl|rate limit|temporar|timeout|try again')
             $shouldRetry = ($attempt -le $MaxRetries) -and ($isRetriableStatus -or $isRetriableMessage)
@@ -636,6 +758,9 @@ function Set-SpoAdminProfileMapEntry {
         $sha256.Dispose()
     }
 
+    ## A system-wide named mutex (name derived from the map file path) serialises writes so
+    ## concurrent script runs against the same JSON file cannot corrupt it. The write itself is
+    ## atomic: content goes to a temp file first, then Move-Item replaces the real file.
     $hashHex   = ([System.BitConverter]::ToString($hashBytes)).Replace('-', '')
     $mutexName = "Global\CIAOPS_SPO_ADMIN_PROFILEMAP_$hashHex"
 
@@ -721,6 +846,12 @@ function Get-CertClientAssertionToken {
         [Parameter(Mandatory = $true)][System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate,
         [string]$Scope = "https://graph.microsoft.com/.default"
     )
+
+    ## The client_credentials flow with a certificate works by sending a short-lived, self-signed
+    ## JWT ("client assertion") instead of a client secret. The JWT has three base64url parts:
+    ## header (alg + cert thumbprint), payload (issuer/audience/expiry claims), and an RSA-SHA256
+    ## signature produced with the certificate's private key. Entra ID validates the signature
+    ## against the public key uploaded to the app registration.
 
     ## Build the x5t (base64url of cert SHA-1 thumbprint bytes) for the JWT header.
     $thumbprintBytes = $Certificate.GetCertHash()
@@ -1274,9 +1405,16 @@ function Write-SpoAdminConnectedCenter {
     Write-Host -ForegroundColor $Colors.SystemMessage "Connected SharePoint admin center: ${displayUrl}${titleDisplay}"
 }
 
+## ============================================================================
+## MAIN SCRIPT BODY
+## Everything above this point is parameter handling, path resolution, and
+## function definitions. Execution starts here: validate the selected mode,
+## then run either the certificate-generation flow (Mode 1) or the
+## certificate-authentication connection flow (Mode 2).
+## ============================================================================
 Clear-Host
 
-## Enforce TLS 1.2 minimum.
+## Enforce TLS 1.2 minimum - older defaults (TLS 1.0/1.1) are rejected by Microsoft endpoints.
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 if ($enableLog) {
@@ -1289,6 +1427,7 @@ try {
     Write-Host -ForegroundColor $Colors.SystemMessage "SharePoint Online Admin Center Connection script started`n"
     Write-Host -ForegroundColor $Colors.ProcessMessage "Prompt =", (-not $noprompt)
 
+    ## Mode selection is an exclusive-or: exactly one of the two switches must be supplied.
     if (($GenerateLocalCertificate -and $UseCertificateAuth) -or (-not $GenerateLocalCertificate -and -not $UseCertificateAuth)) {
         throw "Specify exactly one mode: -GenerateLocalCertificate or -UseCertificateAuth."
     }
@@ -1312,9 +1451,12 @@ try {
             }
 
             Write-Host -ForegroundColor $Colors.ProcessMessage "Installing SharePoint Online PowerShell module - Administration escalation required"
-            ## FIX #16: Capture exit code from elevated install; fail early with a clear message if UAC was denied or'$ErrorActionPreference = ''Stop''; Install-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:$false'
+            ## FIX #16: Capture the exit code from the elevated install so a denied UAC prompt or a
+            ##          failed install is detected instead of silently continuing without the module.
             ## FIX #17: Pass -Command explicitly - pwsh (PS6+) treats a bare first argument as -File, not -Command.
-            $installProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', "Install-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:`$false") -Wait -WindowStyle Hidden -PassThru
+            ## $ErrorActionPreference = 'Stop' inside the elevated session makes Install-Module failures
+            ## surface as a non-zero exit code that the check below can act on.
+            $installProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', '$ErrorActionPreference = ''Stop''; Install-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:$false') -Wait -WindowStyle Hidden -PassThru
             if ($installProcess.ExitCode -ne 0) {
                 throw "Elevated module install failed (exit code $($installProcess.ExitCode)). Run PowerShell as Administrator and retry, or install the module manually: Install-Module -Name microsoft.online.sharepoint.powershell"
             }
@@ -1403,6 +1545,9 @@ try {
             }
         }
 
+        ## Confirm the loaded module actually supports certificate connection parameters.
+        ## Some module/load-context combinations (notably implicit remoting proxies) expose a
+        ## reduced Connect-SPOService parameter set, so inspect it rather than trusting the version.
         $connectSpoCommand = Get-Command -Name Connect-SPOService -ErrorAction Stop
         $connectParamKeys  = @($connectSpoCommand.Parameters.Keys)
         $hasAppParam       = ($connectParamKeys -contains 'ClientId' -or $connectParamKeys -contains 'AppId')
@@ -1431,6 +1576,13 @@ try {
         }
     }
 
+    ## ------------------------------------------------------------------------
+    ## MODE 1: -GenerateLocalCertificate
+    ## Steps: (1) create self-signed cert in CurrentUser\My and export .cer/.pfx,
+    ##        (2) optionally provision the Entra app via Graph (device-code auth),
+    ##        (3) upload cert + grant app permissions with admin consent,
+    ##        (4) persist the connection profile to the JSON map for future runs.
+    ## ------------------------------------------------------------------------
     if ($GenerateLocalCertificate) {
         $provisionTenant = $Tenant
         if ($ProvisionEntraApp) {
@@ -1510,7 +1662,14 @@ try {
         exit 0
     }
 
-    # --- UseCertificateAuth mode ---
+    ## ------------------------------------------------------------------------
+    ## MODE 2: -UseCertificateAuth
+    ## Resolution precedence for each connection value (Tenant/AdminUrl/AppId/Thumbprint):
+    ##   1. Explicit script parameter.
+    ##   2. Matching profile entry from the JSON profile map.
+    ##   3. Derivation (AdminUrl from tenant name) or discovery (thumbprint from cert store).
+    ## Anything still missing after all three stages is a hard error.
+    ## ------------------------------------------------------------------------
     Write-Debug "Resolving profile and certificate auth inputs."
     $resolvedProfile = Resolve-SpoAdminCertificateProfile -Path $CertificateMapPath -TenantFilter $Tenant -ProfileFilter $ProfileName -AdminUrlFilter $AdminUrl -NoPrompt:$noprompt -Colors $Colors
     if ($null -ne $resolvedProfile) {
@@ -1564,6 +1723,7 @@ try {
     }
 
     ## Probe for an existing SPO connection and disconnect if one is active.
+    ## Get-SPOTenant throws when there is no active session, so a successful call means connected.
     $existingConnection = $false
     try { Get-SPOTenant -ErrorAction Stop | Out-Null; $existingConnection = $true } catch {}
 
@@ -1575,6 +1735,10 @@ try {
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Connecting to SharePoint admin center with certificate authentication"
 
+    ## Connect-SPOService parameter names have drifted across SPO module versions
+    ## (ClientId vs AppId, Certificate vs CertificateThumbprint vs Thumbprint, Tenant vs TenantId).
+    ## Build the splat dynamically from whichever parameters the loaded module actually exposes
+    ## so the script works with old and new module releases alike.
     $connectSpoCommand = Get-Command -Name Connect-SPOService -ErrorAction Stop
     $connectParams = @{
         Url         = $AdminUrl

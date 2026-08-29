@@ -1,43 +1,154 @@
+<#
+.SYNOPSIS
+    Connect to Exchange Online using certificate-based (app-only) authentication, and
+    optionally generate the certificate and provision the required Entra ID app registration.
+
+.DESCRIPTION
+    This script operates in exactly one of two mutually exclusive modes:
+
+    MODE 1 - Certificate generation (-GenerateLocalCertificate)
+        Creates a self-signed RSA-2048 certificate in Cert:\CurrentUser\My and exports the
+        public key (.cer) - and optionally a password-protected .pfx - to disk.
+        With -ProvisionEntraApp it additionally performs full one-time setup:
+          1. Authenticates to Microsoft Graph via the device-code flow (delegated admin sign-in).
+          2. Creates (or reuses) an Entra ID app registration for Exchange app-only auth.
+          3. Uploads the new certificate to the app's keyCredentials.
+          4. Creates the service principal and grants Exchange.ManageAsApp and
+             Graph Application.Read.All with admin consent.
+          5. Connects to Exchange Online interactively (admin) and adds the app's service
+             principal to the 'Organization Management' RBAC role group.
+          6. Records the tenant/app/thumbprint in a JSON profile map for later connections.
+
+    MODE 2 - Certificate connect (-UseCertificateAuth)
+        Connects to Exchange Online unattended using an existing app registration and a
+        certificate installed in Cert:\CurrentUser\My. Connection details are taken from
+        explicit parameters (-Organization, -AppId, -CertificateThumbprint) or looked up in
+        the JSON profile map created during provisioning (filterable by -Tenant,
+        -ProfileName, or -Organization). After connecting, the script prints the local
+        certificate details and the matching Entra ID app key credential for verification.
+
+.PARAMETER noprompt
+    Suppress all interactive prompts (for scheduled/unattended runs). Ambiguous situations
+    that would normally prompt (e.g. multiple matching profiles) become terminating errors.
+
+.PARAMETER noupdate
+    Skip the PowerShell Gallery check for a newer ExchangeOnlineManagement module version.
+
+.PARAMETER enableLog
+    Write a transcript log to 'o365-connect-exo.txt' in the script's parent directory.
+
+.PARAMETER GenerateLocalCertificate
+    Select MODE 1: create and export a new self-signed certificate.
+
+.PARAMETER UseCertificateAuth
+    Select MODE 2: connect to Exchange Online with an existing app/certificate.
+
+.PARAMETER GeneratedCertSubject
+    Subject (CN) and default friendly name for the generated certificate.
+
+.PARAMETER GeneratedCertYearsValid
+    Validity period of the generated certificate in years (1-100).
+
+.PARAMETER GeneratedCertOutputPath
+    Folder where the .cer/.pfx files are written. Defaults to the script's parent directory.
+
+.PARAMETER ExportGeneratedPfx
+    Also export the private key as a password-protected .pfx (needed to install the same
+    certificate on other machines).
+
+.PARAMETER GeneratedPfxPassword
+    SecureString password protecting the exported .pfx. Prompted for when omitted, unless
+    -noprompt is used (in which case omission is an error).
+
+.PARAMETER Tenant
+    Tenant ID or domain (e.g. contoso.onmicrosoft.com). In MODE 1 with -ProvisionEntraApp it
+    is the tenant to provision into; in MODE 2 it filters the profile map.
+
+.PARAMETER ProfileName
+    MODE 2: select a profile map entry by its 'name' property.
+
+.PARAMETER Organization
+    MODE 2: Exchange organization to connect to (also filters the profile map).
+
+.PARAMETER AppId
+    MODE 2: Entra ID application (client) ID. Overrides the profile map value.
+
+.PARAMETER CertificateThumbprint
+    MODE 2: SHA-1 thumbprint of the auth certificate in Cert:\CurrentUser\My.
+    Overrides the profile map value. Stray whitespace/punctuation is stripped automatically.
+
+.PARAMETER CertificateMapPath
+    Path to the JSON profile map. Defaults to 'o365-exo-cert-auth.json' in the script's
+    parent directory. Supports either a bare array of profiles or { "profiles": [...] }.
+
+.PARAMETER ProvisionEntraApp
+    MODE 1 only: also create the Entra app, upload the cert, grant permissions, assign the
+    Exchange RBAC role, and update the profile map (see DESCRIPTION for the full sequence).
+
+.PARAMETER AppDisplayName
+    Display name for the provisioned Entra app. Defaults to -GeneratedCertSubject.
+
+.PARAMETER SetupClientId
+    Client ID of a public client app used for the device-code Graph sign-in during
+    provisioning. Defaults to the well-known Azure PowerShell public client.
+
+.PARAMETER CopyDeviceCodeToClipboard
+    Copy the device code to the clipboard during provisioning sign-in. Opt-in only, because
+    clipboard contents can leak on shared/RDP sessions.
+
+.EXAMPLE
+    .\o365-connect-exo-cert.ps1 -GenerateLocalCertificate -ProvisionEntraApp -Tenant contoso.onmicrosoft.com
+    One-time setup: generate a certificate, create the Entra app, grant permissions,
+    assign RBAC, and save a connection profile.
+
+.EXAMPLE
+    .\o365-connect-exo-cert.ps1 -UseCertificateAuth -Tenant contoso.onmicrosoft.com
+    Unattended connect using the saved profile for that tenant.
+
+.EXAMPLE
+    .\o365-connect-exo-cert.ps1 -UseCertificateAuth -Organization contoso.onmicrosoft.com -AppId 11111111-2222-3333-4444-555555555555 -CertificateThumbprint ABCDEF0123456789ABCDEF0123456789ABCDEF01
+    Connect with explicit values, bypassing the profile map.
+
+.NOTES
+    CIAOPS - Script provided as is. Use at own risk. No guarantees or warranty provided.
+    Usage - https://github.com/directorcia/Office365/wiki/Connect-to-Exchange-Online-with-Certificates
+    Source - https://github.com/directorcia/Office365/blob/master/o365-connect-exo-cert.ps1
+#>
 param(
     [switch]$noprompt = $false,   ## if -noprompt used then user will not be asked for any input
     [switch]$noupdate = $false,   ## if -noupdate used then module will not be checked for more recent version
     [switch]$enableLog = $false,  ## if -enableLog create a transcript log file
 
-    [switch]$GenerateLocalCertificate = $false,
-    [switch]$UseCertificateAuth = $false,
+    ## --- Mode selection (exactly one is required) ---
+    [switch]$GenerateLocalCertificate = $false,  ## MODE 1: create/export a new self-signed cert
+    [switch]$UseCertificateAuth = $false,        ## MODE 2: connect with an existing app/cert
 
-    [string]$GeneratedCertSubject = "O365-EXO-AppAuth",
-    [int]$GeneratedCertYearsValid = 2,
+    ## --- MODE 1 (certificate generation) options ---
+    [string]$GeneratedCertSubject = "O365-EXO-AppAuth",  ## CN and default friendly name of the new cert
+    [int]$GeneratedCertYearsValid = 2,                    ## cert lifetime in years
     [string]$GeneratedCertOutputPath = "",  ## defaults to parent of script directory at runtime
-    [switch]$ExportGeneratedPfx = $false,
-    [securestring]$GeneratedPfxPassword,
+    [switch]$ExportGeneratedPfx = $false,   ## also export private key as password-protected .pfx
+    [securestring]$GeneratedPfxPassword,    ## .pfx password; prompted for if omitted (unless -noprompt)
 
-    [string]$Tenant,
-    [string]$ProfileName,
-    [string]$Organization,
-    [string]$AppId,
-    [string]$CertificateThumbprint,
+    ## --- MODE 2 (certificate connect) options ---
+    ## Values may come from these parameters directly or from the JSON profile map.
+    [string]$Tenant,                 ## tenant ID/domain; provisioning target (MODE 1) or map filter (MODE 2)
+    [string]$ProfileName,            ## select a profile map entry by name
+    [string]$Organization,           ## Exchange organization to connect to
+    [string]$AppId,                  ## Entra ID application (client) ID
+    [string]$CertificateThumbprint,  ## SHA-1 thumbprint of the cert in Cert:\CurrentUser\My
     [string]$CertificateMapPath = "",  ## defaults to o365-exo-cert-auth.json in parent of script directory
 
     ## When used with -GenerateLocalCertificate, also create the Entra app, upload the cert,
     ## grant Exchange.ManageAsApp, and update the profile map automatically.
     [switch]$ProvisionEntraApp = $false,
-    [string]$AppDisplayName = "",
+    [string]$AppDisplayName = "",  ## Entra app display name; defaults to -GeneratedCertSubject
     ## Client ID of a public client app registered in your tenant for device-code Graph auth.
     ## Defaults to the well-known Azure PowerShell public client.
     [string]$SetupClientId = "1950a258-227b-4e31-a9cf-717495945fc2",
     ## Opt-in only. Clipboard copy can leak auth codes in shared/RDP sessions.
     [switch]$CopyDeviceCodeToClipboard = $false
 )
-<# CIAOPS
-Script provided as is. Use at own risk. No guarantees or warranty provided.
-Description - Simplified Exchange Online connect script with two modes:
-1. GenerateLocalCertificate: create/export local cert files.
-2. UseCertificateAuth: connect to Exchange Online with existing app/cert.
-Usage - For setup and execution examples, see:
-https://github.com/directorcia/Office365/wiki/Connect-to-Exchange-Online-with-Certificates
-Source - https://github.com/directorcia/Office365/blob/master/o365-connect-exo-cert.ps1
-#>
 
 ## Resolve paths relative to the script file itself, not the caller's working directory.
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -225,12 +336,16 @@ function New-ExoLocalCertificate {
         New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
     }
 
+    ## RSA-2048/SHA-256 with KeySpec Signature matches what Entra ID expects for
+    ## client-assertion certs; Exportable allows the optional .pfx export below.
     $certificate = New-SelfSignedCertificate -Subject "CN=$SubjectName" -CertStoreLocation "Cert:\CurrentUser\My" -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears($YearsValid) -KeySpec Signature -ErrorAction Stop
 
     $resolvedFriendlyName = if ([string]::IsNullOrWhiteSpace($FriendlyName)) { $SubjectName } else { $FriendlyName }
     $certificate.FriendlyName = $resolvedFriendlyName
     Write-Debug "Certificate friendly name set to: $resolvedFriendlyName"
 
+    ## File names embed the thumbprint (e.g. Subject-THUMBPRINT.cer) so repeated runs
+    ## never overwrite each other; strip characters unsafe in file names first.
     $safeSubject = ($SubjectName -replace '[^A-Za-z0-9\-_.]', '-')
     $fileBase = "{0}-{1}" -f $safeSubject, $certificate.Thumbprint
     $cerPath = Join-Path -Path $OutputPath -ChildPath "$fileBase.cer"
@@ -1041,11 +1156,19 @@ function Write-ExoConnectedOrganization {
     }
 }
 
+## ============================================================================
+##  MAIN SCRIPT BODY
+##  Flow: environment prep -> module install/update checks -> assembly conflict
+##  guard -> MODE 1 (generate/provision) or MODE 2 (certificate connect).
+## ============================================================================
+
 Clear-Host
 
 ## Enforce TLS 1.2 minimum. Required for .NET Framework / PowerShell 5.1; .NET 6+ (PS7+) defaults to TLS 1.2+ already.
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+## OR (-bor) the flag in rather than overwriting, so newer protocols (e.g. TLS 1.3) stay enabled.
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
+## Optional transcript of everything written to the host for troubleshooting/auditing.
 if ($enableLog) {
     $logPath = Join-Path $scriptParentDir 'o365-connect-exo.txt'
     Write-Host "Script activity logged at $logPath"
@@ -1056,10 +1179,17 @@ try {
     Write-Host -ForegroundColor $Colors.SystemMessage "Exchange Online Connection script started`n"
     Write-Host -ForegroundColor $Colors.ProcessMessage "Prompt =", (-not $noprompt)
 
+    ## The two mode switches are mutually exclusive and exactly one must be chosen -
+    ## reject both-set and neither-set up front before doing any work.
     if (($GenerateLocalCertificate -and $UseCertificateAuth) -or (-not $GenerateLocalCertificate -and -not $UseCertificateAuth)) {
         throw "Specify exactly one mode: -GenerateLocalCertificate or -UseCertificateAuth."
     }
 
+    ## ------------------------------------------------------------------------
+    ## STEP 1: Ensure the ExchangeOnlineManagement module is installed.
+    ## Installation needs an elevated session, so it is delegated to a hidden
+    ## elevated child process running the same PowerShell host (see $elevatedShellPath).
+    ## ------------------------------------------------------------------------
     if (Get-Module -ListAvailable -Name ExchangeOnlineManagement) {
         Write-Host -ForegroundColor $Colors.ProcessMessage "Exchange Online PowerShell module installed"
     }
@@ -1088,6 +1218,10 @@ try {
         Write-Host -ForegroundColor $Colors.ProcessMessage "Exchange Online PowerShell module installed"
     }
 
+    ## ------------------------------------------------------------------------
+    ## STEP 2: Optionally check the PowerShell Gallery for a newer module version
+    ## and offer to update (auto-updates when -noprompt is used).
+    ## ------------------------------------------------------------------------
     if (-not $noupdate) {
         Write-Host -ForegroundColor $Colors.ProcessMessage "Checking whether newer version of Exchange Online module is available"
         $version         = Get-InstalledModule -Name ExchangeOnlineManagement -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
@@ -1131,6 +1265,10 @@ try {
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Loading Exchange Online PowerShell module"
 
+    ## ------------------------------------------------------------------------
+    ## STEP 3: Guard against a known .NET assembly version conflict, and
+    ## auto-relaunch the script in a clean PowerShell window if one is found.
+    ## ------------------------------------------------------------------------
     ## Fail fast on the Microsoft.IdentityModel.Abstractions version conflict. Modules loaded
     ## earlier in this session (PnP.PowerShell, Az, Microsoft.Graph) may have loaded an older
     ## copy, and .NET cannot unload assemblies, so Connect-ExchangeOnline is doomed to fail.
@@ -1185,6 +1323,10 @@ try {
 
     Import-Module ExchangeOnlineManagement -ErrorAction Stop | Out-Null
 
+    ## ------------------------------------------------------------------------
+    ## MODE 1: GENERATE CERTIFICATE (+ optional full Entra app provisioning).
+    ## Ends with 'exit 0' - MODE 2 code below never runs in this mode.
+    ## ------------------------------------------------------------------------
     if ($GenerateLocalCertificate) {
         ## Resolve tenant before cert generation so the friendly name can include the tenant domain.
         $provisionTenant = $Tenant
@@ -1209,6 +1351,11 @@ try {
         }
 
         if ($ProvisionEntraApp) {
+            ## Provisioning sequence:
+            ##   (a) device-code Graph sign-in (delegated admin)
+            ##   (b) create/reuse Entra app + upload cert + grant app roles (Graph REST)
+            ##   (c) save connection profile to the JSON map
+            ##   (d) interactive EXO admin sign-in to assign the RBAC role group
             ## Tenant already resolved above before cert generation.
 
             ## Display name for the new Entra app - defaults to cert subject
@@ -1247,6 +1394,9 @@ try {
             Write-ExoConnectedOrganization -RequestedOrganization $provisionTenant -Colors $Colors
 
             ## Ensure we are operating in the requested tenant before making RBAC changes.
+            ## The admin may have signed in with an account from a different tenant, and
+            ## granting 'Organization Management' in the wrong tenant would be a serious mistake.
+            ## A match on either the reported organization or any accepted domain is sufficient.
             $activeConnection = Get-ConnectionInformation -ErrorAction SilentlyContinue | Select-Object -First 1
             $activeOrganization = if ($null -ne $activeConnection) { $activeConnection.Organization } else { $null }
             $requestedOrganizationNormalized = if ([string]::IsNullOrWhiteSpace($provisionTenant)) { "" } else { $provisionTenant.ToLowerInvariant() }
@@ -1262,6 +1412,8 @@ try {
             }
 
             Write-Host -ForegroundColor $Colors.ProcessMessage "Ensuring Exchange service principal object exists..."
+            ## Exchange keeps its own copy of the service principal (distinct from the Entra
+            ## one) - it must exist before the app can be added to an Exchange role group.
             $exoSpDisplayName = "EXO-App-$($provisionResult.AppId)"
             $roleGroupMemberIdentity = $exoSpDisplayName
             try {
@@ -1287,6 +1439,8 @@ try {
             }
 
             Write-Host -ForegroundColor $Colors.ProcessMessage "Adding app to 'Organization Management' role group..."
+            ## This role group grants full Exchange admin rights - it is what actually
+            ## authorises the app to run EXO cmdlets once connected with the certificate.
             try {
                 Add-RoleGroupMember -Identity "Organization Management" -Member $roleGroupMemberIdentity -ErrorAction Stop | Out-Null
                 Write-Host -ForegroundColor $Colors.ProcessMessage "Role group membership assigned successfully."
@@ -1315,9 +1469,15 @@ try {
         exit 0
     }
 
+    ## ------------------------------------------------------------------------
+    ## MODE 2: CONNECT WITH CERTIFICATE AUTH.
+    ## Resolve connection details (profile map fills any gaps left by explicit
+    ## parameters), validate the local certificate, then connect unattended.
+    ## ------------------------------------------------------------------------
     Write-Debug "Resolving profile and certificate auth inputs."
     $resolvedProfile = Resolve-ExoCertificateProfile -Path $CertificateMapPath -TenantFilter $Tenant -ProfileFilter $ProfileName -OrganizationFilter $Organization -NoPrompt:$noprompt -Colors $Colors
     if ($null -ne $resolvedProfile) {
+        ## Explicit parameters always win; the profile map only fills in blanks.
         if ([string]::IsNullOrWhiteSpace($Organization)) {
             $Organization = $resolvedProfile.organization
         }
@@ -1379,6 +1539,8 @@ try {
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Connecting to Exchange Online with certificate authentication"
     Connect-ExchangeOnline -Organization $Organization -AppId $AppId -CertificateThumbprint $CertificateThumbprint -ShowBanner:$false -ShowProgress:$false -ErrorAction Stop | Out-Null
+    ## From here until the details are printed, an error should tear down the new
+    ## session (see catch block) so a half-verified connection is not left behind.
     $disconnectCertificateAuthOnError = $true
     Write-ExoConnectedOrganization -RequestedOrganization $Organization -Colors $Colors
     Write-ExoCertConnectionDetails -TenantId $Organization -AppId $AppId -LocalCert $localCert -Colors $Colors
@@ -1388,6 +1550,9 @@ try {
     Write-Host -ForegroundColor $Colors.SystemMessage "Exchange Online certificate auth flow finished`n"
 }
 catch {
+    ## Central error handler: tear down any half-established EXO session, report the
+    ## failure, and add targeted hints for the two most common failure classes
+    ## (RBAC replication lag and assembly version conflicts).
     if ($disconnectCertificateAuthOnError) {
         Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
     }
