@@ -1,44 +1,92 @@
+<#
+.SYNOPSIS
+    Connect to SharePoint Online using certificate-based (app-only) authentication
+    via PnP.PowerShell, with optional one-time setup of the certificate and Entra ID app.
+
+.DESCRIPTION
+    CIAOPS - Script provided as is. Use at own risk. No guarantees or warranty provided.
+
+    The script operates in exactly ONE of two mutually exclusive modes:
+
+    1. -GenerateLocalCertificate (one-time setup)
+       Creates a self-signed RSA-2048 certificate in the CurrentUser\My store and
+       exports the public key (.cer) to disk. Optionally exports a password-
+       protected PFX file for moving the private key to another machine. When
+       combined with -ProvisionEntraApp, it also:
+         - authenticates to Microsoft Graph interactively (device-code flow),
+         - creates (or reuses) an Entra ID app registration,
+         - uploads the certificate as a key credential,
+         - grants and consents SharePoint Sites.FullControl.All and
+           Graph Application.Read.All application permissions,
+         - records the connection details in a JSON profile map so later
+           connections need no parameters beyond -UseCertificateAuth.
+
+    2. -UseCertificateAuth (day-to-day connection)
+       Connects to SharePoint Online non-interactively using the app ID and
+       certificate thumbprint, resolved either from explicit parameters or from
+       the JSON profile map created during setup.
+
+    The script requires PowerShell 7+ (PnP.PowerShell 2.x is .NET-Core-only) and will
+    transparently relaunch itself under pwsh when started from Windows PowerShell 5.1.
+    It also relaunches in an isolated process if PnP.PowerShell is already loaded, to
+    avoid .NET assembly-collision errors that occur when reloading the module.
+
+.EXAMPLE
+    .\o365-connect-pnp-cert.ps1 -GenerateLocalCertificate -ProvisionEntraApp -Tenant 'contoso.onmicrosoft.com'
+    One-time setup: creates the certificate, the Entra app, grants permissions and saves the profile.
+
+.EXAMPLE
+    .\o365-connect-pnp-cert.ps1 -UseCertificateAuth -Tenant 'contoso.onmicrosoft.com'
+    Connects to SharePoint Online using details saved in the profile map.
+
+.NOTES
+    Usage and setup documentation:
+    https://github.com/directorcia/Office365/wiki/Connect-to-SharePoint-Online-with-Certificates
+
+.LINK
+    https://github.com/directorcia/Office365/blob/master/o365-connect-pnp-cert.ps1
+#>
 [CmdletBinding()]
 param(
-    [switch]$noprompt = $false,   ## if -noprompt used then user will not be asked for any input
-    [switch]$noupdate = $false,   ## if -noupdate used then module will not be checked for more recent version
-    [switch]$enableLog = $false,  ## if -enableLog create a transcript log file
+    ## --- General behaviour switches ---
+    [switch]$noprompt = $false,   ## suppress ALL interactive prompts (for unattended/automation use)
+    [switch]$noupdate = $false,   ## skip the PowerShell Gallery version check for PnP.PowerShell
+    [switch]$enableLog = $false,  ## write a transcript log (o365-connect-pnp.txt) to the script's parent folder
 
-    [switch]$GenerateLocalCertificate = $false,
-    [switch]$UseCertificateAuth = $false,
+    ## --- Mode selection: exactly ONE of these two must be specified ---
+    [switch]$GenerateLocalCertificate = $false,  ## setup mode: create/export a local certificate
+    [switch]$UseCertificateAuth = $false,        ## connect mode: authenticate to SPO with existing app/cert
 
-    [string]$GeneratedCertSubject = "O365-PNP-AppAuth",
-    [int]$GeneratedCertYearsValid = 2,
-    [string]$GeneratedCertOutputPath = "",  ## defaults to parent of script directory at runtime
-    [switch]$ExportGeneratedPfx = $false,
-    [securestring]$GeneratedPfxPassword,
+    ## --- GenerateLocalCertificate mode options ---
+    [string]$GeneratedCertSubject = "O365-PNP-AppAuth",  ## certificate CN and default app display name
+    [int]$GeneratedCertYearsValid = 2,                   ## certificate lifetime in years
+    [string]$GeneratedCertOutputPath = "",               ## where .cer/.pfx files are written; defaults to parent of script directory at runtime
+    [switch]$ExportGeneratedPfx = $false,                ## also export the private key as a .pfx (needed to use the cert on another machine)
+    [securestring]$GeneratedPfxPassword,                 ## password protecting the exported .pfx; prompted for if omitted (unless -noprompt)
 
-    [string]$Tenant,
-    [string]$ProfileName,
-    [string]$SiteUrl,           ## SharePoint site URL to connect to (e.g. https://contoso.sharepoint.com)
-    [string]$AppId,
-    [string]$CertificateThumbprint,
-    [string]$CertificateMapPath = "",  ## defaults to o365-pnp-cert-auth.json in parent of script directory
+    ## --- UseCertificateAuth mode options (each may instead come from the profile map) ---
+    [string]$Tenant,                   ## tenant ID, .onmicrosoft.com domain, or custom domain
+    [string]$ProfileName,              ## select a specific named profile from the map when several exist
+    [string]$SiteUrl,                  ## SharePoint site URL to connect to (e.g. https://contoso.sharepoint.com)
+    [string]$AppId,                    ## Entra ID application (client) ID for the app-only connection
+    [string]$CertificateThumbprint,    ## thumbprint of the auth certificate in Cert:\CurrentUser\My
+    [string]$CertificateMapPath = "",  ## JSON profile map location; defaults to o365-pnp-cert-auth.json in parent of script directory
 
+    ## --- Entra app provisioning options (only used with -GenerateLocalCertificate) ---
     ## When used with -GenerateLocalCertificate, also create the Entra app, upload the cert,
     ## grant Sites.FullControl.All, and update the profile map automatically.
     [switch]$ProvisionEntraApp = $false,
-    [string]$AppDisplayName = "",
+    [string]$AppDisplayName = "",      ## Entra app registration name; defaults to $GeneratedCertSubject
     ## Client ID of a public client app registered in your tenant for device-code Graph auth.
     ## Defaults to the well-known Azure PowerShell public client.
     [string]$SetupClientId = "1950a258-227b-4e31-a9cf-717495945fc2",
     ## Opt-in only. Clipboard copy can leak auth codes in shared/RDP sessions.
     [switch]$CopyDeviceCodeToClipboard = $false
 )
-<# CIAOPS
-Script provided as is. Use at own risk. No guarantees or warranty provided.
-Description - SharePoint Online connect script with two modes:
-1. GenerateLocalCertificate: create/export local cert files.
-2. UseCertificateAuth: connect to SharePoint Online with existing app/cert.
-Usage - For setup and execution examples, see:
-https://github.com/directorcia/Office365/wiki/Connect-to-SharePoint-Online-with-Certificates
-Source - https://github.com/directorcia/Office365/blob/master/o365-connect-pnp-cert.ps1
-#>
+
+## ============================================================================
+##  SCRIPT-LEVEL CONSTANTS AND PATH RESOLUTION
+## ============================================================================
 
 ## Resolve paths relative to the script file itself, not the caller's working directory.
 $scriptDir       = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -62,11 +110,19 @@ $GraphResourceAppId = "00000003-0000-0000-c000-000000000000"
 $disconnectCertificateAuthOnError = $false
 
 ## Resolve the executable of the current host so elevated module installs target the same runtime
-## (PS5 vs PS7) and module path as the running script.
+## (PS5 vs PS7) and module path as the running script. Using $PSHOME alone is not reliable when
+## the script has been relaunched, so ask the OS for the actual binary of this process.
 $elevatedShellPath = (Get-Process -Id $PID).MainModule.FileName
 if ([string]::IsNullOrWhiteSpace($elevatedShellPath) -or -not (Test-Path -LiteralPath $elevatedShellPath)) {
     throw "Unable to resolve current PowerShell host executable path for elevated module operations (PID $PID)."
 }
+
+## ============================================================================
+##  SELF-RELAUNCH LOGIC
+##  PnP.PowerShell 2.x only runs on PowerShell 7+, and its .NET assemblies
+##  cannot be reloaded once resident in a session. Both problems are solved by
+##  relaunching this script in a fresh pwsh process when necessary.
+## ============================================================================
 
 function Get-ScriptInvocationArguments {
     <#
@@ -92,7 +148,7 @@ function Get-ScriptInvocationArguments {
     foreach ($paramName in $BoundParameters.Keys) {
         $paramValue = $BoundParameters[$paramName]
 
-        ## FIX #1: SecureString values cannot be serialised across process boundaries.
+        ## SecureString values cannot be serialised across process boundaries.
         ## Skip them silently; the child process will prompt or use its own default.
         if ($paramValue -is [System.Security.SecureString]) {
             Write-Debug "Skipping SecureString parameter '$paramName' from child process arguments."
@@ -126,6 +182,8 @@ function Get-ScriptInvocationArguments {
 
 $scriptInvocationArguments = Get-ScriptInvocationArguments -ScriptPath $PSCommandPath -BoundParameters $PSBoundParameters -UnboundArguments $args
 
+## Relaunch reason 1: running under Windows PowerShell 5.1 (or any pre-7 host).
+## PnP.PowerShell 2.x targets .NET 6+/PS7, so hand off to pwsh with the same arguments.
 if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion.Major -lt 7) {
     $pwshPath = Get-Command pwsh -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
     if (-not [string]::IsNullOrWhiteSpace($pwshPath) -and (Test-Path -LiteralPath $pwshPath)) {
@@ -142,11 +200,15 @@ if ([string]::IsNullOrWhiteSpace($pwshPath) -or -not (Test-Path -LiteralPath $pw
     throw "PowerShell 7 executable 'pwsh' not found."
 }
 
+## Relaunch reason 2: PnP.PowerShell is already resident in this session. Once its DLLs are
+## loaded, the CLR cannot unload or replace them, so re-importing (or importing a different
+## version) throws assembly-collision errors. A fresh child process avoids this entirely.
+## The O365_PNP_ISOLATED env var guards against infinite relaunch recursion in the child.
 if ($env:O365_PNP_ISOLATED -ne '1') {
     $loadedPnpModules = @(Get-Module -Name PnP.PowerShell -All -ErrorAction SilentlyContinue)
     if ($loadedPnpModules.Count -gt 0) {
         Write-Host -ForegroundColor $Colors.WarningMessage "PnP.PowerShell is already loaded in this session. Launching an isolated PowerShell 7 process to avoid the assembly collision."
-        ## FIX #2: Set the isolation flag before spawning child so it is inherited via environment,
+        ## Set the isolation flag before spawning the child so it is inherited via environment,
         ## then clear it after the child exits so it does not persist in the parent session.
         $env:O365_PNP_ISOLATED = '1'
         try {
@@ -160,7 +222,21 @@ if ($env:O365_PNP_ISOLATED -ne '1') {
     }
 }
 
+## ============================================================================
+##  HELPER FUNCTIONS
+## ============================================================================
+
 function Import-PnPModuleWithCompat {
+    <#
+    .SYNOPSIS
+        Load a PowerShell-7-compatible copy of PnP.PowerShell, installing one if required.
+    .DESCRIPTION
+        Prefers a module found outside the legacy Windows PowerShell module path, because
+        copies installed there may carry .NET Framework assemblies that fail under PS7.
+        Never re-imports an already-loaded module (assembly collision - see relaunch notes).
+    .OUTPUTS
+        PSModuleInfo  The loaded PnP.PowerShell module.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -181,6 +257,8 @@ function Import-PnPModuleWithCompat {
         throw "PnP.PowerShell module is required."
     }
 
+    ## Copies under \WindowsPowerShell\Modules were installed by/for PS 5.1 and may not load
+    ## under PS7; prefer any install outside that path (e.g. \PowerShell\Modules).
     $preferredModule = $candidateModules | Where-Object { $_.Path -notlike '*WindowsPowerShell\Modules*' } | Select-Object -First 1
 
     if ($null -eq $preferredModule) {
@@ -214,6 +292,11 @@ function Resolve-SpoCertificateProfile {
     <#
     .SYNOPSIS
         Load and filter the JSON certificate profile map, returning the matching profile entry.
+    .DESCRIPTION
+        The map file (created by -ProvisionEntraApp) stores one entry per tenant/app with the
+        fields: name, tenant, siteUrl, appId, certificateThumbprint. Filters are applied in
+        order (ProfileName, Tenant, SiteUrl); if several entries still match, the user is asked
+        to pick one - unless -NoPrompt is set, in which case ambiguity is a hard error.
     .OUTPUTS
         PSCustomObject  The selected profile entry, or $null if the map file is absent.
     #>
@@ -248,6 +331,8 @@ function Resolve-SpoCertificateProfile {
     }
 
     $profileItems = @()
+    ## The map supports two shapes: a bare JSON array of profiles, or an object
+    ## with a top-level "profiles" array (the format this script writes).
     if ($raw -is [System.Array]) {
         $profileItems = @($raw)
     }
@@ -342,9 +427,11 @@ function New-SpoLocalCertificate {
         New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
     }
 
+    ## RSA-2048/SHA256 with KeySpec Signature is what Entra ID expects for app auth certs.
+    ## KeyExportPolicy Exportable allows the optional PFX export below.
     $certificate = New-SelfSignedCertificate -Subject "CN=$SubjectName" -CertStoreLocation "Cert:\CurrentUser\My" -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears($YearsValid) -KeySpec Signature -ErrorAction Stop
 
-    ## FIX #3: FriendlyName is Windows-only; setting it throws on PS7/macOS/Linux.
+    ## FriendlyName is Windows-only; setting it throws on PS7/macOS/Linux, so tolerate failure.
     $resolvedFriendlyName = if ([string]::IsNullOrWhiteSpace($FriendlyName)) { $SubjectName } else { $FriendlyName }
     try {
         $certificate.FriendlyName = $resolvedFriendlyName
@@ -354,13 +441,15 @@ function New-SpoLocalCertificate {
         Write-Debug "Could not set FriendlyName (non-Windows platform or restricted store): $($_.Exception.Message)"
     }
 
+    ## Build a filesystem-safe file name of the form <subject>-<thumbprint>.cer so
+    ## multiple certificates for different tenants can coexist in the output folder.
     $safeSubject = ($SubjectName -replace '[^A-Za-z0-9\-_.]', '-')
     $fileBase    = "{0}-{1}" -f $safeSubject, $certificate.Thumbprint
     $cerPath     = Join-Path -Path $OutputPath -ChildPath "$fileBase.cer"
 
     Export-Certificate -Cert $certificate -FilePath $cerPath -Type CERT -Force -ErrorAction Stop | Out-Null
 
-    $pfxPath = ""  ## FIX #4: Use empty string rather than $null for safe JSON serialisation.
+    $pfxPath = ""  ## empty string rather than $null for safe JSON serialisation
     if ($ExportPfx) {
         $securePfxPassword = $PfxPassword
 
@@ -369,7 +458,7 @@ function New-SpoLocalCertificate {
         }
 
         if ($null -eq $securePfxPassword) {
-            ## FIX #5: When -ProvisionEntraApp forces PFX export but no password was supplied
+            ## When -ProvisionEntraApp forces PFX export but no password was supplied
             ## and -noprompt suppresses the prompt, emit a clear warning and use an empty
             ## password rather than throwing, so provisioning can continue unattended.
             Write-Host -ForegroundColor "yellow" "WARNING: PFX will be exported with an EMPTY password. The private key is unprotected on disk. Secure or delete the PFX file after import."
@@ -393,6 +482,13 @@ function Get-DeviceCodeGraphToken {
     <#
     .SYNOPSIS
         Authenticate to Microsoft Graph using the device-code OAuth2 flow.
+    .DESCRIPTION
+        Device-code flow lets a user complete sign-in (including MFA) in any browser,
+        which keeps this script free of GUI/web-view dependencies. The function:
+          1. Requests a device code from the tenant's /devicecode endpoint.
+          2. Shows the code, opens the verification page in the default browser.
+          3. Polls the /token endpoint until the user completes sign-in, honouring
+             the server-directed polling interval and 'slow_down' back-pressure.
     .OUTPUTS
         String  Raw OAuth2 access token string suitable for use in Authorization headers.
     #>
@@ -434,7 +530,9 @@ function Get-DeviceCodeGraphToken {
     Write-Host -ForegroundColor $Colors.SystemMessage "Paste the code in the browser and sign in, then return here."
     Write-Host -ForegroundColor $Colors.SystemMessage "-------------------------------------`n"
 
-    Start-Process $deviceCodeResponse.verification_uri
+    ## Best-effort browser launch; the URL and code above let the user proceed manually
+    ## if no default browser is available (e.g. Server Core / SSH session).
+    try { Start-Process $deviceCodeResponse.verification_uri } catch { Write-Debug "Browser launch failed: $($_.Exception.Message)" }
 
     $tokenBody = @{
         grant_type  = "urn:ietf:params:oauth:grant-type:device_code"
@@ -443,9 +541,11 @@ function Get-DeviceCodeGraphToken {
     }
 
     $deadline     = (Get-Date).AddSeconds($deviceCodeResponse.expires_in)
-    ## FIX #6: Cast to [int] explicitly to prevent type-widening from JSON long on PS7.
+    ## Cast to [int] explicitly to prevent type-widening from JSON long on PS7.
     $pollInterval = [int]$deviceCodeResponse.interval
 
+    ## Poll until the user completes sign-in, the code expires, or a terminal error occurs.
+    ## The labelled loop lets the catch block's switch continue polling for retriable states.
     :pollLoop while ((Get-Date) -lt $deadline) {
         Start-Sleep -Seconds $pollInterval
         try {
@@ -458,6 +558,8 @@ function Get-DeviceCodeGraphToken {
             return $tokenResponse.access_token
         }
         catch {
+            ## AAD signals flow state via JSON error codes rather than HTTP status alone;
+            ## parse the body to distinguish "keep waiting" from genuine failures.
             $errorContent = $null
             try { $errorContent = ($_.ErrorDetails.Message | ConvertFrom-Json) } catch {}
             if ($null -ne $errorContent) {
@@ -467,6 +569,7 @@ function Get-DeviceCodeGraphToken {
                         continue pollLoop
                     }
                     "slow_down" {
+                        ## Server-directed back-pressure: increase the polling interval.
                         $pollInterval += 5
                         continue pollLoop
                     }
@@ -485,6 +588,13 @@ function Invoke-SpoGraphRequest {
     <#
     .SYNOPSIS
         Helper: make an authenticated Graph REST call and return the parsed response.
+    .DESCRIPTION
+        Wraps Invoke-RestMethod with resilience features every Graph call in this script needs:
+          - Bearer token and JSON content headers applied consistently.
+          - Automatic retry with exponential backoff (capped at 30s) for transient
+            failures: HTTP 429/5xx status codes or throttling-flavoured error text.
+          - Honours the server's Retry-After header when present, in preference to backoff.
+          - Extracts the human-readable Graph error message from the response body.
     .OUTPUTS
         PSObject  The parsed JSON response body returned by Microsoft Graph.
     #>
@@ -512,6 +622,8 @@ function Invoke-SpoGraphRequest {
         catch {
             $attempt++
 
+            ## Prefer the structured Graph error message from the response body over
+            ## the generic .NET exception text.
             $detail = $null
             try { $detail = ($_.ErrorDetails.Message | ConvertFrom-Json).error.message } catch {}
             $msg = if ($null -ne $detail) { $detail } else { $_.Exception.Message }
@@ -523,7 +635,7 @@ function Invoke-SpoGraphRequest {
             if ($null -ne $response) {
                 try { $statusCode = [int]$response.StatusCode } catch {}
                 try {
-                    ## FIX #7: Normalise Retry-After header for PS5.1 (WebHeaderCollection string)
+                    ## Normalise Retry-After header for PS5.1 (WebHeaderCollection string)
                     ## vs PS7 (IEnumerable<string>). Use GetValues() first; fall back to indexer.
                     $retryAfterRaw = $null
                     try {
@@ -562,6 +674,15 @@ function Resolve-SpoTenantRootSiteUrl {
     <#
     .SYNOPSIS
         Resolve the tenant root SharePoint Online URL from tenant input and Graph metadata.
+    .DESCRIPTION
+        Resolution order (first hit wins):
+          1. Caller-supplied -SiteUrl (used verbatim).
+          2. Derived from a *.onmicrosoft.com tenant name (contoso.onmicrosoft.com ->
+             https://contoso.sharepoint.com).
+          3. Graph lookup of the tenant's initial verified domain (authoritative for
+             custom-domain tenants whose SPO host differs from the vanity domain).
+          4. Guess from the first label of a custom domain (best effort).
+          5. Interactive prompt, unless -NoPrompt, in which case the function throws.
     .OUTPUTS
         String  Tenant root SharePoint URL (e.g. https://contoso.sharepoint.com)
     #>
@@ -646,6 +767,11 @@ function Set-SpoProfileMapEntry {
     <#
     .SYNOPSIS
         Atomically upsert a certificate profile entry in the JSON profile map file.
+    .DESCRIPTION
+        Safe for concurrent script runs: a named global mutex (keyed on a hash of the
+        map path) serialises writers, and the file is written to a temp path then moved
+        into place so readers never observe a partially written JSON document.
+        An existing entry with the same appId or tenant is replaced; otherwise appended.
     #>
     [CmdletBinding()]
     param(
@@ -656,7 +782,8 @@ function Set-SpoProfileMapEntry {
 
     $fullMapPath = [System.IO.Path]::GetFullPath($MapPath)
 
-    ## FIX #8: Dispose SHA256 instance to avoid unmanaged resource leak.
+    ## Derive a deterministic mutex name from the map path so all processes writing the
+    ## same file share one lock. Dispose the SHA256 instance to avoid a resource leak.
     $sha256    = [System.Security.Cryptography.SHA256]::Create()
     $hashBytes = $null
     try {
@@ -678,6 +805,7 @@ function Set-SpoProfileMapEntry {
             $hasHandle = $mutex.WaitOne([TimeSpan]::FromSeconds(30))
         }
         catch [System.Threading.AbandonedMutexException] {
+            ## A previous process died while holding the lock; ownership transfers to us.
             $hasHandle = $true
             Write-Debug "Profile map mutex was abandoned by a previous run; continuing with recovered lock ownership."
         }
@@ -685,8 +813,8 @@ function Set-SpoProfileMapEntry {
             throw "Timed out waiting for profile map lock: $fullMapPath"
         }
         Write-Verbose "Profile map lock acquired for: $fullMapPath"
-        ## FIX #9: Removed duplicate Write-Verbose line that appeared in original.
 
+        ## Load the existing map if readable; a corrupt file is overwritten rather than fatal.
         $mapData = @{ profiles = @() }
         if (Test-Path -Path $fullMapPath) {
             try {
@@ -701,6 +829,8 @@ function Set-SpoProfileMapEntry {
         $profileList = [System.Collections.Generic.List[object]]::new()
         foreach ($p in $mapData.profiles) { $profileList.Add($p) }
 
+        ## Upsert: replace the first entry matching on appId OR tenant/organization,
+        ## so re-provisioning a tenant updates its profile instead of duplicating it.
         $existingIdx = $null
         for ($i = 0; $i -lt $profileList.Count; $i++) {
             $sameApp    = (-not [string]::IsNullOrWhiteSpace($profileList[$i].appId)        -and $profileList[$i].appId        -eq $ProfileEntry.appId)
@@ -710,6 +840,7 @@ function Set-SpoProfileMapEntry {
         }
         if ($null -ne $existingIdx) { $profileList[$existingIdx] = $ProfileEntry } else { $profileList.Add($ProfileEntry) }
 
+        ## Write-to-temp + Move is atomic on the same volume, preventing torn reads.
         @{ profiles = $profileList.ToArray() } | ConvertTo-Json -Depth 5 | Set-Content -Path $tempPath -Encoding UTF8
         Move-Item -Path $tempPath -Destination $fullMapPath -Force
         Write-Host -ForegroundColor $Colors.ProcessMessage "Profile map updated: $fullMapPath"
@@ -729,6 +860,12 @@ function Get-CertClientAssertionToken {
     <#
     .SYNOPSIS
         Acquire a Graph access token using a JWT client assertion signed with a local certificate.
+    .DESCRIPTION
+        Implements the OAuth2 client-credentials grant with certificate credentials
+        (RFC 7523) without any external module dependency. Builds a minimal RS256 JWT:
+          header  - alg RS256, x5t = base64url SHA-1 thumbprint identifying the cert in Entra
+          payload - aud = token endpoint, iss/sub = app ID, 10-minute validity window
+        then signs it with the certificate's RSA private key and exchanges it for a token.
     .OUTPUTS
         String  Raw OAuth2 access token string.
     #>
@@ -740,6 +877,8 @@ function Get-CertClientAssertionToken {
         [string]$Scope = "https://graph.microsoft.com/.default"
     )
 
+    ## x5t claim: base64url-encoded SHA-1 certificate hash. Entra uses this to select
+    ## which uploaded key credential should verify the assertion's signature.
     $thumbprintBytes = $Certificate.GetCertHash()
     $x5t = [System.Convert]::ToBase64String($thumbprintBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 
@@ -749,6 +888,7 @@ function Get-CertClientAssertionToken {
     $headerJson  = '{"alg":"RS256","typ":"JWT","x5t":"' + $x5t + '"}'
     $payloadJson = '{"aud":"' + $tokenEndpoint + '","iss":"' + $AppId + '","sub":"' + $AppId + '","jti":"' + [System.Guid]::NewGuid().ToString() + '","nbf":' + $now + ',"exp":' + ($now + 600) + '}'
 
+    ## JWT = base64url(header).base64url(payload).base64url(RS256 signature)
     $headerB64    = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($headerJson)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
     $payloadB64   = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($payloadJson)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
     $signingInput = [System.Text.Encoding]::UTF8.GetBytes("$headerB64.$payloadB64")
@@ -784,6 +924,11 @@ function Write-SpoCertConnectionDetails {
     <#
     .SYNOPSIS
         Display local certificate details and the matching Entra ID app/keyCredential after connecting.
+    .DESCRIPTION
+        Purely informational. Always prints the local certificate; additionally attempts a
+        Graph lookup (using the same cert for auth) to show the app registration and confirm
+        the local thumbprint matches an uploaded key credential. Graph failures - typically
+        a missing Application.Read.All grant - degrade to a warning, never an error.
     #>
     [CmdletBinding()]
     param(
@@ -958,20 +1103,23 @@ function Set-SpoEntraApplicationCertificate {
     <#
     .SYNOPSIS
         Upload a local certificate to an Entra app registration and verify it was stored.
+    .DESCRIPTION
+        Exports the public key of the certificate from Cert:\CurrentUser\My and PATCHes the
+        app's keyCredentials collection, preserving any other certificates already registered.
+        Reads the app back afterwards to confirm the credential was actually persisted.
+        Thumbprints are normalised in here (Windows cert MMC copy/paste can inject spaces).
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$AccessToken,
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$AppObjectId,
-        ## FIX #10: Removed strict 40-hex ValidatePattern — Windows cert store can inject spaces
-        ## into thumbprints. Normalisation happens inside the function instead.
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$Thumbprint,
         [Parameter(Mandatory = $true)][hashtable]$Colors
     )
 
     $graphBase = "https://graph.microsoft.com/v1.0"
 
-    ## Normalise before any store lookup.
+    ## Normalise before any store lookup (strip spaces, force upper case).
     $normalizedThumbprint = ($Thumbprint -replace '\s', '').ToUpperInvariant()
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Uploading certificate to app registration..."
@@ -983,6 +1131,8 @@ function Set-SpoEntraApplicationCertificate {
 
     $cerBytes          = $certStoreObj.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
     $cerBase64         = [System.Convert]::ToBase64String($cerBytes)
+    ## customKeyIdentifier is Graph's stable identity for a key credential: the base64
+    ## SHA-1 cert hash. Used below to dedupe uploads and to verify persistence.
     $customKeyIdBase64 = [System.Convert]::ToBase64String($certStoreObj.GetCertHash())
 
     if ($cerBytes.Length -eq 0) {
@@ -990,6 +1140,8 @@ function Set-SpoEntraApplicationCertificate {
     }
     Write-Debug "Cert bytes: $($cerBytes.Length) | customKeyIdentifier: $customKeyIdBase64"
 
+    ## PATCHing keyCredentials replaces the whole collection, so fetch existing keys first
+    ## and re-send them (minus any stale copy of this same cert) alongside the new one.
     $existingApp  = Invoke-SpoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/applications/${AppObjectId}?`$select=keyCredentials"
     $existingKeys = @($existingApp.keyCredentials | Where-Object { $_.customKeyIdentifier -ne $customKeyIdBase64 })
     Write-Debug "Existing key credentials on app (excluding this thumbprint): $($existingKeys.Count)"
@@ -1093,6 +1245,11 @@ function Invoke-SpoAppProvisioning {
     <#
     .SYNOPSIS
         Orchestrates Entra app provisioning for SPO by invoking focused helper functions.
+    .DESCRIPTION
+        End-to-end sequence: resolve target service principals/roles -> create or reuse the
+        app registration -> upload the certificate -> ensure the service principal exists ->
+        grant admin-consented app role assignments. Each step is idempotent, so re-running
+        provisioning against an existing app is safe.
     .OUTPUTS
         PSCustomObject  AppId, AppObjId, SpObjId.
     #>
@@ -1101,7 +1258,6 @@ function Invoke-SpoAppProvisioning {
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$AccessToken,
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$DisplayName,
         [Parameter(Mandatory = $true)][string]$CerFilePath,
-        ## FIX #10: Accept thumbprints with spaces; normalise inside helper.
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$Thumbprint,
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$SpoResourceAppId,
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$GraphResourceAppId,
@@ -1198,8 +1354,13 @@ function Write-SpoConnectedSite {
     }
 }
 
+## ============================================================================
+##  MAIN EXECUTION
+## ============================================================================
+
 Clear-Host
 
+## Force TLS 1.2 for PowerShell Gallery and REST calls (older Windows defaults may pick TLS 1.0).
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 if ($enableLog) {
@@ -1212,10 +1373,14 @@ try {
     Write-Host -ForegroundColor $Colors.SystemMessage "SharePoint Online Connection script started`n"
     Write-Host -ForegroundColor $Colors.ProcessMessage "Prompt =", (-not $noprompt)
 
+    ## The two modes are mutually exclusive AND one is required - fail fast on bad combos.
     if (($GenerateLocalCertificate -and $UseCertificateAuth) -or (-not $GenerateLocalCertificate -and -not $UseCertificateAuth)) {
         throw "Specify exactly one mode: -GenerateLocalCertificate or -UseCertificateAuth."
     }
 
+    ## ------------------------------------------------------------------
+    ## Module presence check - offer to install PnP.PowerShell if missing.
+    ## ------------------------------------------------------------------
     if (Get-Module -ListAvailable -Name PnP.PowerShell) {
         Write-Host -ForegroundColor $Colors.ProcessMessage "PnP.PowerShell module installed"
     }
@@ -1232,9 +1397,10 @@ try {
         }
 
         Write-Host -ForegroundColor $Colors.ProcessMessage "Installing PnP.PowerShell module - Administration escalation required"
-        ## FIX #11: Capture exit code so a denied UAC prompt or failed install is surfaced clearly.
-        ## FIX #16: pwsh treats a bare first argument as -File, so -Command must be explicit.
-        ## $ErrorActionPreference ensures a failed install produces a nonzero exit code.
+        ## Run the install elevated in the SAME host executable (so it lands in the right
+        ## module path) and capture the exit code so a denied UAC prompt or failed install
+        ## is surfaced clearly. -Command must be explicit: pwsh treats a bare first
+        ## argument as -File. $ErrorActionPreference='Stop' makes failures nonzero-exit.
         $installProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', '$ErrorActionPreference = ''Stop''; Install-Module -Name PnP.PowerShell -Force -Confirm:$false') -Wait -WindowStyle Hidden -PassThru
         if ($installProcess.ExitCode -ne 0) {
             throw "Elevated module install failed (exit code $($installProcess.ExitCode)). Run PowerShell as Administrator and retry, or install the module manually: Install-Module -Name PnP.PowerShell"
@@ -1242,6 +1408,9 @@ try {
         Write-Host -ForegroundColor $Colors.ProcessMessage "PnP.PowerShell module installed"
     }
 
+    ## ------------------------------------------------------------------
+    ## Optional update check against the PowerShell Gallery (-noupdate skips).
+    ## ------------------------------------------------------------------
     if (-not $noupdate) {
         Write-Host -ForegroundColor $Colors.ProcessMessage "Checking whether newer version of PnP.PowerShell module is available"
         $version          = Get-InstalledModule -Name PnP.PowerShell -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
@@ -1265,7 +1434,7 @@ try {
 
             if ($doUpdate) {
                 Write-Host -ForegroundColor $Colors.ProcessMessage "Updating PnP.PowerShell module - Administration escalation required"
-                ## FIX #16: pwsh treats a bare first argument as -File, so -Command must be explicit.
+                ## -Command must be explicit: pwsh treats a bare first argument as -File.
                 $updateProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', '$ErrorActionPreference = ''Stop''; Update-Module -Name PnP.PowerShell -Force -Confirm:$false') -Wait -WindowStyle Hidden -PassThru
                 if ($updateProcess.ExitCode -ne 0) {
                     Write-Host -ForegroundColor $Colors.WarningMessage "Module update may have failed (exit code $($updateProcess.ExitCode)). Continuing with current installed version."
@@ -1286,7 +1455,11 @@ try {
     Write-Host -ForegroundColor $Colors.ProcessMessage "Loading PnP.PowerShell module"
     Import-PnPModuleWithCompat -Colors $Colors | Out-Null
 
+    ## ========================================================================
+    ##  MODE 1: GenerateLocalCertificate (one-time setup)
+    ## ========================================================================
     if ($GenerateLocalCertificate) {
+        ## Provisioning needs a tenant to authenticate against; prompt if allowed.
         $provisionTenant = $Tenant
         if ($ProvisionEntraApp) {
             if ([string]::IsNullOrWhiteSpace($provisionTenant) -and -not $noprompt) {
@@ -1299,6 +1472,8 @@ try {
             }
         }
 
+        ## Tag the cert's friendly name with the tenant so multiple tenants' certs are
+        ## distinguishable in the Windows certificate store.
         $certFriendlyName     = if (-not [string]::IsNullOrWhiteSpace($provisionTenant)) { "$GeneratedCertSubject - $provisionTenant" } else { $GeneratedCertSubject }
         $generatedCertificate = New-SpoLocalCertificate -SubjectName $GeneratedCertSubject -YearsValid $GeneratedCertYearsValid -OutputPath $GeneratedCertOutputPath -ExportPfx:$ExportGeneratedPfx -PfxPassword $GeneratedPfxPassword -NoPrompt:$noprompt -FriendlyName $certFriendlyName
 
@@ -1327,7 +1502,7 @@ try {
                     -Colors             $Colors
             }
             finally {
-                ## FIX #12: Clear the plaintext Graph token from memory as soon as provisioning
+                ## Clear the plaintext Graph token from memory as soon as provisioning
                 ## completes or fails, regardless of outcome.
                 Remove-Variable -Name graphToken -ErrorAction SilentlyContinue
             }
@@ -1358,10 +1533,15 @@ try {
         exit 0
     }
 
-    # --- UseCertificateAuth mode ---
+    ## ========================================================================
+    ##  MODE 2: UseCertificateAuth (day-to-day connection)
+    ## ========================================================================
+    ## Fill any missing connection values from the JSON profile map, then verify the
+    ## certificate locally before attempting the network connection.
     Write-Debug "Resolving profile and certificate auth inputs."
     $resolvedProfile = Resolve-SpoCertificateProfile -Path $CertificateMapPath -TenantFilter $Tenant -ProfileFilter $ProfileName -SiteUrlFilter $SiteUrl -NoPrompt:$noprompt -Colors $Colors
     if ($null -ne $resolvedProfile) {
+        ## Explicit parameters always win; the profile only fills gaps.
         if ([string]::IsNullOrWhiteSpace($Tenant))                { $Tenant                = $resolvedProfile.tenant }
         if ([string]::IsNullOrWhiteSpace($SiteUrl))               { $SiteUrl               = $resolvedProfile.siteUrl }
         if ([string]::IsNullOrWhiteSpace($AppId))                 { $AppId                 = $resolvedProfile.appId }
@@ -1374,7 +1554,6 @@ try {
         if ([string]::IsNullOrWhiteSpace($SiteUrl))               { $missingFields += 'SiteUrl' }
         if ([string]::IsNullOrWhiteSpace($AppId))                 { $missingFields += 'AppId' }
         if ([string]::IsNullOrWhiteSpace($CertificateThumbprint)) { $missingFields += 'CertificateThumbprint' }
-        ## FIX #13: List the specific missing fields rather than a generic message.
         throw "UseCertificateAuth missing required value(s): $($missingFields -join ', '). Provide directly or via CertificateMapPath profile."
     }
 
@@ -1389,7 +1568,8 @@ try {
     }
 
     if ($null -eq $localCert) {
-        ## FIX #14: @() ensures .Count works even when Get-ChildItem returns a single object (PS5.1).
+        ## Fallback: scan the store comparing normalised thumbprints, in case the stored
+        ## thumbprint contains stray whitespace. @() ensures .Count works for single results.
         $storeCerts = @(Get-ChildItem Cert:\CurrentUser\My -ErrorAction SilentlyContinue |
             Where-Object { ($_.Thumbprint -replace '\s', '').ToUpperInvariant() -eq $thumbprintNormalized })
         if ($storeCerts.Count -gt 0) { $localCert = $storeCerts[0] }
@@ -1399,7 +1579,7 @@ try {
         throw "Certificate with thumbprint '$CertificateThumbprint' not found in Cert:\CurrentUser\My. Import the PFX or run -GenerateLocalCertificate -ProvisionEntraApp on this machine first."
     }
 
-    ## FIX #15: Use exact datetime comparison for expiry; day-count comparison misses same-day expiry.
+    ## Exact datetime comparison for expiry; day-count comparison misses same-day expiry.
     if ($localCert.NotAfter -lt (Get-Date)) {
         throw "Certificate '$CertificateThumbprint' expired on $($localCert.NotAfter.ToString('yyyy-MM-dd HH:mm:ss')). Provision a new certificate."
     }
@@ -1411,7 +1591,8 @@ try {
         Write-Debug "Certificate valid for $daysUntilExpiry more day(s)."
     }
 
-    ## Check for any existing PnP connection.
+    ## Reuse an existing PnP connection when it already targets the requested site;
+    ## otherwise disconnect it so the new certificate connection can be established.
     $existingConnection = $null
     try { $existingConnection = Get-PnPConnection -ErrorAction Stop } catch { }
 
@@ -1433,6 +1614,8 @@ try {
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Connecting to SharePoint Online with certificate authentication"
     Connect-PnPOnline -Url $SiteUrl -ClientId $AppId -Thumbprint $thumbprintNormalized -Tenant $Tenant -ErrorAction Stop
+    ## From here until the details are printed, an error should tear down the half-open
+    ## session; the flag is checked by the catch block below.
     $disconnectCertificateAuthOnError = $true
     Write-SpoConnectedSite -RequestedSiteUrl $SiteUrl -Colors $Colors
     Write-SpoCertConnectionDetails -TenantId $Tenant -AppId $AppId -LocalCert $localCert -Colors $Colors
@@ -1446,6 +1629,8 @@ catch {
         Disconnect-PnPOnline -ErrorAction SilentlyContinue
     }
     Write-Host -ForegroundColor $Colors.ErrorMessage "Script failed: $($_.Exception.Message)"
+    ## Newly provisioned app permissions replicate slowly; hint at the most common cause
+    ## of an auth failure immediately after setup.
     if ($UseCertificateAuth -and $_.Exception.Message -match '(?i)access denied|forbidden|unauthorized|insufficient privileges|aadsts|permission|not authorized') {
         Write-Host -ForegroundColor $Colors.WarningMessage "If this app/certificate was just provisioned, wait 15-30 minutes and try again due to RBAC replication lag."
     }

@@ -1,0 +1,7 @@
+
+[2026-08-25 23:43:01] Script started
+
+[2026-08-25 23:43:01] An error occurred: Exchange Online cmdlets are not available. Connect first by running Connect-ExchangeOnline.
+[2026-08-25 23:43:01] Script complete
+[2026-08-25 23:43:01] Log file: C:\downloads\source\office365\o365-exo-fwd-chk-log.txt
+

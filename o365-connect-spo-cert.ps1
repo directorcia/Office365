@@ -1,3 +1,114 @@
+<#
+.SYNOPSIS
+    Connect to the SharePoint Online admin center using certificate-based (app-only) authentication,
+    or generate and provision the certificate/Entra ID app required to do so.
+
+.DESCRIPTION
+    This script operates in exactly one of two mutually exclusive modes:
+
+    MODE 1: -GenerateLocalCertificate
+        Creates a self-signed RSA-2048 certificate in the CurrentUser\My store and exports the
+        public .cer file (and optionally a .pfx with private key). When combined with
+        -ProvisionEntraApp it also:
+          1. Authenticates to Microsoft Graph via the device-code flow (delegated, interactive).
+          2. Creates (or reuses) an Entra ID app registration.
+          3. Uploads the certificate as a key credential on that app.
+          4. Grants and consents SharePoint Sites.FullControl.All plus Microsoft Graph
+             Application.Read.All and Group.Read.All application permissions.
+          5. Saves the resulting tenant/app/thumbprint details to a JSON profile map so future
+             connections need no parameters.
+
+    MODE 2: -UseCertificateAuth
+        Connects to the SharePoint admin center non-interactively using an existing app + certificate.
+        Connection values are resolved in this order of precedence:
+          1. Explicit parameters (-Tenant, -AdminUrl, -AppId, -CertificateThumbprint).
+          2. A matching profile in the JSON profile map (see -CertificateMapPath).
+          3. Derivation/discovery (admin URL derived from tenant name; thumbprint discovered in the
+             local certificate store; missing private keys re-imported from an exported PFX).
+
+.PARAMETER noprompt
+    Suppress all interactive prompts (for automation). Ambiguous situations become errors instead.
+
+.PARAMETER noupdate
+    Skip the check for a newer version of the SharePoint Online PowerShell module.
+
+.PARAMETER enableLog
+    Write a transcript log file (o365-connect-spo-admin.txt) in the script's parent directory.
+
+.PARAMETER GenerateLocalCertificate
+    Mode 1: generate a self-signed certificate for app-only authentication.
+
+.PARAMETER UseCertificateAuth
+    Mode 2: connect to the SharePoint admin center using an existing app registration and certificate.
+
+.PARAMETER GeneratedCertSubject
+    Subject (CN) for the generated certificate. Default: O365-SPO-AppAuth.
+
+.PARAMETER GeneratedCertYearsValid
+    Validity period in years for the generated certificate. Default: 2.
+
+.PARAMETER GeneratedCertOutputPath
+    Folder for exported certificate files. Defaults to the parent of the script directory.
+
+.PARAMETER ExportGeneratedPfx
+    Also export the private key as a .pfx file (needed to use the certificate on other machines).
+
+.PARAMETER GeneratedPfxPassword
+    SecureString password protecting the exported PFX. If omitted interactively you are prompted;
+    with -noprompt an EMPTY password is used (a warning is shown).
+
+.PARAMETER Tenant
+    Tenant identifier: a GUID, .onmicrosoft.com domain, or custom domain. Used for authentication
+    and for deriving the admin URL when -AdminUrl is not supplied.
+
+.PARAMETER ProfileName
+    Name of a profile entry in the JSON profile map to select (Mode 2).
+
+.PARAMETER AdminUrl
+    SharePoint admin center URL (e.g. https://contoso-admin.sharepoint.com). Derived from -Tenant
+    when omitted.
+
+.PARAMETER AppId
+    Application (client) ID of the Entra ID app registration used for certificate authentication.
+
+.PARAMETER CertificateThumbprint
+    Thumbprint of the authentication certificate in Cert:\CurrentUser\My or Cert:\LocalMachine\My.
+
+.PARAMETER CertificateMapPath
+    Path to the JSON profile map file. Defaults to o365-spo-admin-cert-auth.json under the
+    parent of the script directory (cert-export subfolder preferred).
+
+.PARAMETER ProvisionEntraApp
+    With -GenerateLocalCertificate: also create the Entra app, upload the certificate, grant
+    permissions with admin consent, and update the profile map (requires Global Admin or
+    equivalent to consent).
+
+.PARAMETER AppDisplayName
+    Display name for the provisioned Entra app. Defaults to the certificate subject.
+
+.PARAMETER SetupClientId
+    Client ID of a public client app used for the interactive device-code Graph sign-in during
+    provisioning. Defaults to the well-known Azure PowerShell public client.
+
+.PARAMETER CopyDeviceCodeToClipboard
+    Opt-in: copy the device code to the clipboard. Disabled by default because clipboard contents
+    can leak on shared/RDP sessions.
+
+.EXAMPLE
+    .\o365-connect-spo-cert.ps1 -GenerateLocalCertificate -ProvisionEntraApp -Tenant contoso.onmicrosoft.com
+    One-time setup: creates the certificate, the Entra app, grants permissions, and saves a profile.
+
+.EXAMPLE
+    .\o365-connect-spo-cert.ps1 -UseCertificateAuth
+    Connects using the single profile stored in the JSON profile map (prompts if several match).
+
+.EXAMPLE
+    .\o365-connect-spo-cert.ps1 -UseCertificateAuth -Tenant contoso.onmicrosoft.com -AppId <guid> -CertificateThumbprint <thumb> -noprompt
+    Fully explicit, non-interactive connection suitable for scheduled automation.
+
+.NOTES
+    Script provided as is. Use at own risk. No guarantees or warranty provided.
+#>
 [CmdletBinding()]  ## FIX #15: enables -Debug and -Verbose switches at script level
 param(
     [switch]$noprompt = $false,   ## if -noprompt used then user will not be asked for any input
@@ -25,7 +136,10 @@ param(
     ## and update the profile map automatically.
     [switch]$ProvisionEntraApp = $false,
     [string]$AppDisplayName = "",
+    ## Client ID of a public client app registered in your tenant for device-code Graph auth.
+    ## Defaults to the well-known Azure PowerShell public client.
     [string]$SetupClientId = "1950a258-227b-4e31-a9cf-717495945fc2",
+    ## Opt-in only. Clipboard copy can leak auth codes in shared/RDP sessions.
     [switch]$CopyDeviceCodeToClipboard = $false
 )
 <# CIAOPS
@@ -33,6 +147,8 @@ Script provided as is. Use at own risk. No guarantees or warranty provided.
 Description - Simplified SharePoint Online admin center connect script with two modes:
 1. GenerateLocalCertificate: create/export local cert files.
 2. UseCertificateAuth: connect to SharePoint admin center with existing app/cert.
+Usage - For setup and execution examples, see:
+https://github.com/directorcia/Office365/wiki/Certificate-based-authentication-for-SharePoint-Online
 Source - https://github.com/directorcia/Office365/blob/master/o365-connect-spo-cert.ps1
 Documentation - https://github.com/directorcia/Office365/wiki/Certificate-based-authentication-for-SharePoint-Online
 #>
@@ -76,6 +192,33 @@ $Colors = @{
 $SpoResourceAppId   = "00000003-0000-0ff1-ce00-000000000000"
 $GraphResourceAppId = "00000003-0000-0000-c000-000000000000"
 
+## Tracks whether this run opened a cert-auth SPO session that should be closed on error.
+$disconnectCertificateAuthOnError = $false
+
+function Get-ObjectPropertyValue {
+    <#
+    .SYNOPSIS
+        Read a note property without throwing under StrictMode when the JSON/object field is missing.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)][object]$InputObject,
+        [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$Name,
+        [Parameter(Mandatory = $false)][object]$Default = $null
+    )
+
+    if ($null -eq $InputObject) {
+        return $Default
+    }
+
+    $property = $InputObject.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $Default
+    }
+
+    return $property.Value
+}
+
 ## Resolve the executable of the current host so elevated module installs target the same runtime
 ## (PS5 vs PS7) and module path as the running script.
 $elevatedShellPath = (Get-Process -Id $PID).MainModule.FileName
@@ -118,8 +261,11 @@ function Resolve-SpoAdminCertificateProfile {
     if ($raw -is [System.Array]) {
         $profileItems = @($raw)
     }
-    elseif ($null -ne $raw.profiles) {
-        $profileItems = @($raw.profiles)
+    else {
+        $mappedProfiles = Get-ObjectPropertyValue $raw 'profiles'
+        if ($null -ne $mappedProfiles) {
+            $profileItems = @($mappedProfiles)
+        }
     }
 
     if ($profileItems.Count -eq 0) {
@@ -128,23 +274,16 @@ function Resolve-SpoAdminCertificateProfile {
 
     $candidateProfiles = $profileItems
     if (-not [string]::IsNullOrWhiteSpace($ProfileFilter)) {
-        $candidateProfiles = @($candidateProfiles | Where-Object { $_.name -eq $ProfileFilter })
+        $candidateProfiles = @($candidateProfiles | Where-Object { (Get-ObjectPropertyValue $_ 'name') -eq $ProfileFilter })
     }
     if (-not [string]::IsNullOrWhiteSpace($TenantFilter)) {
-        $candidateProfiles = @($candidateProfiles | Where-Object { $_.tenant -eq $TenantFilter })
+        $candidateProfiles = @($candidateProfiles | Where-Object { (Get-ObjectPropertyValue $_ 'tenant') -eq $TenantFilter })
     }
     if (-not [string]::IsNullOrWhiteSpace($AdminUrlFilter)) {
-        $candidateProfiles = @($candidateProfiles | Where-Object { $_.adminUrl -eq $AdminUrlFilter })
+        $candidateProfiles = @($candidateProfiles | Where-Object { (Get-ObjectPropertyValue $_ 'adminUrl') -eq $AdminUrlFilter })
     }
 
     if ($candidateProfiles.Count -eq 0) {
-        if ($profileItems.Count -eq 1) {
-            ## FIX #18: Warn visibly when explicit filters do not match - the fallback profile may target a different tenant/app.
-            $fallbackProfile = $profileItems[0]
-            Write-Host -ForegroundColor $Colors.WarningMessage ("No profile matched the supplied filters; falling back to the only profile in the map: name='{0}' tenant='{1}' adminUrl='{2}'" -f $fallbackProfile.name, $fallbackProfile.tenant, $fallbackProfile.adminUrl)
-            return $fallbackProfile
-        }
-
         $appliedFilters = @()
         if (-not [string]::IsNullOrWhiteSpace($ProfileFilter))  { $appliedFilters += "ProfileName='$ProfileFilter'" }
         if (-not [string]::IsNullOrWhiteSpace($TenantFilter))   { $appliedFilters += "Tenant='$TenantFilter'" }
@@ -152,7 +291,7 @@ function Resolve-SpoAdminCertificateProfile {
         $filterDesc = if ($appliedFilters.Count -gt 0) { " (filters: $($appliedFilters -join ', '))" } else { " (no filters applied)" }
 
         $availableDesc = ($profileItems | ForEach-Object {
-            "name='$($_.name)' tenant='$($_.tenant)' adminUrl='$($_.adminUrl)'"
+            "name='$(Get-ObjectPropertyValue $_ 'name')' tenant='$(Get-ObjectPropertyValue $_ 'tenant')' adminUrl='$(Get-ObjectPropertyValue $_ 'adminUrl')'"
         }) -join '; '
 
         throw "No matching certificate profile found in '$Path'$filterDesc. Available profiles: [$availableDesc]"
@@ -167,8 +306,9 @@ function Resolve-SpoAdminCertificateProfile {
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Multiple matching certificate profiles found:"
     for ($index = 0; $index -lt $candidateProfiles.Count; $index++) {
-        $displayName = if ([string]::IsNullOrWhiteSpace($candidateProfiles[$index].name)) { "(unnamed)" } else { $candidateProfiles[$index].name }
-        Write-Host -ForegroundColor $Colors.ProcessMessage ("[{0}] {1} | Tenant={2} | AdminUrl={3} | AppId={4}" -f ($index + 1), $displayName, $candidateProfiles[$index].tenant, $candidateProfiles[$index].adminUrl, $candidateProfiles[$index].appId)
+        $profileName = [string](Get-ObjectPropertyValue $candidateProfiles[$index] 'name')
+        $displayName = if ([string]::IsNullOrWhiteSpace($profileName)) { "(unnamed)" } else { $profileName }
+        Write-Host -ForegroundColor $Colors.ProcessMessage ("[{0}] {1} | Tenant={2} | AdminUrl={3} | AppId={4}" -f ($index + 1), $displayName, (Get-ObjectPropertyValue $candidateProfiles[$index] 'tenant'), (Get-ObjectPropertyValue $candidateProfiles[$index] 'adminUrl'), (Get-ObjectPropertyValue $candidateProfiles[$index] 'appId'))
     }
 
     do {
@@ -225,6 +365,10 @@ function Resolve-SpoAdminCertificate {
         }
     }
 
+    ## Cert not in either store - fall back to searching for a previously exported PFX file.
+    ## A PFX is only considered a match if its file name contains the requested thumbprint
+    ## (the export naming convention is <subject>-<thumbprint>.pfx), and import is attempted
+    ## with an empty password only, matching the script's own no-password export default.
     $pfxSearchRoots = @(
         $script:scriptDir,
         $script:scriptParentDir,
@@ -318,11 +462,6 @@ function Resolve-SpoAdminCertificateThumbprint {
                 $selectedCert = $preferredMatches | Sort-Object NotAfter -Descending | Select-Object -First 1
                 return $selectedCert.Thumbprint
             }
-
-            $selectedCert = $matchingCerts | Sort-Object NotAfter -Descending | Select-Object -First 1
-            if ($null -ne $selectedCert) {
-                return $selectedCert.Thumbprint
-            }
         }
     }
 
@@ -382,9 +521,13 @@ function New-SpoAdminLocalCertificate {
 
     Export-Certificate -Cert $certificate -FilePath $cerPath -Type CERT -Force -ErrorAction Stop | Out-Null
 
-    $pfxPath = $null
+    $pfxPath = ""
     if ($ExportPfx) {
         $securePfxPassword = $PfxPassword
+
+        if ($null -eq $securePfxPassword -and -not $NoPrompt) {
+            $securePfxPassword = Read-Host -Prompt "Enter password for generated PFX file" -AsSecureString
+        }
 
         if ($null -eq $securePfxPassword) {
             Write-Debug "No explicit PFX password supplied; using an empty password for local import compatibility."
@@ -402,7 +545,7 @@ function New-SpoAdminLocalCertificate {
         Subject    = $certificate.Subject
         NotAfter   = $certificate.NotAfter
         CerPath    = $cerPath
-        PfxPath    = if ($null -ne $pfxPath) { $pfxPath } else { "" }  ## FIX #6: store empty string instead of $null for safe JSON serialisation
+        PfxPath    = $pfxPath  ## empty string when not exported, for safe JSON serialisation
     }
 }
 
@@ -470,6 +613,10 @@ function Get-DeviceCodeGraphToken {
     ## FIX #7: Explicitly cast to [int] to avoid type-widening from JSON long on PS7.
     $pollInterval = [int]$deviceCodeResponse.interval
 
+    ## Poll the token endpoint per RFC 8628 until the user completes browser sign-in:
+    ##  - 'authorization_pending' -> keep polling at the server-suggested interval
+    ##  - 'slow_down'             -> back off by 5 seconds and keep polling
+    ##  - any other error, or reaching the device-code expiry deadline -> abort
     :pollLoop while ((Get-Date) -lt $deadline) {
         Start-Sleep -Seconds $pollInterval
         try {
@@ -568,6 +715,9 @@ function Invoke-SpoAdminGraphRequest {
                 catch {}
             }
 
+            ## Retry only transient failures: HTTP 429 (throttling) and 5xx (server errors), or
+            ## throttling-flavoured messages when no status code is available. A Retry-After header,
+            ## when present, overrides the exponential backoff (2s, 4s, 8s, ... capped at 30s).
             $isRetriableStatus  = ($statusCode -in @(429, 500, 502, 503, 504))
             $isRetriableMessage = ($msg -match '(?i)too many requests|throttl|rate limit|temporar|timeout|try again')
             $shouldRetry = ($attempt -le $MaxRetries) -and ($isRetriableStatus -or $isRetriableMessage)
@@ -608,6 +758,9 @@ function Set-SpoAdminProfileMapEntry {
         $sha256.Dispose()
     }
 
+    ## A system-wide named mutex (name derived from the map file path) serialises writes so
+    ## concurrent script runs against the same JSON file cannot corrupt it. The write itself is
+    ## atomic: content goes to a temp file first, then Move-Item replaces the real file.
     $hashHex   = ([System.BitConverter]::ToString($hashBytes)).Replace('-', '')
     $mutexName = "Global\CIAOPS_SPO_ADMIN_PROFILEMAP_$hashHex"
 
@@ -638,7 +791,9 @@ function Set-SpoAdminProfileMapEntry {
         if (Test-Path -Path $fullMapPath) {
             try {
                 $raw = Get-Content -Path $fullMapPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-                if ($null -ne $raw.profiles) { $mapData = $raw }
+                $existingProfiles = Get-ObjectPropertyValue $raw 'profiles'
+                if ($null -ne $existingProfiles) { $mapData = @{ profiles = @($existingProfiles) } }
+                elseif ($raw -is [System.Array]) { $mapData = @{ profiles = @($raw) } }
             }
             catch {
                 Write-Debug "Could not parse existing profile map inside lock - will overwrite."
@@ -646,13 +801,17 @@ function Set-SpoAdminProfileMapEntry {
         }
 
         $profileList = [System.Collections.Generic.List[object]]::new()
-        foreach ($p in $mapData.profiles) { $profileList.Add($p) }
+        foreach ($p in @($mapData.profiles)) { $profileList.Add($p) }
 
         ## Replace existing entry for the same tenant or appId, or append.
         $existingIdx = $null
+        $entryAppId  = [string](Get-ObjectPropertyValue $ProfileEntry 'appId')
+        $entryTenant = [string](Get-ObjectPropertyValue $ProfileEntry 'tenant')
         for ($i = 0; $i -lt $profileList.Count; $i++) {
-            $sameApp    = (-not [string]::IsNullOrWhiteSpace($profileList[$i].appId)  -and $profileList[$i].appId   -eq $ProfileEntry.appId)
-            $sameTenant = (-not [string]::IsNullOrWhiteSpace($profileList[$i].tenant) -and $profileList[$i].tenant  -eq $ProfileEntry.tenant)
+            $existingAppId  = [string](Get-ObjectPropertyValue $profileList[$i] 'appId')
+            $existingTenant = [string](Get-ObjectPropertyValue $profileList[$i] 'tenant')
+            $sameApp        = (-not [string]::IsNullOrWhiteSpace($existingAppId)  -and $existingAppId  -eq $entryAppId)
+            $sameTenant     = (-not [string]::IsNullOrWhiteSpace($existingTenant) -and $existingTenant -eq $entryTenant)
             if ($sameApp -or $sameTenant) { $existingIdx = $i; break }
         }
         if ($null -ne $existingIdx) { $profileList[$existingIdx] = $ProfileEntry } else { $profileList.Add($ProfileEntry) }
@@ -688,6 +847,12 @@ function Get-CertClientAssertionToken {
         [string]$Scope = "https://graph.microsoft.com/.default"
     )
 
+    ## The client_credentials flow with a certificate works by sending a short-lived, self-signed
+    ## JWT ("client assertion") instead of a client secret. The JWT has three base64url parts:
+    ## header (alg + cert thumbprint), payload (issuer/audience/expiry claims), and an RSA-SHA256
+    ## signature produced with the certificate's private key. Entra ID validates the signature
+    ## against the public key uploaded to the app registration.
+
     ## Build the x5t (base64url of cert SHA-1 thumbprint bytes) for the JWT header.
     $thumbprintBytes = $Certificate.GetCertHash()
     $x5t = [System.Convert]::ToBase64String($thumbprintBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
@@ -705,9 +870,18 @@ function Get-CertClientAssertionToken {
     $signingInput = [System.Text.Encoding]::UTF8.GetBytes("$headerB64.$payloadB64")
 
     ## Sign with the certificate's RSA private key using PKCS#1 v1.5 / SHA-256.
-    $rsa      = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($Certificate)
-    $sigBytes = $rsa.SignData($signingInput, [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
-    $sigB64   = [System.Convert]::ToBase64String($sigBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+    $rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($Certificate)
+    if ($null -eq $rsa) {
+        throw "Certificate does not expose an RSA private key required for client assertion signing."
+    }
+
+    try {
+        $sigBytes = $rsa.SignData($signingInput, [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    }
+    finally {
+        $rsa.Dispose()
+    }
+    $sigB64 = [System.Convert]::ToBase64String($sigBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 
     $clientAssertion = "$headerB64.$payloadB64.$sigB64"
 
@@ -758,6 +932,7 @@ function Write-SpoAdminCertConnectionDetails {
     Write-Host -ForegroundColor $Colors.ProcessMessage ("  Valid To      : {0}" -f $LocalCert.NotAfter.ToString('yyyy-MM-dd HH:mm:ss'))
 
     ## Attempt to fetch Entra app details using a client assertion (no user interaction).
+    $graphToken = $null
     try {
         $graphToken = Get-CertClientAssertionToken -TenantId $TenantId -AppId $AppId -Certificate $LocalCert
         $graphBase  = "https://graph.microsoft.com/v1.0"
@@ -805,6 +980,11 @@ function Write-SpoAdminCertConnectionDetails {
             Write-Host -ForegroundColor $Colors.WarningMessage "`n  (Entra ID cert details unavailable: $entraDetailError)"
         }
     }
+    finally {
+        if ($null -ne $graphToken) {
+            Remove-Variable -Name graphToken -ErrorAction SilentlyContinue
+        }
+    }
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "$sep`n"
 }
@@ -830,10 +1010,11 @@ function Get-SpoAdminProvisioningRoleTargets {
     Write-Host -ForegroundColor $Colors.ProcessMessage "Locating SharePoint Online service principal in directory..."
     $spoSpFilter = [uri]::EscapeDataString("appId eq '$SpoResourceAppId'")
     $spoSpResult = Invoke-SpoAdminGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/servicePrincipals?`$filter=$spoSpFilter"
-    if ($null -eq $spoSpResult.value -or $spoSpResult.value.Count -eq 0) {
+    $spoSpList   = @(Get-ObjectPropertyValue $spoSpResult 'value')
+    if ($spoSpList.Count -eq 0) {
         throw "SharePoint Online service principal not found. Ensure SharePoint Online is provisioned in this tenant."
     }
-    $spoSp            = $spoSpResult.value[0]
+    $spoSp            = $spoSpList[0]
     $sitesFullRole    = $spoSp.appRoles | Where-Object { $_.value -eq "Sites.FullControl.All" }
     if ($null -eq $sitesFullRole) {
         throw "Sites.FullControl.All role not found on SharePoint Online service principal."
@@ -843,10 +1024,11 @@ function Get-SpoAdminProvisioningRoleTargets {
     Write-Host -ForegroundColor $Colors.ProcessMessage "Locating Microsoft Graph service principal in directory..."
     $graphSpFilter    = [uri]::EscapeDataString("appId eq '$GraphResourceAppId'")
     $graphSpResult    = Invoke-SpoAdminGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/servicePrincipals?`$filter=$graphSpFilter"
-    if ($null -eq $graphSpResult.value -or $graphSpResult.value.Count -eq 0) {
+    $graphSpList      = @(Get-ObjectPropertyValue $graphSpResult 'value')
+    if ($graphSpList.Count -eq 0) {
         throw "Microsoft Graph service principal not found in this tenant."
     }
-    $graphSp          = $graphSpResult.value[0]
+    $graphSp          = $graphSpList[0]
     $graphReadAllRole = $graphSp.appRoles | Where-Object { $_.value -eq "Application.Read.All" -and $_.allowedMemberTypes -contains "Application" } | Select-Object -First 1
     if ($null -eq $graphReadAllRole) {
         throw "Application.Read.All app role not found on Microsoft Graph service principal."
@@ -893,9 +1075,10 @@ function Get-OrCreateSpoAdminEntraApplication {
     $appFilter    = [uri]::EscapeDataString("displayName eq '" + ($DisplayName -replace "'", "''") + "'")
     $existingApps = Invoke-SpoAdminGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/applications?`$filter=$appFilter"
 
-    if ($existingApps.value.Count -gt 0) {
+    $existingAppList = @($existingApps.value)
+    if ($existingAppList.Count -gt 0) {
         Write-Host -ForegroundColor $Colors.WarningMessage "App '$DisplayName' already exists - reusing existing registration."
-        return $existingApps.value[0]
+        return $existingAppList[0]
     }
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Creating app registration: $DisplayName..."
@@ -1008,8 +1191,9 @@ function Get-OrCreateSpoAdminEntraServicePrincipal {
     $spFilter   = [uri]::EscapeDataString("appId eq '$AppId'")
     $existingSp = Invoke-SpoAdminGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/servicePrincipals?`$filter=$spFilter"
 
-    if ($existingSp.value.Count -gt 0) {
-        $spObject = $existingSp.value[0]
+    $existingSpList = @($existingSp.value)
+    if ($existingSpList.Count -gt 0) {
+        $spObject = $existingSpList[0]
         Write-Host -ForegroundColor $Colors.ProcessMessage "Service principal already exists. Object ID: $($spObject.id)"
         return $spObject
     }
@@ -1221,9 +1405,16 @@ function Write-SpoAdminConnectedCenter {
     Write-Host -ForegroundColor $Colors.SystemMessage "Connected SharePoint admin center: ${displayUrl}${titleDisplay}"
 }
 
+## ============================================================================
+## MAIN SCRIPT BODY
+## Everything above this point is parameter handling, path resolution, and
+## function definitions. Execution starts here: validate the selected mode,
+## then run either the certificate-generation flow (Mode 1) or the
+## certificate-authentication connection flow (Mode 2).
+## ============================================================================
 Clear-Host
 
-## Enforce TLS 1.2 minimum.
+## Enforce TLS 1.2 minimum - older defaults (TLS 1.0/1.1) are rejected by Microsoft endpoints.
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 if ($enableLog) {
@@ -1236,6 +1427,7 @@ try {
     Write-Host -ForegroundColor $Colors.SystemMessage "SharePoint Online Admin Center Connection script started`n"
     Write-Host -ForegroundColor $Colors.ProcessMessage "Prompt =", (-not $noprompt)
 
+    ## Mode selection is an exclusive-or: exactly one of the two switches must be supplied.
     if (($GenerateLocalCertificate -and $UseCertificateAuth) -or (-not $GenerateLocalCertificate -and -not $UseCertificateAuth)) {
         throw "Specify exactly one mode: -GenerateLocalCertificate or -UseCertificateAuth."
     }
@@ -1259,9 +1451,12 @@ try {
             }
 
             Write-Host -ForegroundColor $Colors.ProcessMessage "Installing SharePoint Online PowerShell module - Administration escalation required"
-            ## FIX #16: Capture exit code from elevated install; fail early with a clear message if UAC was denied or install failed.
+            ## FIX #16: Capture the exit code from the elevated install so a denied UAC prompt or a
+            ##          failed install is detected instead of silently continuing without the module.
             ## FIX #17: Pass -Command explicitly - pwsh (PS6+) treats a bare first argument as -File, not -Command.
-            $installProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', "Install-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:`$false") -Wait -WindowStyle Hidden -PassThru
+            ## $ErrorActionPreference = 'Stop' inside the elevated session makes Install-Module failures
+            ## surface as a non-zero exit code that the check below can act on.
+            $installProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', '$ErrorActionPreference = ''Stop''; Install-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:$false') -Wait -WindowStyle Hidden -PassThru
             if ($installProcess.ExitCode -ne 0) {
                 throw "Elevated module install failed (exit code $($installProcess.ExitCode)). Run PowerShell as Administrator and retry, or install the module manually: Install-Module -Name microsoft.online.sharepoint.powershell"
             }
@@ -1289,7 +1484,7 @@ try {
                     if ($updateResponse -eq 'Y' -or $updateResponse -eq 'y') {
                         Write-Host -ForegroundColor $Colors.ProcessMessage "Updating SharePoint Online PowerShell module - Administration escalation required"
                         ## FIX #16: Capture and check exit code for update as well.
-                        $updateProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', "Update-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:`$false") -Wait -WindowStyle Hidden -PassThru
+                        $updateProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', '$ErrorActionPreference = ''Stop''; Update-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:$false') -Wait -WindowStyle Hidden -PassThru
                         if ($updateProcess.ExitCode -ne 0) {
                             Write-Host -ForegroundColor $Colors.WarningMessage "Module update may have failed (exit code $($updateProcess.ExitCode)). Continuing with current installed version."
                         }
@@ -1297,7 +1492,7 @@ try {
                 }
                 else {
                     Write-Host -ForegroundColor $Colors.ProcessMessage "Updating SharePoint Online PowerShell module - Administration escalation required"
-                    $updateProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', "Update-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:`$false") -Wait -WindowStyle Hidden -PassThru
+                    $updateProcess = Start-Process $elevatedShellPath -Verb runAs -ArgumentList @('-NoProfile', '-Command', '$ErrorActionPreference = ''Stop''; Update-Module -Name microsoft.online.sharepoint.powershell -Force -Confirm:$false') -Wait -WindowStyle Hidden -PassThru
                     if ($updateProcess.ExitCode -ne 0) {
                         Write-Host -ForegroundColor $Colors.WarningMessage "Module update may have failed (exit code $($updateProcess.ExitCode)). Continuing with current installed version."
                     }
@@ -1309,6 +1504,31 @@ try {
         }
 
         Write-Host -ForegroundColor $Colors.ProcessMessage "Loading SharePoint Online PowerShell module"
+
+        ## Pre-load the newer Microsoft.IdentityModel.Abstractions shipped with ExchangeOnlineManagement
+        ## (if installed) before the SPO module loads its older bundled copy. Higher assembly versions
+        ## satisfy lower references, so this keeps the session usable for a later EXO connect, which
+        ## would otherwise fail with a manifest-mismatch (0x80131040) conflict.
+        $identityAbstractionsLoaded = [System.AppDomain]::CurrentDomain.GetAssemblies() |
+            Where-Object { $_.GetName().Name -eq 'Microsoft.IdentityModel.Abstractions' } |
+            Select-Object -First 1
+        if ($null -eq $identityAbstractionsLoaded) {
+            $exoModuleInfo = Get-Module -ListAvailable -Name ExchangeOnlineManagement | Sort-Object Version -Descending | Select-Object -First 1
+            if ($null -ne $exoModuleInfo) {
+                $exoRuntimeFolder = if ($PSVersionTable.PSEdition -eq 'Core') { 'netCore' } else { 'netFramework' }
+                $exoIdentityDll = Join-Path (Join-Path $exoModuleInfo.ModuleBase $exoRuntimeFolder) 'Microsoft.IdentityModel.Abstractions.dll'
+                if (Test-Path -Path $exoIdentityDll) {
+                    try {
+                        Add-Type -Path $exoIdentityDll -ErrorAction Stop
+                        Write-Debug "Pre-loaded Microsoft.IdentityModel.Abstractions $([System.Reflection.AssemblyName]::GetAssemblyName($exoIdentityDll).Version) from ExchangeOnlineManagement $($exoModuleInfo.Version) to keep this session EXO-compatible."
+                    }
+                    catch {
+                        Write-Debug "Pre-load of Microsoft.IdentityModel.Abstractions failed (non-fatal): $($_.Exception.Message)"
+                    }
+                }
+            }
+        }
+
         $ps = $PSVersionTable.PSVersion
         if ($ps.Major -lt 6) {
             Import-Module microsoft.online.sharepoint.powershell -DisableNameChecking -ErrorAction Stop | Out-Null
@@ -1325,6 +1545,9 @@ try {
             }
         }
 
+        ## Confirm the loaded module actually supports certificate connection parameters.
+        ## Some module/load-context combinations (notably implicit remoting proxies) expose a
+        ## reduced Connect-SPOService parameter set, so inspect it rather than trusting the version.
         $connectSpoCommand = Get-Command -Name Connect-SPOService -ErrorAction Stop
         $connectParamKeys  = @($connectSpoCommand.Parameters.Keys)
         $hasAppParam       = ($connectParamKeys -contains 'ClientId' -or $connectParamKeys -contains 'AppId')
@@ -1353,6 +1576,13 @@ try {
         }
     }
 
+    ## ------------------------------------------------------------------------
+    ## MODE 1: -GenerateLocalCertificate
+    ## Steps: (1) create self-signed cert in CurrentUser\My and export .cer/.pfx,
+    ##        (2) optionally provision the Entra app via Graph (device-code auth),
+    ##        (3) upload cert + grant app permissions with admin consent,
+    ##        (4) persist the connection profile to the JSON map for future runs.
+    ## ------------------------------------------------------------------------
     if ($GenerateLocalCertificate) {
         $provisionTenant = $Tenant
         if ($ProvisionEntraApp) {
@@ -1432,14 +1662,21 @@ try {
         exit 0
     }
 
-    # --- UseCertificateAuth mode ---
+    ## ------------------------------------------------------------------------
+    ## MODE 2: -UseCertificateAuth
+    ## Resolution precedence for each connection value (Tenant/AdminUrl/AppId/Thumbprint):
+    ##   1. Explicit script parameter.
+    ##   2. Matching profile entry from the JSON profile map.
+    ##   3. Derivation (AdminUrl from tenant name) or discovery (thumbprint from cert store).
+    ## Anything still missing after all three stages is a hard error.
+    ## ------------------------------------------------------------------------
     Write-Debug "Resolving profile and certificate auth inputs."
     $resolvedProfile = Resolve-SpoAdminCertificateProfile -Path $CertificateMapPath -TenantFilter $Tenant -ProfileFilter $ProfileName -AdminUrlFilter $AdminUrl -NoPrompt:$noprompt -Colors $Colors
     if ($null -ne $resolvedProfile) {
-        if ([string]::IsNullOrWhiteSpace($Tenant))                 { $Tenant                 = $resolvedProfile.tenant }
-        if ([string]::IsNullOrWhiteSpace($AdminUrl))               { $AdminUrl               = $resolvedProfile.adminUrl }
-        if ([string]::IsNullOrWhiteSpace($AppId))                  { $AppId                  = $resolvedProfile.appId }
-        if ([string]::IsNullOrWhiteSpace($CertificateThumbprint))  { $CertificateThumbprint  = $resolvedProfile.certificateThumbprint }
+        if ([string]::IsNullOrWhiteSpace($Tenant))                { $Tenant                = [string](Get-ObjectPropertyValue $resolvedProfile 'tenant') }
+        if ([string]::IsNullOrWhiteSpace($AdminUrl))              { $AdminUrl              = [string](Get-ObjectPropertyValue $resolvedProfile 'adminUrl') }
+        if ([string]::IsNullOrWhiteSpace($AppId))                 { $AppId                 = [string](Get-ObjectPropertyValue $resolvedProfile 'appId') }
+        if ([string]::IsNullOrWhiteSpace($CertificateThumbprint)) { $CertificateThumbprint = [string](Get-ObjectPropertyValue $resolvedProfile 'certificateThumbprint') }
     }
 
 
@@ -1467,8 +1704,9 @@ try {
 
     ## Verify the certificate is present in the local store before attempting to connect.
     $candidatePfxPaths = @()
-    if ($null -ne $resolvedProfile -and -not [string]::IsNullOrWhiteSpace($resolvedProfile.pfxPath)) {
-        $candidatePfxPaths += $resolvedProfile.pfxPath
+    $profilePfxPath = [string](Get-ObjectPropertyValue $resolvedProfile 'pfxPath')
+    if (-not [string]::IsNullOrWhiteSpace($profilePfxPath)) {
+        $candidatePfxPaths += $profilePfxPath
     }
     $localCert = Resolve-SpoAdminCertificate -Thumbprint $CertificateThumbprint -Colors $Colors -CandidatePfxPaths $candidatePfxPaths
 
@@ -1485,6 +1723,7 @@ try {
     }
 
     ## Probe for an existing SPO connection and disconnect if one is active.
+    ## Get-SPOTenant throws when there is no active session, so a successful call means connected.
     $existingConnection = $false
     try { Get-SPOTenant -ErrorAction Stop | Out-Null; $existingConnection = $true } catch {}
 
@@ -1496,6 +1735,10 @@ try {
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Connecting to SharePoint admin center with certificate authentication"
 
+    ## Connect-SPOService parameter names have drifted across SPO module versions
+    ## (ClientId vs AppId, Certificate vs CertificateThumbprint vs Thumbprint, Tenant vs TenantId).
+    ## Build the splat dynamically from whichever parameters the loaded module actually exposes
+    ## so the script works with old and new module releases alike.
     $connectSpoCommand = Get-Command -Name Connect-SPOService -ErrorAction Stop
     $connectParams = @{
         Url         = $AdminUrl
@@ -1509,15 +1752,16 @@ try {
         $connectParams.AppId = $AppId
     }
 
+    $resolvedThumbprint = ($localCert.Thumbprint -replace '\s', '').ToUpperInvariant()
     if ($connectSpoCommand.Parameters.ContainsKey('Certificate')) {
         ## Prefer passing the in-memory certificate object when supported to avoid store lookup edge-cases.
         $connectParams.Certificate = $localCert
     }
     elseif ($connectSpoCommand.Parameters.ContainsKey('CertificateThumbprint')) {
-        $connectParams.CertificateThumbprint = $CertificateThumbprint
+        $connectParams.CertificateThumbprint = $resolvedThumbprint
     }
     else {
-        $connectParams.Thumbprint = $CertificateThumbprint
+        $connectParams.Thumbprint = $resolvedThumbprint
     }
 
     if ($connectSpoCommand.Parameters.ContainsKey('Tenant')) {
@@ -1532,20 +1776,25 @@ try {
 
     Write-Debug "Connect-SPOService parameter keys: $($connectParams.Keys -join ', ')"
     Connect-SPOService @connectParams
+    $disconnectCertificateAuthOnError = $true
 
     Write-SpoAdminConnectedCenter -RequestedAdminUrl $AdminUrl -Colors $Colors
     Write-SpoAdminCertConnectionDetails -TenantId $Tenant -AppId $AppId -LocalCert $localCert -Colors $Colors
+    $disconnectCertificateAuthOnError = $false
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Connected to SharePoint admin center`n"
     Write-Host -ForegroundColor $Colors.ProcessMessage "SPO cmdlets are available, for example: Get-SPOTenant or Get-SPOSite"
     Write-Host -ForegroundColor $Colors.SystemMessage "SharePoint Online admin center certificate auth flow finished`n"
 }
 catch {
+    if ($disconnectCertificateAuthOnError) {
+        Disconnect-SPOService -ErrorAction SilentlyContinue
+    }
     Write-Host -ForegroundColor $Colors.ErrorMessage "Script failed: $($_.Exception.Message)"
     if ($UseCertificateAuth -and $_.Exception.Message -match '(?i)certificate with thumbprint|no certificate was found|private key|pfx') {
         Write-Host -ForegroundColor $Colors.WarningMessage "The certificate thumbprint could not be resolved for Connect-SPOService. Confirm the certificate exists in CurrentUser or LocalMachine\\My and contains a private key."
     }
-    if ($UseCertificateAuth -and $_.Exception.Message -match '(?i)access denied|forbidden|unauthorized|insufficient privileges|aadsts|permission') {
+    if ($UseCertificateAuth -and $_.Exception.Message -match '(?i)access denied|forbidden|unauthorized|insufficient privileges|aadsts|permission|not authorized') {
         Write-Host -ForegroundColor $Colors.WarningMessage "If this app/certificate was just provisioned, wait 15-30 minutes and try again due to RBAC replication lag."
     }
     exit 1
