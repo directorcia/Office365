@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Image Model Comparison</title>
+  <meta name="description" content="Compare image-generation results across models.">
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("scoutTheme");
+      const theme = param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: var(--cp-bg); color: var(--cp-text); font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif; }
+    button { font: inherit; }
+    .page { width: min(1480px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 48px; }
+    .masthead { display: flex; justify-content: space-between; gap: 24px; align-items: end; border-bottom: 1px solid var(--cp-border); padding-bottom: 24px; }
+    .eyebrow { margin: 0 0 8px; color: var(--cp-accent); font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(2rem, 4vw, 3.25rem); line-height: 1; letter-spacing: 0; }
+    .intro { max-width: 650px; margin: 12px 0 0; color: var(--cp-text-muted); line-height: 1.5; }
+    .controls { display: flex; align-items: center; gap: 10px; }
+    .icon-button { border: 1px solid var(--cp-border-strong); border-radius: .625rem; background: var(--cp-surface); color: var(--cp-text); min-height: 40px; }
+    .icon-button { width: 40px; padding: 0; cursor: pointer; }
+    .icon-button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+    .notice { margin: 24px 0; padding: 12px 16px; border-left: 4px solid var(--cp-accent); background: var(--cp-accent-soft); color: var(--cp-text-muted); line-height: 1.45; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+    .result { min-width: 0; background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; overflow: hidden; box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14); }
+    .image-frame { aspect-ratio: 1 / 1; position: relative; display: grid; place-items: center; background: var(--cp-surface-soft); overflow: hidden; }
+    .image-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .missing { position: absolute; inset: 0; display: grid; place-items: center; padding: 28px; text-align: center; color: var(--cp-text-muted); line-height: 1.5; background: var(--cp-surface-soft); }
+    .missing code, .footer code { color: var(--cp-text); font-family: Consolas, "Courier New", Courier, monospace; font-size: .82rem; overflow-wrap: anywhere; }
+    .result-body { padding: 16px; }
+    .model-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+    .model-name { margin: 0; font-size: 1.1rem; }
+    .badge { flex: none; color: var(--cp-accent); background: var(--cp-accent-soft); border-radius: .625rem; font-size: .72rem; font-weight: 700; padding: 4px 8px; text-transform: uppercase; }
+    .details { margin: 10px 0 0; color: var(--cp-text-muted); font-size: .9rem; line-height: 1.4; }
+    .metadata { width: 100%; margin: 14px 0 0; border-collapse: collapse; color: var(--cp-text-muted); font-size: .82rem; }
+    .metadata th, .metadata td { padding: 7px 0; border-top: 1px solid var(--cp-border); text-align: left; }
+    .metadata th { width: 42%; color: var(--cp-text-soft); font-weight: 600; }
+    .metadata td { color: var(--cp-text); overflow-wrap: anywhere; }
+    .footer { margin-top: 32px; color: var(--cp-text-soft); font-size: .85rem; }
+    @media (max-width: 700px) { .page { width: min(100% - 24px, 1480px); padding-top: 24px; } .masthead { align-items: start; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Visual evaluation</p>
+        <h1>Image Model Comparison</h1>
+        <p class="intro">Compare image-generation results across models at the same scale.</p>
+      </div>
+      <div class="controls">
+        <button class="icon-button" id="theme-toggle" type="button" title="Toggle color theme" aria-label="Toggle color theme">&#9681;</button>
+      </div>
+    </header>
+    <section class="notice" id="prompt-description" aria-live="polite"></section>
+    <section class="gallery" id="gallery" aria-live="polite"></section>
+    <p class="footer">Add comparisons by updating <code>comparisonSets</code> below and placing files in <code>docs/images/</code>.</p>
+  </main>
+  <script>
+    const comparisonSets = [{
+      id: "espresso-machine",
+      name: "Espresso coffee machine",
+      description: "Technical cutaway illustration of a precision espresso coffee machine.",
+      results: [
+        { model: "mai-image-2.6-flash", image: "images/mai-image-2.6-flash-20260905.png", fileName: "mai-image-2.6-flash-20260905.png", creationDate: "September 5, 2026", dimensions: "1024 x 1024 px", fileSize: "1.39 MB", format: "PNG" },
+        { model: "mai-image-2.6", image: "images/mai-image-2.6-20260815.png", fileName: "mai-image-2.6-20260815.png", creationDate: "August 15, 2026", dimensions: "768 x 768 px", fileSize: "667 KB", format: "PNG" }
+      ]
+    }];
+    const promptDescription = document.getElementById("prompt-description");
+    const gallery = document.getElementById("gallery");
+    const themeToggle = document.getElementById("theme-toggle");
+    const escapeHtml = (value) => value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" })[character]);
+    function renderComparison(set) {
+      promptDescription.textContent = set.description;
+      gallery.innerHTML = set.results.map((result) => `<article class="result"><div class="image-frame"><img src="${escapeHtml(result.image)}" alt="${escapeHtml(set.name + ": " + result.model)}"><div class="missing" hidden>Image not found: <code>${escapeHtml(result.image)}</code></div></div><div class="result-body"><div class="model-row"><h2 class="model-name">${escapeHtml(result.model)}</h2><span class="badge">Result</span></div><table class="metadata"><tbody><tr><th scope="row">Created</th><td>${escapeHtml(result.creationDate)}</td></tr><tr><th scope="row">Dimensions</th><td>${escapeHtml(result.dimensions)}</td></tr><tr><th scope="row">File size</th><td>${escapeHtml(result.fileSize)}</td></tr><tr><th scope="row">Format</th><td>${escapeHtml(result.format)}</td></tr><tr><th scope="row">File</th><td>${escapeHtml(result.fileName)}</td></tr></tbody></table></div></article>`).join("");
+      gallery.querySelectorAll("img").forEach((image) => image.addEventListener("error", () => { image.hidden = true; image.nextElementSibling.hidden = false; }));
+    }
+    themeToggle.addEventListener("click", () => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; });
+    renderComparison(comparisonSets[0]);
+  </script>
+</body>
+</html>
