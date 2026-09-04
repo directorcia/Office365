@@ -84,6 +84,7 @@
     .image-frame { aspect-ratio: 1 / 1; position: relative; display: grid; place-items: center; background: var(--cp-surface-soft); overflow: hidden; }
     .image-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
     .missing { position: absolute; inset: 0; display: grid; place-items: center; padding: 28px; text-align: center; color: var(--cp-text-muted); line-height: 1.5; background: var(--cp-surface-soft); }
+    .missing[hidden] { display: none; }
     .missing code, .footer code { color: var(--cp-text); font-family: Consolas, "Courier New", Courier, monospace; font-size: .82rem; overflow-wrap: anywhere; }
     .result-body { padding: 16px; }
     .model-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
