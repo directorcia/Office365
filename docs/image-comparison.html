@@ -150,6 +150,7 @@
         { model: "Copilot-chat", image: "images/Copilot-chat-20260905.png", fileName: "Copilot-chat-20260905.png", creationDate: "September 5, 2026", dimensions: "1254 x 1254 px", fileSize: "2.30 MB", format: "PNG" }
       ]
     }];
+    comparisonSets.forEach((set) => set.results.sort((left, right) => new Date(right.creationDate) - new Date(left.creationDate)));
     const promptDescription = document.getElementById("prompt-description");
     const filterOptions = document.getElementById("filter-options");
     const gallery = document.getElementById("gallery");
