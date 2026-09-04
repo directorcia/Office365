@@ -81,8 +81,9 @@
     .notice { margin: 24px 0; padding: 12px 16px; border-left: 4px solid var(--cp-accent); background: var(--cp-accent-soft); color: var(--cp-text-muted); line-height: 1.45; }
     .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
     .result { min-width: 0; background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; overflow: hidden; box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14); }
-    .image-frame { aspect-ratio: 1 / 1; position: relative; display: grid; place-items: center; background: var(--cp-surface-soft); overflow: hidden; }
+    .image-frame { aspect-ratio: 1 / 1; position: relative; display: grid; place-items: center; width: 100%; border: 0; padding: 0; background: var(--cp-surface-soft); overflow: hidden; cursor: zoom-in; }
     .image-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .image-frame:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: -3px; }
     .missing { position: absolute; inset: 0; display: grid; place-items: center; padding: 28px; text-align: center; color: var(--cp-text-muted); line-height: 1.5; background: var(--cp-surface-soft); }
     .missing[hidden] { display: none; }
     .missing code, .footer code { color: var(--cp-text); font-family: Consolas, "Courier New", Courier, monospace; font-size: .82rem; overflow-wrap: anywhere; }
@@ -96,6 +97,18 @@
     .metadata th { width: 42%; color: var(--cp-text-soft); font-weight: 600; }
     .metadata td { color: var(--cp-text); overflow-wrap: anywhere; }
     .footer { margin-top: 32px; color: var(--cp-text-soft); font-size: .85rem; }
+    .filter-panel { margin: 24px 0; padding: 16px; border: 1px solid var(--cp-border); border-radius: .625rem; background: var(--cp-surface); }
+    .filter-heading { margin: 0 0 12px; font-size: .9rem; }
+    .filter-options { display: flex; flex-wrap: wrap; gap: 8px; }
+    .filter-option { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 10px; border: 1px solid var(--cp-border); border-radius: .625rem; background: var(--cp-surface-soft); color: var(--cp-text); cursor: pointer; }
+    .filter-option:has(input:focus-visible) { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
+    .filter-option input { accent-color: var(--cp-accent); }
+    .empty { grid-column: 1 / -1; padding: 28px; border: 1px dashed var(--cp-border-strong); border-radius: .625rem; color: var(--cp-text-muted); text-align: center; }
+    .image-dialog { max-width: min(96vw, 1800px); max-height: 96vh; padding: 12px; border: 1px solid var(--cp-border-strong); border-radius: .625rem; background: var(--cp-surface); box-shadow: var(--cp-shadow); }
+    .image-dialog::backdrop { background: var(--cp-overlay); }
+    .image-dialog img { display: block; max-width: calc(96vw - 24px); max-height: calc(96vh - 24px); object-fit: contain; }
+    .dialog-close { position: absolute; top: 16px; right: 16px; width: 40px; min-height: 40px; border: 1px solid var(--cp-border-strong); border-radius: .625rem; background: var(--cp-surface); color: var(--cp-text); cursor: pointer; }
+    .dialog-close:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
     @media (max-width: 700px) { .page { width: min(100% - 24px, 1480px); padding-top: 24px; } .masthead { align-items: start; flex-direction: column; } }
   </style>
 </head>
@@ -112,9 +125,17 @@
       </div>
     </header>
     <section class="notice" id="prompt-description" aria-live="polite"></section>
+    <section class="filter-panel" aria-labelledby="filter-heading">
+      <h2 class="filter-heading" id="filter-heading">Displayed models</h2>
+      <div class="filter-options" id="filter-options"></div>
+    </section>
     <section class="gallery" id="gallery" aria-live="polite"></section>
     <p class="footer">Add comparisons by updating <code>comparisonSets</code> below and placing files in <code>docs/images/</code>.</p>
   </main>
+  <dialog class="image-dialog" id="image-dialog" aria-label="Focused image">
+    <button class="dialog-close" id="dialog-close" type="button" aria-label="Close focused image" title="Close focused image">&#215;</button>
+    <img id="focused-image" alt="">
+  </dialog>
   <script>
     const comparisonSets = [{
       id: "espresso-machine",
@@ -124,19 +145,44 @@
         { model: "mai-image-2.6-flash", image: "images/mai-image-2.6-flash-20260905.png", fileName: "mai-image-2.6-flash-20260905.png", creationDate: "September 5, 2026", dimensions: "1024 x 1024 px", fileSize: "1.39 MB", format: "PNG" },
         { model: "mai-image-2.6", image: "images/mai-image-2.6-20260815.png", fileName: "mai-image-2.6-20260815.png", creationDate: "August 15, 2026", dimensions: "768 x 768 px", fileSize: "667 KB", format: "PNG" },
         { model: "mai-image-2.5", image: "images/mai-image-2.5-20260724.png", fileName: "mai-image-2.5-20260724.png", creationDate: "July 24, 2026", dimensions: "768 x 768 px", fileSize: "667 KB", format: "PNG" },
-        { model: "mai-image-2.5-flash", image: "images/mai-image-2.5-flash-20260704.png", fileName: "mai-image-2.5-flash-20260704.png", creationDate: "July 4, 2026", dimensions: "804 x 768 px", fileSize: "752 KB", format: "PNG" }
+        { model: "mai-image-2.5-flash", image: "images/mai-image-2.5-flash-20260704.png", fileName: "mai-image-2.5-flash-20260704.png", creationDate: "July 4, 2026", dimensions: "804 x 768 px", fileSize: "752 KB", format: "PNG" },
+        { model: "Nano-Bananna2", image: "images/Nano-Bananna2-20260905.jpg", fileName: "Nano-Bananna2-20260905.jpg", creationDate: "September 5, 2026", dimensions: "1024 x 1024 px", fileSize: "702 KB", format: "JPEG" },
+        { model: "Copilot-chat", image: "images/Copilot-chat-20260905.png", fileName: "Copilot-chat-20260905.png", creationDate: "September 5, 2026", dimensions: "1254 x 1254 px", fileSize: "2.30 MB", format: "PNG" }
       ]
     }];
     const promptDescription = document.getElementById("prompt-description");
+    const filterOptions = document.getElementById("filter-options");
     const gallery = document.getElementById("gallery");
     const themeToggle = document.getElementById("theme-toggle");
+    const imageDialog = document.getElementById("image-dialog");
+    const focusedImage = document.getElementById("focused-image");
+    const dialogClose = document.getElementById("dialog-close");
     const escapeHtml = (value) => value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" })[character]);
+    const selectedModels = new Set(comparisonSets[0].results.map((result) => result.model));
+    function renderFilters(set) {
+      filterOptions.innerHTML = `<label class="filter-option"><input type="checkbox" id="filter-all" checked> All models</label>${set.results.map((result) => `<label class="filter-option"><input type="checkbox" value="${escapeHtml(result.model)}" checked> ${escapeHtml(result.model)}</label>`).join("")}`;
+      filterOptions.addEventListener("change", (event) => {
+        const checkbox = event.target;
+        if (checkbox.id === "filter-all") {
+          filterOptions.querySelectorAll("input[type=checkbox]").forEach((input) => { if (input !== checkbox) input.checked = checkbox.checked; });
+        }
+        selectedModels.clear();
+        filterOptions.querySelectorAll("input[type=checkbox][value]:checked").forEach((input) => selectedModels.add(input.value));
+        document.getElementById("filter-all").checked = selectedModels.size === set.results.length;
+        renderComparison(set);
+      });
+    }
     function renderComparison(set) {
       promptDescription.textContent = set.description;
-      gallery.innerHTML = set.results.map((result) => `<article class="result"><div class="image-frame"><img src="${escapeHtml(result.image)}" alt="${escapeHtml(set.name + ": " + result.model)}"><div class="missing" hidden>Image not found: <code>${escapeHtml(result.image)}</code></div></div><div class="result-body"><div class="model-row"><h2 class="model-name">${escapeHtml(result.model)}</h2><span class="badge">Result</span></div><table class="metadata"><tbody><tr><th scope="row">Created</th><td>${escapeHtml(result.creationDate)}</td></tr><tr><th scope="row">Dimensions</th><td>${escapeHtml(result.dimensions)}</td></tr><tr><th scope="row">File size</th><td>${escapeHtml(result.fileSize)}</td></tr><tr><th scope="row">Format</th><td>${escapeHtml(result.format)}</td></tr><tr><th scope="row">File</th><td>${escapeHtml(result.fileName)}</td></tr></tbody></table></div></article>`).join("");
+      const visibleResults = set.results.filter((result) => selectedModels.has(result.model));
+      gallery.innerHTML = visibleResults.length ? visibleResults.map((result) => `<article class="result"><button class="image-frame" type="button" aria-label="View ${escapeHtml(result.model)} image at full size"><img src="${escapeHtml(result.image)}" alt="${escapeHtml(set.name + ": " + result.model)}"><div class="missing" hidden>Image not found: <code>${escapeHtml(result.image)}</code></div></button><div class="result-body"><div class="model-row"><h2 class="model-name">${escapeHtml(result.model)}</h2><span class="badge">Result</span></div><table class="metadata"><tbody><tr><th scope="row">Created</th><td>${escapeHtml(result.creationDate)}</td></tr><tr><th scope="row">Dimensions</th><td>${escapeHtml(result.dimensions)}</td></tr><tr><th scope="row">File size</th><td>${escapeHtml(result.fileSize)}</td></tr><tr><th scope="row">Format</th><td>${escapeHtml(result.format)}</td></tr><tr><th scope="row">File</th><td>${escapeHtml(result.fileName)}</td></tr></tbody></table></div></article>`).join("") : '<p class="empty">Select one or more models to display their results.</p>';
       gallery.querySelectorAll("img").forEach((image) => image.addEventListener("error", () => { image.hidden = true; image.nextElementSibling.hidden = false; }));
+      gallery.querySelectorAll(".image-frame").forEach((frame) => frame.addEventListener("click", () => { const image = frame.querySelector("img"); if (!image.hidden) { focusedImage.src = image.currentSrc || image.src; focusedImage.alt = image.alt; imageDialog.showModal(); } }));
     }
     themeToggle.addEventListener("click", () => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; });
+    renderFilters(comparisonSets[0]);
+    dialogClose.addEventListener("click", () => imageDialog.close());
+    imageDialog.addEventListener("click", (event) => { if (event.target === imageDialog) imageDialog.close(); });
     renderComparison(comparisonSets[0]);
   </script>
 </body>
