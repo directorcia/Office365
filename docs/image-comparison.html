@@ -97,9 +97,13 @@
     .metadata th { width: 42%; color: var(--cp-text-soft); font-weight: 600; }
     .metadata td { color: var(--cp-text); overflow-wrap: anywhere; }
     .footer { margin-top: 32px; color: var(--cp-text-soft); font-size: .85rem; }
-    .filter-panel { margin: 24px 0; padding: 16px; border: 1px solid var(--cp-border); border-radius: .625rem; background: var(--cp-surface); }
-    .filter-heading { margin: 0 0 12px; font-size: .9rem; }
-    .filter-options { display: flex; flex-wrap: wrap; gap: 8px; }
+    .filter-panel { position: relative; width: fit-content; max-width: 100%; margin: 24px 0; }
+    .filter-summary { display: flex; align-items: center; min-height: 40px; padding: 0 12px; border: 1px solid var(--cp-border-strong); border-radius: .625rem; background: var(--cp-surface); color: var(--cp-text); cursor: pointer; list-style: none; }
+    .filter-summary::-webkit-details-marker { display: none; }
+    .filter-summary::after { content: "▾"; margin-left: 10px; color: var(--cp-text-muted); }
+    .filter-panel[open] .filter-summary::after { content: "▴"; }
+    .filter-summary:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
+    .filter-options { position: absolute; z-index: 1; top: calc(100% + 8px); left: 0; display: grid; gap: 8px; width: max-content; min-width: 260px; max-width: min(360px, calc(100vw - 24px)); padding: 12px; border: 1px solid var(--cp-border); border-radius: .625rem; background: var(--cp-surface); box-shadow: var(--cp-shadow); }
     .filter-option { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 10px; border: 1px solid var(--cp-border); border-radius: .625rem; background: var(--cp-surface-soft); color: var(--cp-text); cursor: pointer; }
     .filter-option:has(input:focus-visible) { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
     .filter-option input { accent-color: var(--cp-accent); }
@@ -125,10 +129,10 @@
       </div>
     </header>
     <section class="notice" id="prompt-description" aria-live="polite"></section>
-    <section class="filter-panel" aria-labelledby="filter-heading">
-      <h2 class="filter-heading" id="filter-heading">Displayed models</h2>
+    <details class="filter-panel">
+      <summary class="filter-summary" id="filter-heading">Displayed models</summary>
       <div class="filter-options" id="filter-options"></div>
-    </section>
+    </details>
     <section class="gallery" id="gallery" aria-live="polite"></section>
     <p class="footer">Add comparisons by updating <code>comparisonSets</code> below and placing files in <code>docs/images/</code>.</p>
   </main>
@@ -154,6 +158,7 @@
     comparisonSets.forEach((set) => set.results.sort((left, right) => new Date(right.creationDate) - new Date(left.creationDate)));
     const promptDescription = document.getElementById("prompt-description");
     const filterOptions = document.getElementById("filter-options");
+    const filterHeading = document.getElementById("filter-heading");
     const gallery = document.getElementById("gallery");
     const themeToggle = document.getElementById("theme-toggle");
     const imageDialog = document.getElementById("image-dialog");
@@ -161,6 +166,9 @@
     const dialogClose = document.getElementById("dialog-close");
     const escapeHtml = (value) => value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" })[character]);
     const selectedModels = new Set(comparisonSets[0].results.map((result) => result.model));
+    function updateFilterHeading(set) {
+      filterHeading.textContent = selectedModels.size === set.results.length ? "Displayed models: All" : `Displayed models: ${selectedModels.size} selected`;
+    }
     function renderFilters(set) {
       filterOptions.innerHTML = `<label class="filter-option"><input type="checkbox" id="filter-all" checked> All models</label>${set.results.map((result) => `<label class="filter-option"><input type="checkbox" value="${escapeHtml(result.model)}" checked> ${escapeHtml(result.model)}</label>`).join("")}`;
       filterOptions.addEventListener("change", (event) => {
@@ -171,8 +179,10 @@
         selectedModels.clear();
         filterOptions.querySelectorAll("input[type=checkbox][value]:checked").forEach((input) => selectedModels.add(input.value));
         document.getElementById("filter-all").checked = selectedModels.size === set.results.length;
+        updateFilterHeading(set);
         renderComparison(set);
       });
+      updateFilterHeading(set);
     }
     function renderComparison(set) {
       promptDescription.textContent = set.description;
