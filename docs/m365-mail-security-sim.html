@@ -421,6 +421,41 @@
       align-items: center;
     }
 
+    .report-actions {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--cp-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .report-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .report-button {
+      width: auto;
+      height: 36px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    .report-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .report-status {
+      color: var(--cp-text-soft);
+      font-size: 0.78rem;
+      min-height: 1.2em;
+    }
+
     .license-summary {
       margin-top: 10px;
       border: 1px solid var(--cp-border);
@@ -1193,15 +1228,15 @@
     }
 
     .bar-fill.risk-medium {
-      background: #facc15;
+      background: var(--cp-warning);
     }
 
     .bar-fill.bad {
-      background: #f59e0b;
+      background: var(--cp-warning);
     }
 
     .bar-fill.risk-high {
-      background: #f97316;
+      background: var(--cp-danger);
     }
 
     .bar-fill.muted {
@@ -1328,11 +1363,11 @@
     }
 
     .legend-dot.medium {
-      background: #facc15;
+      background: var(--cp-warning);
     }
 
     .legend-dot.high {
-      background: #f97316;
+      background: var(--cp-danger);
     }
 
     .legend-dot.prevention-limited {
@@ -1908,6 +1943,14 @@
           <option value="learning">Learning mode (step-by-step)</option>
           <option value="expert" selected>Expert mode (full-speed)</option>
         </select>
+      </div>
+
+      <div class="report-actions" aria-label="Simulation report actions">
+        <div class="report-buttons">
+          <button id="copyReportBtn" class="btn-secondary report-button" type="button" disabled>Copy run summary</button>
+          <button id="downloadReportBtn" class="btn-secondary report-button" type="button" disabled>Download JSON</button>
+        </div>
+        <span class="report-status" id="reportStatus" role="status" aria-live="polite">Run a simulation to enable report actions.</span>
       </div>
 
     </section>
@@ -2669,6 +2712,9 @@
     const simMode = document.getElementById("simMode");
     const runBtn = document.getElementById("runBtn");
     const resetBtn = document.getElementById("resetBtn");
+    const copyReportBtn = document.getElementById("copyReportBtn");
+    const downloadReportBtn = document.getElementById("downloadReportBtn");
+    const reportStatus = document.getElementById("reportStatus");
     const coachPanel = document.getElementById("coachPanel");
     const coachStage = document.getElementById("coachStage");
     const coachResult = document.getElementById("coachResult");
@@ -2708,6 +2754,92 @@
 
     let running = false;
     let learningContinueResolver = null;
+    let lastRunReport = null;
+
+    function setReportActionsEnabled(enabled) {
+      copyReportBtn.disabled = !enabled;
+      downloadReportBtn.disabled = !enabled;
+      reportStatus.textContent = enabled
+        ? "Report ready to copy or download."
+        : "Run a simulation to enable report actions.";
+    }
+
+    function buildRunReport(scenario, scenarioKey, profileLabel, licenseLabel, journey, risk) {
+      return {
+        generatedAt: new Date().toISOString(),
+        scenario: { key: scenarioKey, name: scenario.name },
+        configuration: {
+          profile: profileLabel,
+          licence: licenseLabel,
+          mode: simMode.value,
+          authenticationOverrides: {
+            spf: spfSignalSelect.value,
+            dkim: dkimSignalSelect.value,
+            dmarc: dmarcSignalSelect.value
+          }
+        },
+        risk: {
+          initial: getBaseThreatRisk(scenario),
+          final: risk,
+          terminal: journey.terminal,
+          userExposure: journey.userExposure,
+          prevented: journey.prevented
+        },
+        stageResults: journey.results.map((item) => ({
+          stage: formatStageLabel(item.stage),
+          status: item.status,
+          outcome: item.text
+        }))
+      };
+    }
+
+    function formatRunReport(report) {
+      const lines = [
+        "Microsoft 365 Mail Security Simulation",
+        `Generated: ${new Date(report.generatedAt).toLocaleString()}`,
+        `Scenario: ${report.scenario.name}`,
+        `Profile: ${report.configuration.profile}`,
+        `Licence: ${report.configuration.licence}`,
+        `Mode: ${report.configuration.mode}`,
+        `Risk: ${report.risk.initial}/100 initial -> ${report.risk.final}/100 final`,
+        `Terminal outcome: ${report.risk.terminal}`,
+        `User exposure: ${report.risk.userExposure}`,
+        `Prevention: ${report.risk.prevented}`,
+        "",
+        "Stage results:"
+      ];
+      report.stageResults.forEach((item) => lines.push(`- [${item.status.toUpperCase()}] ${item.stage}: ${item.outcome}`));
+      return lines.join("\n");
+    }
+
+    function downloadRunReport() {
+      if (!lastRunReport) return;
+      const blob = new Blob([JSON.stringify(lastRunReport, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `m365-mail-security-${lastRunReport.scenario.key}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      reportStatus.textContent = "JSON report downloaded.";
+    }
+
+    async function copyRunReport() {
+      if (!lastRunReport) return;
+      const text = formatRunReport(lastRunReport);
+      if (!navigator.clipboard?.writeText) {
+        reportStatus.textContent = "Clipboard access is unavailable; use Download JSON instead.";
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        reportStatus.textContent = "Run summary copied to clipboard.";
+      } catch (error) {
+        reportStatus.textContent = "Clipboard copy failed; use Download JSON instead.";
+      }
+    }
 
     const learningGuidance = {
       edge: {
@@ -4415,6 +4547,16 @@
         "Combining EOP, Exchange transport rules, Defender controls, and Purview governance (DLP, labels, encryption, insider risk) materially lowers user exposure and accelerates containment.",
         "good"
       );
+      const licenseLabel = licenseSelect.options[licenseSelect.selectedIndex]?.text || selectedLicense;
+      lastRunReport = buildRunReport(
+        scenario,
+        scenarioKey,
+        profileLabel,
+        licenseLabel,
+        selectedJourney,
+        currentThreatRisk
+      );
+      setReportActionsEnabled(true);
       runBtn.disabled = false;
       running = false;
     }
@@ -4431,6 +4573,8 @@
       comparisonOutcome.textContent = "Run a simulation to compare with best-practice behavior.";
       renderLicenseCoverageSummary();
       movePacketToStage(stages[0].key);
+      lastRunReport = null;
+      setReportActionsEnabled(false);
     }
 
     profileSelect.addEventListener("change", syncTogglesFromProfile);
@@ -4465,6 +4609,14 @@
     simMode.addEventListener("change", syncModeUI);
     runBtn.addEventListener("click", runSimulation);
     resetBtn.addEventListener("click", () => resetAll(true));
+    copyReportBtn.addEventListener("click", copyRunReport);
+    downloadReportBtn.addEventListener("click", downloadRunReport);
+    document.addEventListener("keydown", (event) => {
+      if (event.ctrlKey && event.key === "Enter") {
+        event.preventDefault();
+        runSimulation();
+      }
+    });
     window.addEventListener("resize", () => movePacketToStage(stages[0].key));
 
     buildStages();
