@@ -77,6 +77,8 @@
     .controls { display: flex; align-items: center; gap: 10px; }
     .date-filter { display: flex; align-items: center; gap: 8px; color: var(--cp-text-muted); font-size: .85rem; }
     .date-filter input { min-height: 40px; padding: 0 8px; border: 1px solid var(--cp-border-strong); border-radius: .625rem; background: var(--cp-surface); color: var(--cp-text); }
+    .show-all-button { min-height: 40px; padding: 0 12px; border: 1px solid var(--cp-border-strong); border-radius: .625rem; background: var(--cp-surface); color: var(--cp-text); cursor: pointer; }
+    .show-all-button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
     .icon-button { border: 1px solid var(--cp-border-strong); border-radius: .625rem; background: var(--cp-surface); color: var(--cp-text); min-height: 40px; }
     .icon-button { width: 40px; padding: 0; cursor: pointer; }
     .icon-button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
@@ -121,6 +123,7 @@
       </div>
       <div class="controls">
         <label class="date-filter" for="date-filter">From date <input id="date-filter" type="date" aria-label="Display results created on or after this date"></label>
+        <button class="show-all-button" id="show-all" type="button">Show all images</button>
         <button class="icon-button" id="theme-toggle" type="button" title="Toggle color theme" aria-label="Toggle color theme">&#9681;</button>
       </div>
     </header>
@@ -153,6 +156,7 @@
     const promptDescription = document.getElementById("prompt-description");
     const gallery = document.getElementById("gallery");
     const dateFilter = document.getElementById("date-filter");
+    const showAll = document.getElementById("show-all");
     const themeToggle = document.getElementById("theme-toggle");
     const imageDialog = document.getElementById("image-dialog");
     const focusedImage = document.getElementById("focused-image");
@@ -173,6 +177,7 @@
     }
     themeToggle.addEventListener("click", () => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; });
     dateFilter.addEventListener("change", () => renderComparison(comparisonSets[0]));
+    showAll.addEventListener("click", () => { comparisonSets[0].results.forEach((result) => selectedModels.add(result.model)); renderComparison(comparisonSets[0]); });
     dialogClose.addEventListener("click", () => imageDialog.close());
     imageDialog.addEventListener("click", (event) => { if (event.target === imageDialog) imageDialog.close(); });
     renderComparison(comparisonSets[0]);
