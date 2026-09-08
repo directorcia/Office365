@@ -113,6 +113,8 @@ param(
     "module in use". If Uninstall-Module still cannot remove a version (e.g. it was installed
     outside PowerShellGet by copying files into PSModulePath), the module folder is deleted
     directly from disk as a fallback. Bundled PS7 modules under $PSHOME\Modules are never touched.
+    PowerShellGet and PackageManagement are cleaned up per module root so each root keeps its
+    newest copy, preserving Windows PowerShell 5.1 bootstrap capability under WindowsPowerShell\Modules.
 
 .PARAMETER CheckOnly
     Only checks versions without performing updates or installations
@@ -184,6 +186,9 @@ param(
     - Remove-AllOldModuleVersions and Remove-OldModuleVersions now also inspect
       Get-Module -ListAvailable -AllVersions so unregistered/manually-installed
       duplicate versions are detected and removed, not just PowerShellGet-registered ones
+    - PowerShellGet and PackageManagement cleanup now keeps the newest version in each
+      module root instead of keeping only the newest version globally, so Windows
+      PowerShell 5.1 keeps a bootstrap copy even when PS7 has its bundled fallback
     
     Major Changes in v2.14 (31 July 2026):
     - Fixed banner showing v2.9 regardless of the actual script version
@@ -492,6 +497,7 @@ $Script:SkipCleanupPrompts = $false
 
 # Configuration variables
 $Script:JobsSupported = $ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'
+$Script:BootstrapModuleNames = @('PowerShellGet', 'PackageManagement')
 
 function Write-ColorOutput {
     [CmdletBinding()]
@@ -2236,6 +2242,100 @@ function Get-ModuleVersionInfo {
     return $versionInfo
 }
 
+function Get-ModuleVersionInstallPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$ModuleVersion
+    )
+
+    foreach ($propertyName in @('ModuleBase', 'InstalledLocation')) {
+        $property = $ModuleVersion.PSObject.Properties[$propertyName]
+        if ($property -and -not [string]::IsNullOrWhiteSpace($property.Value)) {
+            return $property.Value
+        }
+    }
+
+    return $null
+}
+
+function Get-ModuleInstallRoot {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModuleName,
+
+        [Parameter()]
+        [AllowNull()]
+        [string]$ModuleBase
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ModuleBase)) {
+        return $null
+    }
+
+    $leaf = Split-Path -Path $ModuleBase -Leaf
+    $parsedVersion = [version]'0.0'
+    if ([version]::TryParse($leaf, [ref]$parsedVersion)) {
+        return (Split-Path -Path $ModuleBase -Parent)
+    }
+
+    if ($leaf -ieq $ModuleName) {
+        return $ModuleBase
+    }
+
+    return (Split-Path -Path $ModuleBase -Parent)
+}
+
+function Get-ModuleVersionCleanupEntries {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModuleName,
+
+        [Parameter()]
+        [switch]$IncludeAvailable
+    )
+
+    $entriesByKey = @{}
+    $psHomeModulePath = Join-Path $PSHOME 'Modules'
+
+    $addEntry = {
+        param(
+            [object]$ModuleVersion,
+            [string]$ModuleBase
+        )
+
+        $version = [version]$ModuleVersion.Version
+        $moduleRoot = Get-ModuleInstallRoot -ModuleName $ModuleName -ModuleBase $ModuleBase
+        $keyPath = if ($ModuleBase) { $ModuleBase } else { '<unknown>' }
+        $key = '{0}|{1}' -f $version.ToString(), $keyPath
+
+        if (-not $entriesByKey.ContainsKey($key)) {
+            $entriesByKey[$key] = [pscustomobject]@{
+                Version = $version
+                ModuleBase = $ModuleBase
+                ModuleRoot = $moduleRoot
+            }
+        }
+    }
+
+    $registeredVersions = @(Get-InstalledModule -Name $ModuleName -AllVersions -ErrorAction SilentlyContinue)
+    foreach ($version in $registeredVersions) {
+        & $addEntry $version (Get-ModuleVersionInstallPath -ModuleVersion $version)
+    }
+
+    if ($IncludeAvailable) {
+        $availableVersions = @(Get-Module -Name $ModuleName -ListAvailable -ErrorAction SilentlyContinue |
+            Where-Object { $_.ModuleBase -notlike "$psHomeModulePath*" })
+        foreach ($version in $availableVersions) {
+            & $addEntry $version $version.ModuleBase
+        }
+    }
+
+    return @($entriesByKey.Values | Sort-Object { [version]$_.Version } -Descending)
+}
+
 function Remove-ModuleVersionForced {
     <#
     .SYNOPSIS
@@ -2376,30 +2476,8 @@ function Remove-OldModuleVersions {
     }
     
     try {
-        # Get all versions registered via PowerShellGet
-        $registeredVersions = @(Get-InstalledModule -Name $ModuleName -AllVersions -ErrorAction SilentlyContinue)
-
-        # In Force mode, also pick up versions only visible on PSModulePath (e.g. copied in
-        # manually) so a comprehensive cleanup doesn't miss them just because PowerShellGet
-        # never registered them.
-        $combinedVersions = @{}
-        foreach ($v in $registeredVersions) {
-            $combinedVersions[$v.Version.ToString()] = [pscustomobject]@{ Version = $v.Version; ModuleBase = $null }
-        }
-        if ($Force) {
-            $psHomeModulePath = Join-Path $PSHOME 'Modules'
-            $availableVersions = @(Get-Module -Name $ModuleName -ListAvailable -ErrorAction SilentlyContinue |
-                Where-Object { $_.ModuleBase -notlike "$psHomeModulePath*" })
-            foreach ($v in $availableVersions) {
-                $key = $v.Version.ToString()
-                if (-not $combinedVersions.ContainsKey($key)) {
-                    $combinedVersions[$key] = [pscustomobject]@{ Version = $v.Version; ModuleBase = $v.ModuleBase }
-                } elseif (-not $combinedVersions[$key].ModuleBase) {
-                    $combinedVersions[$key].ModuleBase = $v.ModuleBase
-                }
-            }
-        }
-        $installedVersions = @($combinedVersions.Values | Sort-Object { [version]$_.Version } -Descending)
+        $installedVersions = @(Get-ModuleVersionCleanupEntries -ModuleName $ModuleName -IncludeAvailable:$Force)
+        $keepNewestPerRoot = $ModuleName -in $Script:BootstrapModuleNames
         
         if (-not $installedVersions -or $installedVersions.Count -le 1) {
             Write-Verbose "No cleanup needed for $ModuleName - only one or no versions installed"
@@ -2410,9 +2488,21 @@ function Remove-OldModuleVersions {
             return $result
         }
         
-        # Determine how many versions to keep (default to keeping only latest if no parameter specified)
-        $versionsToKeep = if ($KeepLatestOnly -or $Force -or $PSBoundParameters.Count -eq 1) { 1 } else { 2 }
-        $versionsToRemove = $installedVersions | Select-Object -Skip $versionsToKeep
+        if ($keepNewestPerRoot) {
+            $versionsToRemove = @()
+            foreach ($rootGroup in ($installedVersions | Group-Object -Property ModuleRoot)) {
+                $rootVersions = @($rootGroup.Group | Sort-Object { [version]$_.Version } -Descending)
+                $versionsToRemove += @($rootVersions | Select-Object -Skip 1)
+            }
+
+            if ($versionsToRemove) {
+                Write-ColorOutput "    Protecting $ModuleName bootstrap availability: keeping newest version per module root" -Type Info
+            }
+        } else {
+            # Determine how many versions to keep (default to keeping only latest if no parameter specified)
+            $versionsToKeep = if ($KeepLatestOnly -or $Force -or $PSBoundParameters.Count -eq 1) { 1 } else { 2 }
+            $versionsToRemove = @($installedVersions | Select-Object -Skip $versionsToKeep)
+        }
         
         if (-not $versionsToRemove) {
             Write-Verbose "No old versions to remove for $ModuleName"
@@ -2541,15 +2631,16 @@ function Remove-AllOldModuleVersions {
         $modulesWithMultipleVersions = foreach ($name in $moduleNames) {
             if ($name -in $ExcludeModules) { continue }
 
-            $versionCount = if ($Force) {
-                $psHomeModulePath = Join-Path $PSHOME 'Modules'
-                $registered = @(Get-InstalledModule -Name $name -AllVersions -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Version)
-                $available = @(Get-Module -Name $name -ListAvailable -ErrorAction SilentlyContinue |
-                    Where-Object { $_.ModuleBase -notlike "$psHomeModulePath*" } |
-                    Select-Object -ExpandProperty Version)
-                @($registered + $available | Select-Object -Unique).Count
+            $cleanupEntries = @(Get-ModuleVersionCleanupEntries -ModuleName $name -IncludeAvailable:$Force)
+            if ($name -in $Script:BootstrapModuleNames) {
+                $rootsWithMultipleVersions = @($cleanupEntries | Group-Object -Property ModuleRoot | Where-Object { $_.Count -gt 1 })
+                $versionCount = if ($rootsWithMultipleVersions) {
+                    ($rootsWithMultipleVersions | ForEach-Object { $_.Count } | Measure-Object -Sum).Sum
+                } else {
+                    0
+                }
             } else {
-                @(Get-InstalledModule -Name $name -AllVersions -ErrorAction SilentlyContinue).Count
+                $versionCount = @($cleanupEntries.Version | Select-Object -Unique).Count
             }
 
             if ($versionCount -gt 1) {
