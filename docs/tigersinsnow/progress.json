@@ -1,0 +1,59 @@
+{
+  "project": "Ardennes: Winter Offensive",
+  "updated": "2026-10-10",
+  "status": "Colour display update complete. Desktop map renders correctly, counter text contrast passes in both themes, and saved campaign is unchanged. Prior eight rules tests and active campaign simulations pass.",
+  "request": "Offline browser game inspired by Tigers in the Snow on the TRS-80, with similar retro graphics and turn-based gameplay.",
+  "scope": "Original implementation and scenario, not a reproduction of copyrighted code, artwork, manual, or exact map.",
+  "decisions": [
+    "help.html provides a standalone offline/GitHub Pages player guide and sourced historical background. Help & History opens separately from the game; guide includes walkthrough, controls, current mechanics, Undo, saves, FAQs, history and distinctions from the original SSI game.",
+    "Undo Move button restores full pre-move snapshots in reverse order, including positions, movement points, town control, score and dispatches. History is session-only and clears on successful combat, End Turn, restart, import or reload; invalid orders do not clear history.",
+    "Movement destinations use small white dots with dark backing, not yellow fills or dashed hex outlines. Terrain colours remain unchanged; yellow outlines identify the selected formation and pink double outlines identify towns.",
+    "Primary target is a full desktop browser, not mobile. Fit the complete battlefield to desktop viewport height and keep commands beside it; narrow-screen layout is only a fallback.",
+    "Use local HTML, CSS and JavaScript; no server or remote assets required at runtime.",
+    "Use retro canvas hex graphics with ASCII counters and a compact command panel. User requested colour: green forests, blue rivers, amber ridges/roads, rose towns, red German counters, blue American counters, yellow movement/selection outlines. Keep symbols alongside colour cues.",
+    "Use ROT.js hex pathfinding for movement and supply instead of inventing a pathfinding engine.",
+    "Player commands the German offensive; American computer opponent defends and counterattacks.",
+    "Include terrain costs, zones of control, combat odds, retreat, supply, weather, reinforcements and timed victory objectives.",
+    "Save game state in browser local storage with JSON export/import fallback.",
+    "Keep this file updated with observable results and design decisions, not private reasoning."
+  ],
+  "filesPlanned": {
+    "help.html": "Online-ready player guide, terrain and objective tables, strategy, FAQs and sourced Battle of the Bulge history.",
+    "index.html": "Offline game interface, theme, controls and canvas.",
+    "game.js": "Rules, scenario, rendering, computer opponent and persistence.",
+    "rot.js": "Pinned ROT.js 2.2.1 hex-pathfinding engine stored locally.",
+    "ROT-LICENSE.txt": "Upstream MIT license for the local dependency.",
+    "game.test.cjs": "Node tests for movement, combat, supply, AI and persistence."
+  },
+  "validation": [
+    "Documentation: all twelve contents anchors resolve; FAQs expand; guide has no page overflow at 1366px or 390px; screenshot reviewed; no page errors or editor diagnostics. Game Help & History link uses relative URL/new tab; map fits 1024x768 and 1366x768; autosave unchanged. Historical sources consulted: U.S. Army, National WWII Museum, Tigers in the Snow bibliography. Not deployed to GitHub Pages.",
+    "Undo browser checks: two moves by different units undone to exact saved states; two-point town capture undone exactly; invalid destination preserves history; combat and End Turn clear history; Undo disabled during AI response and when history empty. No page errors, original autosave restored.",
+    "Destination marker fix: browser pixel comparison confirms terrain unchanged between Move and Attack modes and dots present only in Move mode. No JavaScript errors; autosave unchanged.",
+    "Town visibility fix: stronger objective fill, double rose hex outlines, bold backed labels drawn after counters. Browser pixel checks confirm all five labels render, including occupied St. Vith and Bastogne; screenshot checked, no page errors, autosave unchanged.",
+    "Colour update: browser reload has no JavaScript errors; canvas contains 192475 coloured pixels; whole map remains visible and local-storage campaign is byte-for-byte unchanged.",
+    "Counter text contrast (WCAG luminance): light theme German 4.83:1 and American 4.53:1; dark theme German 6.29:1 and American 6.81:1. Both meet the 4.5:1 text target. Original browser theme restored.",
+    "Current command: node --test tigersinsnow/game.test.cjs; eight tests pass, zero fail. Includes final-turn seven-point loss, eight-point victory, and elimination victories for both sides.",
+    "Desktop browser campaign used actual roster/buttons/canvas clicks: 22 moves, 19 attacks, six turns, two reloads, no JavaScript errors. Ended with American victory after all German units were eliminated, despite eight captured points. Finished-state orders disabled and victory persisted on reload.",
+    "Keyboard browser check: ArrowRight then Enter moves g1 from (26,2) to (28,2), consuming two forest movement points. Original browser autosave backed up before simulation and restored afterward.",
+    "Active simulation: twelve seeds, 313 German moves, 239 German attacks, 39 capture events, 48 defender retreats, 163 total eliminations; state and save round-trip verified after every player action and AI response. All finished normally with American victories.",
+    "Desktop-first follow-up: 1024x768, 1366x768 and 1920x1080 CSS viewports show the whole map, command panel beside it and End Turn visible; no page overflow, map aspect ratio preserved.",
+    "node --test tigersinsnow/game.test.cjs: 6 passed, 0 failed.",
+    "Coverage: map and initial supply, movement budget and occupancy, seeded adjacent combat, isolation and snow, twelve-turn AI campaign, save round-trip and malformed input rejection.",
+    "Combat test fixture initially overlapped a friendly unit; corrected to an empty adjacent hex.",
+    "Opened index.html through file:// with no server or runtime downloads.",
+    "Browser: movement click succeeds; End Turn advances to turn two; reload restores turn two; no page errors observed.",
+    "Browser: valid save import succeeds, adjacent combat resolves, malformed save is rejected, restart and Rules dialog work.",
+    "Canvas pixel check: 182 distinct channel values; battlefield is nonblank.",
+    "Desktop screenshot at 1440x1000 CSS pixels: battlefield and command sidebar visible without page overflow.",
+    "Mobile screenshot at 390x844 CSS pixels: controls fit, no page overflow, map scrolls within its own container.",
+    "Editor diagnostics: no errors in game.js, index.html or game.test.cjs."
+  ],
+  "knownLimitations": [
+    "Exact TRS-80 map, combat tables, UI and graphics fidelity have not been established; this is a simplified original scenario.",
+    "All twelve aggressive scripted German campaigns lost, including early elimination while holding eight or more points. Operation passes, but scenario balance still needs cautious-player and human playtesting.",
+    "Export download is implemented but was not exercised in the browser checks.",
+    "The Copilot HTTP/2 connection error is outside the app; checkpoints reduce lost work but do not fix that network issue."
+  ],
+  "nextSteps": ["Playtest scenario balance with a cautious German strategy and human players before changing combat values", "Use user-provided TRS-80 screenshots or rules references to refine visual and gameplay fidelity if requested"],
+  "resume": "Read this file and existing app files before editing. Run node game.test.cjs. Do not restart or overwrite completed work."
+}

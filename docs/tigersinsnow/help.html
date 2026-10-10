@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="How to play Ardennes: Winter Offensive, with rules, strategy, troubleshooting and Battle of the Bulge history.">
+  <title>Player Guide &amp; History / Ardennes</title>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("scoutTheme");
+      const theme = param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-padding-top: 24px; }
+    body { margin: 0; background: var(--cp-bg); color: var(--cp-text); font: 16px/1.65 "Segoe UI", Aptos, Calibri, sans-serif; }
+    a { color: var(--cp-link); text-underline-offset: 3px; }
+    a:focus-visible, summary:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 4px; }
+    header { border-bottom: 1px solid var(--cp-border-strong); padding: 24px 32px; display: flex; justify-content: space-between; gap: 20px; align-items: center; }
+    h1 { font: bold 28px Consolas, monospace; margin: 0; letter-spacing: 0; }
+    header p { margin: 4px 0 0; color: var(--cp-text-muted); font: 12px Consolas, monospace; }
+    .play { display: inline-block; padding: 10px 16px; background: var(--cp-accent); color: var(--cp-accent-fg); border-radius: 4px; text-decoration: none; white-space: nowrap; }
+    .shell { max-width: 1200px; margin: auto; display: grid; grid-template-columns: 220px minmax(0,1fr); gap: 40px; padding: 32px; }
+    nav { position: sticky; top: 24px; align-self: start; border-right: 1px solid var(--cp-border); padding-right: 20px; }
+    nav h2 { font: bold 12px Consolas, monospace; color: var(--cp-text-muted); }
+    nav a { display: block; padding: 7px 0; text-decoration: none; font-size: 14px; }
+    nav a:hover { text-decoration: underline; }
+    main { min-width: 0; }
+    section { border-bottom: 1px solid var(--cp-border); padding-bottom: 28px; margin-bottom: 32px; }
+    h2 { font: bold 24px Consolas, monospace; margin: 0 0 16px; letter-spacing: 0; }
+    h3 { font-size: 18px; margin: 24px 0 8px; }
+    p { margin: 12px 0; }
+    li { margin-bottom: 8px; }
+    .note { border-left: 3px solid var(--cp-accent); padding: 4px 16px; background: var(--cp-accent-soft); }
+    .table-scroll { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+    caption { text-align: left; font-weight: 600; margin-bottom: 8px; }
+    th, td { border-bottom: 1px solid var(--cp-border); padding: 10px 12px; text-align: left; vertical-align: top; }
+    th { background: var(--cp-surface-soft); }
+    code, kbd { font-family: Consolas, monospace; }
+    kbd { border: 1px solid var(--cp-border-strong); padding: 1px 5px; border-radius: 3px; }
+    .counters { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 20px 0; }
+    .counter { width: 64px; height: 54px; border: 2px solid var(--cp-border-strong); display: flex; flex-direction: column; align-items: center; justify-content: center; font: bold 16px/1.4 Consolas, monospace; }
+    .german { background: var(--cp-danger); color: var(--cp-surface); }
+    .american { background: var(--cp-link); color: var(--cp-surface); }
+    html[data-theme="dark"] .counter { color: var(--cp-accent-fg); }
+    .counter small { font-size: 12px; }
+    details { border-bottom: 1px solid var(--cp-border); padding: 12px 0; }
+    summary { cursor: pointer; font-weight: 600; }
+    footer { padding: 24px 32px; border-top: 1px solid var(--cp-border); color: var(--cp-text-muted); font-size: 12px; }
+    @media (max-width: 800px) { .shell { grid-template-columns: 1fr; gap: 24px; padding: 24px; } nav { position: static; border-right: 0; border-bottom: 1px solid var(--cp-border); padding: 0 0 16px; } nav a { display: inline-block; margin-right: 16px; } header { flex-wrap: wrap; padding: 24px; } h1 { font-size: 24px; } }
+    @media print { nav, .play { display: none; } .shell { display: block; padding: 0; } section { break-inside: avoid; } details p { display: block; } }
+  </style>
+</head>
+<body>
+  <header><div><h1>ARDENNES / FIELD GUIDE</h1><p>WINTER OFFENSIVE / PLAYER GUIDE &amp; HISTORY</p></div><a class="play" href="index.html">Play the Game</a></header>
+  <div class="shell">
+    <nav aria-label="Guide contents"><h2>CONTENTS</h2><a href="#quick-start">Your First Turn</a><a href="#map">Reading the Map</a><a href="#movement">Movement &amp; Undo</a><a href="#combat">Combat</a><a href="#supply">Supply</a><a href="#weather">Weather &amp; Reinforcements</a><a href="#victory">Winning &amp; Strategy</a><a href="#saves">Saving Your Campaign</a><a href="#questions">Common Questions</a><a href="#history">Historical Background</a><a href="#origins">TRS-80 Inspiration</a><a href="#sources">Sources</a></nav>
+    <main>
+      <section id="manual-mode"><h2>Manual-based Campaign Mode</h2>
+        <p>Choose <strong>New Campaign → Manual-based adaptation</strong>, then your command side. Existing saves retain Classic rules. This optional mode implements mechanics described in the <a href="https://www.quartdepomme.fr/quartdepomme/SSI_Tigers_in_the_Snow_files/Tigers%20in%20the%20Snow-Manual.pdf">SSI Tigers in the Snow manual</a> using new browser code and original explanatory text. It is not an exact recreation: the PDF does not include the separate data card referenced for the map, unit tables, terrain, strategies and victory values.</p>
+        <h3>Turn sequence and orders</h3>
+        <p>Germany moves and fights first, then America moves and fights. Reinforcements and victory checks follow both sides' combat. <strong>Germany starts turn 1 in combat with no movement</strong>; American movement is halved that day. End Movement enters combat without advancing the date; End Combat completes your side's turn and runs the necessary AI phases. When playing America, the next German AI turn runs before your next movement phase. Saves preserve your side, ruleset, phase and resources.</p>
+        <h3>Movement, zones of control and readiness</h3>
+        <p>Each enemy occupies a six-hex zone of control. Entering it costs 4 extra MP; moving between enemy zones costs 8 extra MP plus terrain. German armor can continue moving through zones. German infantry and American armor must stop on entry. American infantry must stop and can move between zones only westward in this schematic layout (our mapping of the manual's directions 4–6). Stacking is never permitted.</p>
+        <p>Readiness ranges from 0–7: it rises one point at the start of a formation's movement and falls two points per hex entered, including retreat/advance. Each readiness point adds 10% to effective combat strength. Units beginning movement outside enemy zones receive 1–3 replacement CP, capped at starting strength.</p>
+        <h3>Combat planning and graphical reports</h3>
+        <p>In the combat phase click an enemy counter. Select up to six adjacent eligible formations in the planning dialog, choose an attack strategy, and allocate artillery. Each artillery point adds 10 effective CP; attacker allocation is capped by the number of participating formations and available ammunition. The AI allocates up to two defensive points. Your command panel sets your defense stance against AI attacks.</p>
+        <p>A unit normally attacks and defends once per combat phase. Orders may be altered by fog of war. A battle permitting at least three advance hexes may allow participating survivors a second attack. The graphical report lists each formation's actual CP loss, artillery, final strategies, supply failures, air effects, retreat and advance. CP below 20 creates an elimination risk when losses occur.</p>
+        <p>Retreats are automatically routed without stacking or leaving the map. Isolated units cannot retreat; blocked or incomplete retreats cause additional losses. Entering an enemy zone during retreat also causes losses. A surviving attacker automatically advances into the vacated hex and, when allowed, farther, stopping in enemy zones. This browser mode automates retreat/advance choices rather than asking for individual directions.</p>
+        <h3>Supply, fuel and weather</h3>
+        <p>Local supply is assessed whenever movement or combat is considered. Three consecutive adjacent positions without enemies keep a formation supplied. Without that gap, one adjacent friend grants limited supply; two restore full supply. Limited units use 75% movement and combat strength; isolated units use 50%, cannot attack, and cannot retreat. Allied airdrops in clear/scattered weather can improve local supply one level for the day.</p>
+        <p>Each faction also has a theatre-wide supply pool consumed by battle intensity. Depletion raises the chance of supply failure, halving a formation's strength for that battle; zero supply guarantees failure. German armor consumes a shared fuel pool through movement/combat. Fuel shortages can halve its movement. Weather uses Overcast, Cloudy, Scattered and Clear; improving weather increases Allied air effects, German movement interdiction and additional German combat losses.</p>
+        <h3>Reinforcements and victory</h3>
+        <p>Both sides receive follow-on formations in this mode. A blocked scheduled entry is delayed one reinforcement phase before an alternative entry hex is sought. Reinforcements appear directly on the map with NEW markers during the following player orders. Delayed arrivals retain that marker on their actual arrival, not their original schedule.</p>
+        <p>German formations at the western edge outside enemy zones automatically exit at the end-of-day victory check and earn points. American units at the eastern edge subtract breakthrough points. Exited formations no longer occupy a hex. The campaign runs twelve days unless one army is eliminated; the adapted German winning threshold remains eight points.</p>
+        <h3>Explicit adaptations where source data is missing</h3>
+        <ul>
+          <li>The existing 15×12 schematic map and five objectives remain. Three German formations start next to defenders so opening combat is possible. No British formations are modeled, so the manual's British Meuse restriction is not implemented. This is a selected roster, not the full original order of battle.</li>
+          <li>New campaigns use the supplied <a href="https://zeitgame.net/wp-content/uploads/2021/09/Modifiers.png">terrain card</a>: clear/plain costs 2 MP and defense ×1; forest 6/×2; rough (mapped onto ridge) 4/×1.5; town 3/×2.25. Their attack modifiers are ×1. Roads remain an adapted 1 MP/×1 defense; river hexes remain an adapted 8 MP/×1 defense. The source instead specifies river-edge crossing additions (German +3–7, Allied +2–5) and ×0.5 attack across a river; these and Westwall modifiers are not mapped onto this schematic geography. Infantry still receives 20 MP, armor 24; allowances are adaptations.</li>
+          <li>New campaigns use the readable subset of the supplied <a href="https://zeitgame.net/wp-content/uploads/2021/09/List.png">unit card</a>: 1/12 SS 115 CP, 2 Panzer and Lehr 100, 26/62/277 Volksgrenadier 65/50/55; 99/106/4 Infantry 75/55/75. The 28th is represented by one 70-CP counter (20+20+30 regiments); 7th and 9th Armored are aggregated as 120 and 115 CP. The fictional Bastogne Garrison remains 60 CP. Aggregating regiments changes the original stacking and combat scale.</li>
+          <li>The card puts 116 Panzer (100 CP) at the start; 101/82 Airborne (70 each) on 16 December; 9/2 SS (115 each) on 18 December; and 4/3 Armored (100 each) on 20 December. These dates now apply to new campaigns. The card's airborne dates conflict with the <a href="https://zeitgame.net/archives/2370">article narrative</a>; this adaptation explicitly follows the card. Numbered entry hexes do not match our map, so coordinates remain schematic. The 12 SS day-one entry is represented at the opening line rather than a separate entry phase.</li>
+          <li>Older manual saves lack the reference revision flag and retain their original terrain and reinforcement schedule: airborne days 3/5, American armor day 7, 116 Panzer day 3, 9 SS day 5, with their saved CP values. Loading an old campaign does not silently convert it to the new card data.</li>
+          <li>Initial general supply 120 per side; daily recovery 50 German/60 American, capped at 120. Daily artillery is 6 German/4 American. German fuel starts at 120, movement consumes half terrain cost rounded up per armor hex, and armor attacks consume 2. These quantities and probability formulas are new balancing choices.</li>
+          <li>Attack choices now use the article's four names: Reconnaissance, Light, Medium and Major. Defense offers Counter-attack, Hold Position, Delaying Action and Withdrawal; Flexible Defense remains for legacy compatibility. Their commitment factors, combat loss formulas, retreat distances, automatic artillery policy, replacement amounts, air/fuel/supply/strategy-change/second-attack probabilities and weather distribution remain approximations. Strategy commitment changes losses and resource use, not nominal odds. The original hidden combat tables are unavailable.</li>
+          <li>Only western-edge German exits are modeled, worth surviving CP÷10 rounded up. American eastern-edge presence subtracts 2 points per unit. Existing town values, the eight-point threshold and early elimination victory replace the missing original scoring categories. Movement undo, autosaves and graphical reports are browser conveniences.</li>
+        </ul>
+        <p><strong>The sections below describe Classic mode unless explicitly stated otherwise.</strong></p>
+      </section>
+      <section id="quick-start"><h2>Your First Turn</h2>
+        <p><strong>Campaign History</strong> replaces the old Field Dispatches list. Expand it below the map to read up to 60 saved events, newest first. Labeled entries separate battles, captures, reinforcements, retreats and campaign results. Classic battle entries spell out attacker and defender losses instead of using a colon-separated pair. Keep it collapsed when following the live American and German situation panels.</p>
+        <p>Selected formation details and command buttons are below the battlefield and dispatches, at the bottom of the page, beside the roster and objectives. On phones these sections stack vertically.</p>
+        <p>American situation reports appear to the left of the map (west), German reports to the right (east). Each includes a mission statement, active formations, total strength or combat points, isolation, and held objectives. Plain-English reports explain movements, battle losses, retreat/advance, captures and arrivals. The latest sixteen reports per side are now saved across reload and import; Undo restores the reports belonging to the restored position. New Campaign starts a new history. On narrow screens the panels sit below the map in the same left/right order.</p>
+        <h3>Computer vs Computer</h3>
+        <p>Choose New Campaign, select either ruleset, and choose <strong>Computer vs Computer</strong>. The campaign starts paused. <strong>Next Action</strong> resolves a movement order, battle, or phase transition. The active formation is selected and a plain-English sentence explains its intent and actual battle losses. Solid side-colored arrows show movement; dashed arrows show attacks; yellow arrows and moving markers show retreat/advance. Reduced-motion settings suppress moving markers. <strong>Next Day</strong> completes the remaining orders today using exactly the same engine. <strong>Play</strong> follows individual actions at 0.5, 1.5 or 3-second intervals. You can inspect either army but cannot issue orders. Battles do not interrupt playback with dialogs. Export/import and autosaves preserve the exact order boundary; reload/import resumes paused. Rules and New Campaign also pause playback.</p>
+        <h3>Seeds, AI and measured balance</h3>
+        <p>Leave the replay seed blank in New Campaign for a random 32-bit seed, or enter a whole number from 0 through 4294967295. The original seed is shown in the status strip and saved separately from the changing random-generator state. Identical seeds reproduce computer campaigns with the same rules and engine version; human orders can change the random sequence and outcome. Older saves without an original seed show “seed unknown” rather than guessing.</p>
+        <p>German AI pursues valuable objectives, checks supply routes, combines adjacent forces in manual mode and conserves scarce fuel/supply. American AI intercepts approaching breakthroughs, favors defensible terrain, protects important positions and counterattacks selectively. Both avoid needless attacks with weakened formations. These are heuristics, not human-level strategic planning.</p>
+        <p>Computer benchmarks over seeds 1–60 produced Classic: Germany 5 wins, America 55; manual: Germany 9, America 51. Neither now wins every campaign in this sample, but both still favor America. This is not a promise of balanced human play or a 50/50 historical scenario. Victory thresholds and scoring were deliberately retained rather than altered to force an outcome. Regression tests repeat this benchmark.</p>
+        <p>The lower score area includes each army's last completed-day summary: held points, active formations and net strength change. Net change includes combat, arrivals, replacements and exits—not gross combat casualties. Individual battle reports show actual casualties. The first day of an older save may have no starting totals; the summary says so explicitly instead of inventing a change.</p>
+        <p>The campaign balance report below the map and Campaign History compares American and German held-objective points, active formations, remaining strength (combat points in Manual-based mode), and isolated formations. Both sides' objective totals use the same values and update when control changes; they are not cumulative scores. A separate victory-rule section shows Germany's score against the unchanged eight-point target. Below the target, America is on course; at or above it, Germany is on course. This is a provisional assessment, not a prediction: captures, combat and elimination can change the result. When the campaign ends, the actual winner replaces that assessment. Classic victory points represent held objectives; Manual-based victory points also include German exits and subtract Allied eastern-edge breakthrough points, which are not part of the side-by-side objective totals. Neither mode currently uses the original SSI cumulative scoring table.</p>
+        <p>Start a new campaign and choose to command either Germany or America; the computer controls the opposing side. Each turn represents one day, starting on 16 December 1944; the scenario ends no later than 27 December.</p>
+        <ol><li>Select one of your counters or its name in <strong>Order of Battle</strong>. The yellow outline identifies your selected formation. Guidance under the command buttons explains legal orders and why others are unavailable.</li><li>Choose <strong>Move</strong>. White dots mark legal destinations. Click one to move; the route is highlighted.</li><li>Read the movement number again. If points remain, you can issue another move. Entering an enemy-adjacent hex spends the remaining allowance in Classic.</li><li>Choose <strong>Attack</strong>. Only eligible enemies are outlined. Click one to open a risk preview—not to fire immediately. Review the strength, terrain and supply factors, then choose Resolve Attack or Cancel. Manual previews also explain readiness, artillery, general supply and commitment. Cancel consumes nothing.</li><li>Read the resulting Battle Report for actual losses and retreats/advances. Repeat with other formations; you need not move or attack with every unit.</li><li>Choose <strong>End Turn</strong> (or End Movement / End Combat in manual mode). The computer responds, then new orders become available.</li></ol>
+        <div class="note"><p><strong>Try movement before combat.</strong> Undo Move can reverse movement orders, but a successful attack clears the undo history. Export your campaign before experimenting with a risky battle.</p></div>
+      </section>
+      <section id="map"><h2>Reading the Map</h2>
+        <div class="counters" aria-label="Example counters"><span class="counter german"><span>G=</span><small>10/5</small></span><span>German armor: strength 10, movement 5</span><span class="counter american"><span>AX</span><small>7/0</small></span><span>American infantry: strength 7, movement 0</span></div>
+        <p><code>G</code> means German; <code>A</code> means American. <code>=</code> means armor and <code>X</code> means infantry. Numbers below the symbol show <strong>current strength / remaining movement</strong>, not attack / defense. A unit at zero strength is eliminated.</p>
+        <p>White destination dots are separate from terrain colour. Pink double outlines mark objective hexes. A town's label stays visible under an occupying unit; <code>A3</code> or <code>G3</code> indicates its controller and three-point value. An exclamation mark means the formation is isolated from supply.</p>
+        <p>The west is on the left; German forces start in the east, on the right. Hover over the Undo arrow for its description. With the map focused, use arrow keys to move the cursor and <kbd>Enter</kbd> or <kbd>Space</kbd> to activate a hex.</p>
+      </section>
+      <section id="movement"><h2>Movement &amp; Undo</h2>
+        <p>Armor normally receives five movement points each day; infantry receives four. A destination dot means a legal route fits the unit's current allowance. The engine chooses the route; you select its destination. It may capture a town along that route.</p>
+        <div class="table-scroll"><table><caption>Terrain costs and defensive effects</caption><thead><tr><th scope="col">Terrain</th><th scope="col">Symbol / colour</th><th scope="col">Movement cost</th><th scope="col">Defense multiplier</th></tr></thead><tbody>
+          <tr><td>Plain</td><td><code>.</code> / neutral</td><td>1</td><td>1.0</td></tr><tr><td>Road</td><td><code>:</code> / amber</td><td>1</td><td>1.0</td></tr><tr><td>Forest</td><td><code>*</code> / green</td><td>2</td><td>1.5</td></tr><tr><td>Ridge</td><td><code>^</code> / amber</td><td>3</td><td>1.7</td></tr><tr><td>River</td><td><code>~</code> / blue</td><td>3</td><td>1.3</td></tr><tr><td>Town</td><td><code>#</code> / pink</td><td>1</td><td>1.8</td></tr>
+        </tbody></table></div>
+        <p>Units cannot stack or move through occupied hexes, even friendly ones. The six hexes around an enemy form its <strong>zone of control</strong>. Entering one ends movement; on a later turn you may leave it if a legal move exists.</p>
+        <h3>Undo Move</h3><p>The curved-arrow button beside Move and Attack reverses the latest movement order. Repeated clicks undo earlier moves in reverse order, including moves by different units. Position, movement points, town ownership, score and dispatches are restored.</p>
+        <p>Successful combat, End Turn, New Campaign, importing a save and page reload clear the history. Changing selection or mode does not clear it; an invalid order does not consume an undo. History is not included in exported saves.</p>
+      </section>
+      <section id="combat"><h2>Combat</h2>
+        <p>The preview explains nominal odds before you commit. In Classic it gives the exact range of initial losses from the combat roll, separately warning about blocked-retreat losses. In manual mode it is not an exact casualty forecast: random supply failures, altered orders, air effects and low-strength elimination can change the outcome. A favorable ratio is never a guaranteed result.</p>
+        <p>Only adjacent opposing units can fight. Each formation can attack once per day. An attack consumes all its remaining movement, even when the outcome is unfavorable. No ranged attacks or combined multi-unit attacks are modeled.</p>
+        <p>Effective attack is the attack rating multiplied by the unit's fraction of remaining strength and its supply modifier. Effective defense uses the same strength fraction, the defense rating, the hex's terrain multiplier and supply. The ratio is shown in dispatches: <strong>2.0:1</strong> means twice as much effective attack as defense, not a guaranteed win.</p>
+        <p>Armor has attack 8 and defense 6; infantry has attack 5 and defense 5. For example, full-strength supplied armor attacking full-strength supplied infantry in a town has odds of about <code>8 / (5 x 1.8) = 0.9:1</code>. Towns can make an apparently strong attack costly.</p>
+        <p>A seeded random roll determines strength losses and possible retreat. Dispatch losses are listed as <strong>attacker:defender</strong>. Retreats choose an empty neighboring hex outside enemy zones of control, favoring the defender's friendly edge. A blocked retreat causes two extra strength losses. The attacker does not automatically advance into the vacated hex.</p>
+        <div class="note"><p><strong>Protect depleted formations.</strong> Low strength reduces combat effectiveness. Favorable odds help, but are not a promise of victory. The seed is saved with the campaign; there is no combat undo.</p></div>
+      </section>
+      <section id="supply"><h2>Supply</h2>
+        <p>At the start of each side's orders, units trace supply to their friendly map edge: east for Germany and west for America. Routes cannot pass through enemy counters or empty hexes in an enemy zone of control. Friendly occupied hexes can carry supply, including in those zones.</p>
+        <p>An isolated formation loses two movement points, attacks at half effectiveness and defends at three-quarters effectiveness. From day two it loses one strength when its side starts, but supply attrition never reduces it below one. Movement allowance also has a minimum of one.</p>
+        <p>The displayed supply status is the assessment at the start of that side's orders; it does not recalculate after every move. A route cut during movement therefore affects the next supply assessment.</p>
+      </section>
+      <section id="weather"><h2>Weather &amp; Reinforcements</h2>
+        <div class="table-scroll"><table><caption>Scenario schedule, not exact historical deployment dates</caption><thead><tr><th scope="col">Day / date</th><th scope="col">Weather or arrival</th></tr></thead><tbody><tr><td>1-3 / 16-18 December</td><td>Fog. 101 Airborne arrives on day 3.</td></tr><tr><td>4-7 / 19-22 December</td><td>Fog or snow, determined each day. 82 Airborne arrives on day 5; 4 Armored and 3 Armored on day 7.</td></tr><tr><td>8-12 / 23-27 December</td><td>Clear weather.</td></tr></tbody></table></div>
+        <p>Snow reduces every unit's daily movement allowance by one. Armor also pays one extra movement point per entered hex unless it is a road or town. Fog has no additional movement or combat penalty and does not hide units. Clear weather adds one to American combat damage as a simplified representation of Allied air support.</p>
+        <p>Reinforcements enter at designated positions, or nearby available western hexes if those positions are occupied. Their counters appear immediately on the map with a highlighted border and <strong>NEW</strong> marker throughout their arrival turn, including after saving and reloading. The reinforcement list below the map shows each arrival's current column and row; click an entry to locate it on the map and select it if it belongs to your side. Markers disappear on the next turn, but surviving units remain on the battlefield. They are part of this scenario's simplified balance, not a precise order of battle.</p>
+      </section>
+      <section id="victory"><h2>Winning &amp; Strategy</h2>
+        <p>Hold <strong>at least eight objective points after the American response on turn twelve</strong> to win as Germany. Reaching eight earlier does not immediately end the game. Eliminating every enemy formation gives an early victory; losing every German formation is a defeat regardless of your objective score.</p>
+        <div class="table-scroll"><table><caption>Objectives</caption><thead><tr><th scope="col">Objective</th><th scope="col">Points</th></tr></thead><tbody><tr><td>Dinant</td><td>4</td></tr><tr><td>Meuse</td><td>4</td></tr><tr><td>Bastogne</td><td>3</td></tr><tr><td>St. Vith</td><td>2</td></tr><tr><td>Malmedy</td><td>2</td></tr></tbody></table></div>
+        <p>Entering or passing through an objective transfers control. Control persists after departure until the other side enters. The score is held territory, not a cumulative reward for captures.</p>
+        <ul><li>Choose a route toward objectives, not just the nearest enemy.</li><li>Keep your supply route open and avoid isolating spearheads.</li><li>Use roads when practical, especially during snow.</li><li>Do not spend depleted units on repeated low-odds attacks into towns.</li><li>Leave enough strength to defend captured objectives against American responses.</li></ul>
+        <p>These are strategic suggestions, not a proven winning script. See the current multi-seed AI measurements above; scenario balance still needs human playtesting.</p>
+      </section>
+      <section id="saves"><h2>Saving Your Campaign</h2>
+        <p>The game autosaves after successful orders and Undo in this browser's local storage. Reloading restores the last saved state, but not undo history. New Campaign replaces the autosave after confirmation.</p>
+        <p><strong>Export Save</strong> downloads a JSON campaign file. <strong>Import Save</strong> loads one after validation and replaces your current campaign. Export first before importing a different game. If browser storage is unavailable, use exports to preserve progress.</p>
+        <p>Saves are browser-local, not cloud accounts. They do not automatically sync between devices, browsers, the local file version and GitHub Pages. Export on the old location and import on the new one. Clearing browser site data can erase the autosave.</p>
+      </section>
+      <section id="questions"><h2>Common Questions</h2>
+        <details><summary>Why are there no destination dots?</summary><p>Select a living German unit and choose Move. It may have spent its allowance, have no affordable empty destinations, or have already attacked. No orders are available during the American response or after victory.</p></details>
+        <details><summary>Why did my move use every movement point?</summary><p>Entering a hex adjacent to an enemy ends movement. Terrain and snow may also spend the full allowance. Use Undo Move before combat or ending the turn to reverse a mistaken order.</p></details>
+        <details><summary>Why can I not attack that unit?</summary><p>The target must be an opposing unit exactly one hex away. Choose Attack; ensure your selected unit is alive and has not attacked this turn. Clicking a friendly counter selects it instead.</p></details>
+        <details><summary>Why is Undo disabled?</summary><p>No successful move is available to undo, or combat, turn completion, restart, import or reload cleared the history. Undo never reverses a battle or an American response.</p></details>
+        <details><summary>Why did I lose with eight points?</summary><p>All German formations may have been eliminated. Eight points wins only if German forces survive and hold that score after the final American response. Objective capture by the AI can also lower your score.</p></details>
+        <details><summary>Is this the original Tigers in the Snow?</summary><p>No. It is an independent browser game inspired by early hex-based computer wargames. Its map, combat rules, scenario balance and coloured interface are original approximations, not a verified recreation of the TRS-80 version.</p></details>
+      </section>
+      <section id="history"><h2>Historical Background</h2>
+        <p>The Battle of the Bulge was a major German offensive on the Western Front, beginning on 16 December 1944 in the Ardennes. German forces sought to break through the Allied front, cross the Meuse and divide the Allied armies, with Antwerp as the broader strategic goal. Their advance formed the bulge in Allied lines that gave the battle its common name. <a href="https://www.army.mil/botb/">U.S. Army historical overview</a>.</p>
+        <p>Wooded terrain, winter weather, limited roads and fuel constraints shaped the fighting. American resistance at crossroads including St. Vith and Bastogne delayed the offensive while Allied reinforcements moved into the region. British forces also helped secure the Meuse approaches. The outcome depended on far more than the simplified five-objective map in this game.</p>
+        <h3>A Short Timeline</h3>
+        <ol><li><strong>16 December 1944:</strong> German forces launch the Ardennes offensive against the American-held front.</li><li><strong>Following days:</strong> German spearheads push west; resistance at St. Vith and Bastogne disrupts their timetable. Allied commanders commit reinforcements.</li><li><strong>Late December:</strong> Improving weather allows increased Allied air operations; German advances stall short of the Meuse.</li><li><strong>26 December:</strong> Elements of the U.S. 4th Armored Division establish contact with the surrounded defenders of Bastogne.</li><li><strong>January 1945:</strong> Allied counterattacks reduce the salient. The U.S. Army dates the battle's conclusion to 25 January.</li></ol>
+        <p>The battle ended in an Allied victory, at great cost to soldiers and civilians. Playing Germany here is a strategic role within a historical game, not an endorsement of Nazi Germany or its ideology.</p>
+        <h3>History Versus This Scenario</h3><p>The game ends on 27 December, before the historical battle ended. Its hex map is schematic, not geographically accurate. Meuse is a river objective, not a town. Unit strength points are abstract, not troop or tank counts. Reinforcement dates, supply losses, weather changes and combat odds are gameplay rules rather than historical measurements.</p>
+      </section>
+      <section id="origins"><h2>TRS-80 Inspiration</h2><p><em>Tigers in the Snow</em> was published by Strategic Simulations in 1981 and designed by Chuck Kroegel, David Landrey and David Walker. It appeared on platforms including the TRS-80, Apple II and Atari 8-bit computers, with later ports. Its board-wargame-inspired hex grid included terrain, weather and supply systems. <a href="https://en.wikipedia.org/wiki/Tigers_in_the_Snow">Game background and references</a>.</p><p><em>Ardennes: Winter Offensive</em> borrows the idea of a compact, counter-based operational wargame. It uses new browser code, a simplified scenario and modern conveniences such as colour, autosaves and movement undo. It is not affiliated with SSI, and this guide describes only the browser game's current rules.</p></section>
+      <section id="sources"><h2>Sources &amp; Further Reading</h2><p>Historical prose in this guide is a summary, not reproduced source text. Consult these references for broader context and differences between the real battle and the game.</p><ul><li><a href="https://www.army.mil/botb/">U.S. Army: Battle of the Bulge</a> — overview, photographs and further reading.</li><li><a href="https://history.army.mil/Publications/Publications-Catalog/The-Ardennes-Battle-of-the-Bulge/">Hugh M. Cole: The Ardennes: Battle of the Bulge</a> — U.S. Army official campaign history.</li><li><a href="https://www.nationalww2museum.org/war/articles/battle-of-the-bulge">The National WWII Museum: Battle of the Bulge</a> — historical overview.</li><li><a href="https://en.wikipedia.org/wiki/Tigers_in_the_Snow">Tigers in the Snow</a> — original game's publication details and bibliography.</li></ul><p>Guide updated 10 October 2026. Game rules are based on the current implementation; external sources cover history, not these mechanics. Source links require an internet connection; the guide itself works offline.</p></section>
+    </main>
+  </div>
+  <footer>ARDENNES: WINTER OFFENSIVE / INDEPENDENT RETRO WARGAME / <a href="index.html">Return to the game</a></footer>
+</body>
+</html>
