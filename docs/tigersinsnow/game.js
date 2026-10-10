@@ -18,6 +18,11 @@
     westwall: { cost: 4, defense: 2.75, symbol: '}' }
   };
   const opponent = side => side === 'german' ? 'american' : 'german';
+  function unitPresentation(unit) {
+    if (/\b(AIRB|FJ|Airborne)\b/i.test(unit.name)) return { symbol: 'P', label: 'Airborne / paratroopers' };
+    if (/\b(PZGR|CALV)\b/i.test(unit.name)) return { symbol: 'M', label: 'Mechanised infantry / cavalry' };
+    return unit.type === 'armor' ? { symbol: '=', label: 'Armour' } : { symbol: 'X', label: 'Infantry' };
+  }
   const REINFORCEMENTS = {
     3: [['a8', '101 Airborne', 'infantry', 5, 8, 10]],
     5: [['a9', '82 Airborne', 'infantry', 4, 3, 10]],
@@ -632,7 +637,7 @@
           `Germany needs ${target - state.score} more points to reach its target.`,
       provisional: !state.winner };
   }
-  const api = { createGame, neighbors, riverCourses, referenceMap, aidCard, mapDimensions, occupant, distance, reachable, move, attack, combatOdds,
+  const api = { createGame, unitPresentation, neighbors, riverCourses, referenceMap, aidCard, mapDimensions, occupant, distance, reachable, move, attack, combatOdds,
     isSupplied, beginSide, endTurn, computerTurn, simulateDay, simulateAction, deserialize, arrivalsThisTurn, campaignStanding, describeDispatch, armySummary, reportOperation, TERRAIN, key,
     battlePreview, orderReason, validTargets, parseSeed, restoreMetadata, daySnapshot, summarizeDay, planMovement };
   manualRules = createManualRules(api);
@@ -645,7 +650,7 @@
   const context = canvas.getContext('2d');
   const $ = id => document.getElementById(id);
   const freshSeed = () => crypto.getRandomValues(new Uint32Array(1))[0];
-  let state = createGame(freshSeed()), commandSide = 'german', selected = 'g1', mode = 'move', busy = false;
+  let state = createGame(freshSeed(), 'manual'), commandSide = 'german', selected = 'g1', mode = 'move', busy = false;
   let actionVisual = null;
   let visualStarted = 0, animationFrame = null;
   function setActionVisual(value) {
@@ -951,7 +956,7 @@
       drawNationality(counter.nationality === 'british' ? 'british' : counter.side, point.x - 6, point.y - 5, palette);
       context.fillStyle = palette.forceWhite;
       context.font = 'bold 11px Consolas, monospace';
-      context.fillText(counter.type === 'armor' ? '=' : 'X', point.x + 8, point.y - 4);
+      context.fillText(unitPresentation(counter).symbol, point.x + 8, point.y - 4);
       context.font = '10px Consolas, monospace'; context.fillText(`${counter.hp}/${counter.mp}`, point.x, point.y + 7);
       if (counter.id === selected) { context.strokeStyle = palette.highlight; context.lineWidth = 2; hex(counter, 1); context.stroke(); }
       if (!counter.supplied) { context.fillStyle = palette.highlight; context.fillText('!', point.x + 20, point.y); }
@@ -1036,7 +1041,8 @@
     $('american-roster').setAttribute('aria-label', card ? 'Allied formations' : 'US formations');
     document.querySelector('.army-report[data-side="american"] h2').textContent = card ? 'ALLIED / WEST' : 'AMERICAN / WEST';
     document.querySelector('.score-army[data-side="american"] h2').textContent = card ? 'ALLIED / WEST' : 'AMERICAN / WEST';
-    $('mechanized-label').textContent = card ? 'Mechanized' : 'Armor';
+    const unitLegendLabel = '= Armour / X Infantry / P Airborne or paratroopers / M Mechanised infantry or cavalry';
+    $('unit-legend').setAttribute('aria-label', unitLegendLabel);
     document.querySelector('.army-report[data-side="german"] h2 + p').textContent = card ?
       'Mission: score casualties, marked edge presence, occupied towns and timely exits. Reach a German victory level at the final check.' :
       'Mission: concentrate westward, keep supply open and capture at least eight points. Adapted Manual rules also reward exits.';
@@ -1091,7 +1097,7 @@
     $('end-turn').textContent = manual && state.orderPhase === 'movement' ? 'End Movement' : manual ? 'End Combat / Day' : 'End Turn';
     const unit = state.units.find(candidate => candidate.id === selected);
     $('unit-name').textContent = unit ? unit.name : 'No unit selected';
-    $('unit-kind').textContent = unit ? `${unit.nationality === 'british' ? 'BRITISH / ALLIED' : unit.side.toUpperCase()} / ${unit.type.toUpperCase()}` : 'GERMAN COMMAND';
+    $('unit-kind').textContent = unit ? `${unit.nationality === 'british' ? 'BRITISH / ALLIED' : unit.side.toUpperCase()} / ${unitPresentation(unit).label.toUpperCase()}` : 'GERMAN COMMAND';
     $('strength').textContent = unit ? `${unit.hp} / ${unit.maxHp}` : '-';
     $('movement').textContent = unit ? String(unit.mp) : '-';
     $('supply').textContent = unit ? manual ? manualRules.localSupply(state, unit).toUpperCase() : unit.supplied ? 'CONNECTED' : 'ISOLATED' : '-';
@@ -1119,15 +1125,42 @@
     state.units.filter(candidate => candidate.hp > 0 && !candidate.exited).forEach(counter => {
       const button = document.createElement('button');
       button.className = 'roster-unit'; button.setAttribute('aria-pressed', String(counter.id === selected));
-      button.textContent = `${counter.nationality === 'british' ? 'BRITISH ' : ''}${counter.type === 'armor' ? '[=]' : '[X]'} ${counter.name}`;
+      button.textContent = `${counter.nationality === 'british' ? 'BRITISH ' : ''}[${unitPresentation(counter).symbol}] ${counter.name}`;
       const stats = document.createElement('span'); stats.textContent = `${counter.hp} / ${counter.mp}`; button.append(stats);
       button.disabled = busy;
-      button.onclick = () => { selected = counter.id; cursor = { x: counter.x, y: counter.y }; render(); };
+      button.onclick = () => {
+        selected = counter.id; cursor = { x: counter.x, y: counter.y };
+        $('order-of-battle-dialog').close();
+        render();
+        canvas.focus();
+        canvas.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      };
       $(`${counter.side}-roster`).append(button);
     });
     for (const side of ['american', 'german']) {
       const roster = $(`${side}-roster`);
       if (!roster.childElementCount) roster.textContent = 'No active formations.';
+    }
+    const reinforcementEntries = manual ? manualRules.reinforcementSchedule(state) :
+      Object.entries(REINFORCEMENTS).flatMap(([turn, entries]) => entries.map(([id, name, type]) => {
+        const counter = state.units.find(candidate => candidate.id === id);
+        return { name, type, side: 'american', turn: Number(turn), date: `${15 + Number(turn)} DEC`,
+          status: counter ? counter.hp > 0 ? 'On map' : 'Eliminated' :
+            Number(turn) <= state.turn ? 'Delayed' : 'Scheduled' };
+      }));
+    for (const side of ['american', 'german']) {
+      const list = $(`${side}-roster-reinforcements`);
+      list.replaceChildren();
+      for (const entry of reinforcementEntries.filter(candidate => candidate.side === side)) {
+        const row = document.createElement('li');
+        row.textContent = `${entry.nationality === 'british' ? 'BRITISH / ' : ''}[${unitPresentation(entry).symbol}] ${entry.name} — TURN ${entry.turn} / ${entry.date}${['Scheduled', 'Due after combat'].includes(entry.status) ? '' : ` / ${entry.status}`}`;
+        list.append(row);
+      }
+      if (!list.childElementCount) {
+        const row = document.createElement('li');
+        row.textContent = 'No scheduled reinforcements.';
+        list.append(row);
+      }
     }
     $('objectives').replaceChildren();
     Object.values(state.map).filter(tile => tile.value).forEach(tile => {
@@ -1172,6 +1205,7 @@
     scheduleList.replaceChildren();
     if (state.ruleset === 'manual') {
       const incoming = manualRules.offMapReinforcements(state);
+      $('reinforcement-schedule-count').textContent = `${incoming.length} WAITING`;
       if (!incoming.length) {
         const row = document.createElement('li');
         row.textContent = 'No formations are waiting to enter.';
@@ -1181,7 +1215,7 @@
         const row = document.createElement('li');
         row.dataset.side = entry.side;
         row.dataset.status = entry.status;
-        row.textContent = `TURN ${entry.turn} / ${entry.date} — ${entry.nationality === 'british' ? 'BRITISH / ALLIED' : entry.side.toUpperCase()} / ${entry.name} / ${entry.strength} CP${entry.entry ? ` / entry ${entry.entry}` : ''} / ${entry.status}`;
+        row.textContent = `TURN ${entry.turn} / ${entry.date} — ${entry.nationality === 'british' ? 'BRITISH / ALLIED' : entry.side.toUpperCase()} / [${unitPresentation(entry).symbol}] ${entry.name} / ${entry.strength} CP${entry.entry ? ` / entry ${entry.entry}` : ''}${entry.status === 'Delayed' ? ' / Delayed' : ''}`;
         scheduleList.append(row);
       }
     }
@@ -1294,7 +1328,7 @@
     title.textContent = unit.name;
     const tile = state.map[key(unit.x, unit.y)];
     const details = [
-      `${unit.nationality === 'british' ? 'British / Allied' : unit.side === 'american' ? 'US' : 'German'} ${unit.type === 'armor' ? 'mechanized' : 'infantry'}`,
+      `${unit.nationality === 'british' ? 'British / Allied' : unit.side === 'american' ? 'US' : 'German'} ${unitPresentation(unit).label}`,
       `${manual ? 'Combat points' : 'Strength'}: ${unit.hp} / ${unit.maxHp}`,
       `Movement: ${unit.mp} / ${unit.mobility} MP`,
       `Supply: ${manual ? manualRules.localSupply(state, unit) : unit.supplied ? 'connected' : 'isolated'}`,
@@ -1317,6 +1351,25 @@
     tooltip.style.top = `${Math.max(8, top)}px`;
   });
   canvas.addEventListener('pointerleave', () => { $('unit-tooltip').hidden = true; });
+  const legendTooltip = $('legend-tooltip');
+  for (const icon of document.querySelectorAll('.legend-item')) {
+    icon.removeAttribute('title');
+    icon.setAttribute('aria-describedby', 'legend-tooltip');
+    const showLegendTooltip = () => {
+      legendTooltip.textContent = icon.getAttribute('aria-label');
+      legendTooltip.hidden = false;
+      const bounds = icon.getBoundingClientRect();
+      const box = legendTooltip.getBoundingClientRect();
+      legendTooltip.style.left = `${Math.max(8, Math.min(bounds.left,
+        document.documentElement.clientWidth - box.width - 8))}px`;
+      legendTooltip.style.top = `${Math.max(8, bounds.bottom + box.height + 8 >
+        document.documentElement.clientHeight ? bounds.top - box.height - 8 : bounds.bottom + 8)}px`;
+    };
+    icon.addEventListener('pointerenter', showLegendTooltip);
+    icon.addEventListener('focus', showLegendTooltip);
+    icon.addEventListener('pointerleave', () => { legendTooltip.hidden = true; });
+    icon.addEventListener('blur', () => { legendTooltip.hidden = true; });
+  }
   document.addEventListener('keydown', event => {
     if ($('phase-report-dialog').open) {
       event.preventDefault(); event.stopImmediatePropagation(); $('phase-report-dialog').close(); return;
@@ -1327,9 +1380,16 @@
         (!document.querySelector('dialog[open]') && !['INPUT','SELECT','TEXTAREA'].includes(event.target.tagName)))) {
       event.preventDefault(); showPhaseReport(); return;
     }
-    if (event.key === 'Escape') $('unit-tooltip').hidden = true;
+    if (event.key === 'Escape') {
+      $('unit-tooltip').hidden = true;
+      legendTooltip.hidden = true;
+      if ($('order-of-battle-dialog').open) $('order-of-battle-dialog').close();
+    }
   });
-  document.addEventListener('scroll', () => { $('unit-tooltip').hidden = true; }, true);
+  document.addEventListener('scroll', () => {
+    $('unit-tooltip').hidden = true;
+    legendTooltip.hidden = true;
+  }, true);
   canvas.addEventListener('keydown', event => {
     if (aidCard.active(state) && !observing() && !busy && !state.winner) {
       if (state.pendingBattle && (/^[1-6]$/.test(event.key) || event.key.toLowerCase() === 'f')) {
@@ -1562,11 +1622,10 @@
     const hotseat = button.dataset.commandSide === 'hotseat';
     const newSide = computer || hotseat ? 'german' : button.dataset.commandSide;
     try {
-      if ($('campaign-ruleset').value === 'manual' &&
-        (!$('german-rating').validity.valid || !$('allied-rating').validity.valid)) {
+      if (!$('german-rating').validity.valid || !$('allied-rating').validity.valid) {
         throw new Error('Ratings must be whole numbers from 1 to 9.');
       }
-      state = createGame(seed, $('campaign-ruleset').value, newSide, 2, {
+      state = createGame(seed, 'manual', newSide, 2, {
         scenario: $('campaign-scenario').value,
         ratings: { german: Number($('german-rating').value), american: Number($('allied-rating').value) },
         display: { color: $('campaign-color').checked, hexes: $('campaign-hexes').checked },
@@ -1588,12 +1647,8 @@
     try { localStorage.setItem(COMMAND_SIDE_KEY, commandSide); }
     catch { message('Campaign started, but your command side could not be saved.'); }
   });
-  $('campaign-ruleset').onchange = () => {
-    const manual = $('campaign-ruleset').value === 'manual';
-    $('aid-campaign-options').hidden = !manual;
-    document.querySelector('[data-command-side="hotseat"]').hidden = !manual;
-  };
   $('rules').onclick = () => { pauseSimulation(); render(); $('rules-dialog').showModal(); };
+  $('order-of-battle-button').onclick = () => { pauseSimulation(); render(); $('order-of-battle-dialog').showModal(); };
   $('phase-report-button').onclick = showPhaseReport;
   document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => $(button.dataset.close).close());
   $('export').onclick = () => {

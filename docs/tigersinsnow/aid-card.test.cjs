@@ -11,6 +11,21 @@ const restore = state => {
   return copy;
 };
 
+test('unit presentation distinguishes airborne and mechanised formations without changing rule types', () => {
+  for (const [name, type, symbol] of [
+    ['82nd AIRB DIV', 'infantry', 'P'], ['3rd FJ DIV', 'infantry', 'P'],
+    ['101 Airborne', 'infantry', 'P'], ['3rd PZGR DIV', 'armor', 'M'],
+    ['14th CALV REG', 'armor', 'M'], ['2nd PZ DIV', 'armor', '='],
+    ['99th INF DIV', 'infantry', 'X']
+  ]) {
+    const unit = { name, type };
+    assert.equal(game.unitPresentation(unit).symbol, symbol);
+    assert.deepEqual(unit, { name, type });
+  }
+  assert.equal(card.roster.filter(unit => game.unitPresentation(unit).symbol === 'P').length, 4);
+  assert.equal(card.roster.filter(unit => game.unitPresentation(unit).symbol === 'M').length, 3);
+});
+
 test('aid card includes every formation, unaggregated strength and correct mechanized classification', () => {
   assert.equal(card.roster.length,66);
   assert.equal(new Set(card.roster.map(unit => unit.id)).size,66);

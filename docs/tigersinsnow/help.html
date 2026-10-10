@@ -73,12 +73,12 @@
     a:focus-visible, summary:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 4px; }
     header { border-bottom: 1px solid var(--cp-border-strong); padding: 24px 32px; display: flex; justify-content: space-between; gap: 20px; align-items: center; }
     h1 { font: bold 28px Consolas, monospace; margin: 0; letter-spacing: 0; }
-    header p { margin: 4px 0 0; color: var(--cp-text-muted); font: 12px Consolas, monospace; }
+    header p { margin: 4px 0 0; color: var(--cp-text-muted); font: 16px Consolas, monospace; }
     .play { display: inline-block; padding: 10px 16px; background: var(--cp-accent); color: var(--cp-accent-fg); border-radius: 4px; text-decoration: none; white-space: nowrap; }
     .shell { max-width: 1200px; margin: auto; display: grid; grid-template-columns: 220px minmax(0,1fr); gap: 40px; padding: 32px; }
     nav { position: sticky; top: 24px; align-self: start; border-right: 1px solid var(--cp-border); padding-right: 20px; }
-    nav h2 { font: bold 12px Consolas, monospace; color: var(--cp-text-muted); }
-    nav a { display: block; padding: 7px 0; text-decoration: none; font-size: 14px; }
+    nav h2 { font: bold 16px Consolas, monospace; color: var(--cp-text-muted); }
+    nav a { display: block; padding: 7px 0; text-decoration: none; font-size: 16px; }
     nav a:hover { text-decoration: underline; }
     main { min-width: 0; }
     section { border-bottom: 1px solid var(--cp-border); padding-bottom: 28px; margin-bottom: 32px; }
@@ -88,7 +88,7 @@
     li { margin-bottom: 8px; }
     .note { border-left: 3px solid var(--cp-accent); padding: 4px 16px; background: var(--cp-accent-soft); }
     .table-scroll { overflow-x: auto; }
-    table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 16px; }
     caption { text-align: left; font-weight: 600; margin-bottom: 8px; }
     th, td { border-bottom: 1px solid var(--cp-border); padding: 10px 12px; text-align: left; vertical-align: top; }
     th { background: var(--cp-surface-soft); }
@@ -99,10 +99,10 @@
     .german { background: var(--cp-force-german); color: var(--cp-force-white); }
     .american { background: var(--cp-force-us); color: var(--cp-force-white); }
     html[data-theme="dark"] .counter { color: var(--cp-force-white); }
-    .counter small { font-size: 12px; }
+    .counter small { font-size: 16px; }
     details { border-bottom: 1px solid var(--cp-border); padding: 12px 0; }
     summary { cursor: pointer; font-weight: 600; }
-    footer { padding: 24px 32px; border-top: 1px solid var(--cp-border); color: var(--cp-text-muted); font-size: 12px; }
+    footer { padding: 24px 32px; border-top: 1px solid var(--cp-border); color: var(--cp-text-muted); font-size: 16px; }
     @media (max-width: 800px) { .shell { grid-template-columns: 1fr; gap: 24px; padding: 24px; } nav { position: static; border-right: 0; border-bottom: 1px solid var(--cp-border); padding: 0 0 16px; } nav a { display: inline-block; margin-right: 16px; } header { flex-wrap: wrap; padding: 24px; } h1 { font-size: 24px; } }
     @media print { nav, .play { display: none; } .shell { display: block; padding: 0; } section { break-inside: avoid; } details p { display: block; } }
   </style>
@@ -154,6 +154,7 @@
         </tbody></table>
         <h3>Unit names and classifications</h3>
         <p>The roster contains 28 German and 38 Allied formations: 29 at-start formations and 37 dated entries (11 of them on 16 December). Infantry regiments of the 28th Division and the combat commands of the 7th, 9th and 10th Armored formations are separate counters, not aggregated. Six British formations serve on the Allied side and have a B counter marker rather than a US star. The fictional Bastogne Garrison is absent.</p>
+        <p>Map counters and rosters use [X] for infantry, [P] for airborne/paratroopers (AIRB, FJ or Airborne), [M] for mechanised infantry/cavalry (PZGR or CALV), and [=] for other armour formations. These are display distinctions only: airborne retains infantry rules, and mechanised infantry/cavalry retains the existing armour movement and combat rules.</p>
         <p>INF = infantry; ARM = mechanized armor; AIRB = airborne; CALV = mechanized armored cavalry; FJ = parachute infantry; PZ = mechanized Panzer armor; PZGR = mechanized armored infantry; VG = Volksgrenadier infantry; FGR = Fuehrer Grenadier; FBE = Fuehrer Begleit. REG, DIV, BRIG and BATT denote regiment, division, brigade and battalion. CCA/CCB/CCR identify Combat Commands A/B/R; XXX/28 identifies a regiment of the 28th Division. GDS denotes Guards. Mechanized classifications use the game's armor movement category; FJ, airborne and VG use infantry movement.</p>
         <h3>Explicit adaptations where source data is missing</h3>
         <ul>
@@ -169,7 +170,7 @@
       </section>
       <section id="quick-start"><h2>Your First Turn</h2>
         <p><strong>Campaign History</strong> replaces the old Field Dispatches list. Expand it below the map to read up to 60 saved events, newest first. Labeled entries separate battles, captures, reinforcements, retreats and campaign results. Classic battle entries spell out attacker and defender losses instead of using a colon-separated pair. Keep it collapsed when following the live American and German situation panels.</p>
-        <p>Move, Attack, Undo and End Turn (or End Movement / End Combat) are in the toolbar at the top of the page, below the campaign status. Separate, scrollable Order of Battle boxes sit beside the map: US forces on the left and German forces on the right, with situation reports in their own panels underneath. Click either army's formation to inspect it; only your commanded army can receive orders. Selected formation details, order guidance and objectives remain below the battlefield and dispatches. On narrow screens the army panels move below the map, with US forces on the left and German forces on the right.</p>
+        <p>Move, Attack, Undo and End Turn (or End Movement / End Combat) are in the toolbar at the top of the page, below the campaign status. The map spans the browser width, with army situation reports below it. The <strong>Order of Battle</strong> button opens a dialog with both armies' complete active rosters and combat points / remaining movement, plus each side's reinforcement schedule with arrival turn, date and current status. Arrived, delayed, eliminated and exited reinforcements retain their scheduled dates. Selecting an active formation closes the dialog and highlights it on the map. You can also select a counter directly on the map; only your commanded army can receive orders. Selected formation details, order guidance and objectives remain below the battlefield and campaign history.</p>
         <p>American situation reports appear to the left of the map (west), German reports to the right (east). Each includes a mission statement, active formations, total strength or combat points, isolation, and held objectives. Plain-English reports explain movements, battle losses, retreat/advance, captures and arrivals. The latest sixteen reports per side are now saved across reload and import; Undo restores the reports belonging to the restored position. New Campaign starts a new history. On narrow screens the panels sit below the map in the same left/right order.</p>
         <h3>Computer vs Computer</h3>
         <p>Choose New Campaign, select either ruleset, and choose <strong>Computer vs Computer</strong>. The campaign starts paused. <strong>Next Action</strong> resolves a movement order, battle, or phase transition. The active formation is selected and a plain-English sentence explains its intent and actual battle losses. Solid side-colored arrows show movement; dashed arrows show attacks; yellow arrows and moving markers show retreat/advance. Reduced-motion settings suppress moving markers. <strong>Next Day</strong> completes the remaining orders today using exactly the same engine. <strong>Play</strong> follows individual actions at 0.5, 1.5 or 3-second intervals. You can inspect either army but cannot issue orders. Battles do not interrupt playback with dialogs. Export/import and autosaves preserve the exact order boundary; reload/import resumes paused. Rules and New Campaign also pause playback.</p>
@@ -180,7 +181,7 @@
         <p>The lower score area includes each army's last completed-day summary: held points, active formations and net strength change. Net change includes combat, arrivals, replacements and exits—not gross combat casualties. Individual battle reports show actual casualties. The first day of an older save may have no starting totals; the summary says so explicitly instead of inventing a change.</p>
         <p>The campaign balance report compares Allied and German held-objective values, active formations, remaining strength (CP in Manual mode), and isolated formations. These held totals are not cumulative scores. The separate victory-rule section uses the aid card's German VP minus Allied VP and six victory levels in new Manual campaigns; Classic and older Manual campaigns retain the eight-point target. Provisional standings are not predictions. Finished campaigns show the actual victory classification.</p>
         <p>Start a new campaign and choose to command either Germany or America; the computer controls the opposing side. Each turn represents one day, starting on 16 December 1944; the scenario ends no later than 27 December.</p>
-        <ol><li>Select one of your counters or its name in <strong>Order of Battle</strong>. The yellow outline identifies your selected formation. Guidance in the selected-formation panel explains legal orders and why others are unavailable.</li><li>Choose <strong>Move</strong>. White dots mark legal destinations. Click one to move; the route is highlighted.</li><li>Read the movement number again. If points remain, you can issue another move. Entering an enemy-adjacent hex spends the remaining allowance in Classic.</li><li>Choose <strong>Attack</strong>. Only eligible enemies are outlined. Click one to open a risk preview—not to fire immediately. Review the strength, terrain and supply factors, then choose Resolve Attack or Cancel. Manual previews also explain readiness, artillery, general supply and commitment. Cancel consumes nothing.</li><li>Read the resulting Battle Report for actual losses and retreats/advances. Repeat with other formations; you need not move or attack with every unit.</li><li>Choose <strong>End Turn</strong> (or End Movement / End Combat in manual mode). The computer responds, then new orders become available.</li></ol>
+        <ol><li>Select one of your counters on the map. The yellow outline identifies your selected formation, and its <strong>Order of Battle</strong> information appears below the map. Guidance in the selected-formation panel explains legal orders and why others are unavailable.</li><li>Choose <strong>Move</strong>. White dots mark legal destinations. Click one to move; the route is highlighted.</li><li>Read the movement number again. If points remain, you can issue another move. Entering an enemy-adjacent hex spends the remaining allowance in Classic.</li><li>Choose <strong>Attack</strong>. Only eligible enemies are outlined. Click one to open a risk preview—not to fire immediately. Review the strength, terrain and supply factors, then choose Resolve Attack or Cancel. Manual previews also explain readiness, artillery, general supply and commitment. Cancel consumes nothing.</li><li>Read the resulting Battle Report for actual losses and retreats/advances. Repeat with other formations; you need not move or attack with every unit.</li><li>Choose <strong>End Turn</strong> (or End Movement / End Combat in manual mode). The computer responds, then new orders become available.</li></ol>
         <div class="note"><p><strong>Try movement before combat.</strong> Undo Move can reverse movement orders, but a successful attack clears the undo history. Export your campaign before experimenting with a risky battle.</p></div>
       </section>
       <section id="map"><h2>Reading the Map</h2>

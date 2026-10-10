@@ -66,7 +66,7 @@
       --cp-highlight: rgba(253, 142, 161, 0.12);
     }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--cp-bg); color: var(--cp-text); font-family: "Segoe UI", Aptos, Calibri, sans-serif; }
+    body { margin: 0; background: var(--cp-bg); color: var(--cp-text); font-family: "Segoe UI", Aptos, Calibri, sans-serif; font-size: 16px; }
     button, input { font: inherit; }
     button { cursor: pointer; border: 1px solid var(--cp-border-strong); border-radius: 4px; background: var(--cp-surface); color: var(--cp-text); padding: 9px 13px; min-height: 40px; }
     button:hover:not(:disabled) { background: var(--cp-surface-soft); border-color: var(--cp-text); }
@@ -82,7 +82,7 @@
     nav a { display: inline-flex; align-items: center; min-height: 40px; padding: 9px 13px; border: 1px solid var(--cp-border-strong); border-radius: 4px; color: var(--cp-link); background: var(--cp-surface); text-decoration: none; }
     nav a:hover { background: var(--cp-surface-soft); }
     nav a:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 3px; }
-    main { max-width: 1440px; margin: auto; padding: 20px 28px 28px; }
+    main { --page-gutter: 28px; margin: auto; padding: 20px var(--page-gutter) 28px; }
     .status { display: flex; flex-wrap: wrap; gap: 20px; padding: 0 0 16px; align-items: center; font: 12px Consolas, monospace; }
     #phase { margin-left: auto; color: var(--cp-accent); font-weight: bold; }
     .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
@@ -90,11 +90,13 @@
     h2 { font: bold 12px Consolas, monospace; margin: 0; letter-spacing: 0; }
     .coordinates { font: 11px Consolas, monospace; color: var(--cp-text-muted); }
     .map-scroll { overflow-x: auto; margin-top: 12px; }
-    #unit-tooltip { position: fixed; z-index: 100; pointer-events: none; width: 260px; max-width: calc(100vw - 16px); padding: 12px; border: 1px solid var(--cp-border-strong); border-radius: 10px; background: var(--cp-surface); color: var(--cp-text); box-shadow: var(--cp-shadow); font-size: 12px; }
+    #unit-tooltip, #legend-tooltip { position: fixed; z-index: 100; pointer-events: none; width: 260px; max-width: calc(100vw - 16px); padding: 12px; border: 1px solid var(--cp-border-strong); border-radius: 10px; background: var(--cp-surface); color: var(--cp-text); box-shadow: var(--cp-shadow); font-size: 12px; }
+    #legend-tooltip { width: max-content; padding: 8px 12px; }
     #unit-tooltip h3 { margin: 0 0 8px; font-size: 14px; }
     #unit-tooltip p { margin: 4px 0; }
-    .battlefield-reports { display: grid; grid-template-columns: minmax(150px, 190px) minmax(0, 1fr) minmax(150px, 190px); gap: 12px; align-items: start; }
-    .army-column { min-width: 0; }
+    .battlefield-reports { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+    .battlefield-reports .map-scroll { grid-column: 1 / -1; grid-row: 1; margin-inline: calc(-1 * var(--page-gutter)); }
+    .army-column { min-width: 0; grid-row: 2; }
     .order-of-battle { background: var(--cp-surface); border: 1px solid var(--cp-border-strong); border-radius: 10px; padding: 12px; margin-top: 12px; }
     .order-of-battle[data-side="american"] { border-top: 4px solid var(--cp-force-us); }
     .order-of-battle[data-side="german"] { border-top: 4px solid var(--cp-force-german); }
@@ -105,23 +107,15 @@
     .army-report p { font-size: 12px; line-height: 1.5; color: var(--cp-text-muted); margin: 10px 0; }
     .army-report ol { list-style: none; padding: 0; margin: 0; max-height: 480px; overflow-y: auto; }
     .army-report li { font-size: 13px; line-height: 1.5; border-top: 1px solid var(--cp-border); padding: 10px 0; }
-    @media (min-width: 901px) {
-      .battlefield-reports { align-items: stretch; }
-      .army-column { contain: size; display: flex; flex-direction: column; min-height: 0; padding-top: 12px; }
-      .order-of-battle { margin-top: 0; flex: 0 0 auto; }
-      .army-report { flex: 1; min-height: 0; overflow-y: auto; }
-      .army-report ol { max-height: none; overflow-y: visible; }
-    }
     @media (max-width: 900px) {
-      .battlefield-reports { grid-template-columns: 1fr 1fr; }
-      .battlefield-reports .map-scroll { grid-column: 1 / -1; grid-row: 1; }
-      .army-column { grid-row: 2; }
       .army-report ol { max-height: 280px; }
     }
-    #battlefield { width: 100%; min-width: 600px; height: auto; display: block; image-rendering: pixelated; touch-action: manipulation; }
-    .legend { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; padding: 12px 0; font: 11px Consolas, monospace; color: var(--cp-text-muted); border-bottom: 1px solid var(--cp-border); }
+    #battlefield { width: 100%; height: auto; display: block; image-rendering: pixelated; touch-action: manipulation; }
+    .legend { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; padding: 8px 0; font: 11px Consolas, monospace; color: var(--cp-text-muted); border-bottom: 1px solid var(--cp-border); }
+    .legend-item { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; padding: 2px 5px; border: 1px solid transparent; border-radius: 4px; cursor: default; }
+    .legend-item:hover, .legend-item:focus-visible { position: relative; z-index: 2; border-color: var(--cp-border-strong); background: var(--cp-surface); outline: none; }
     .legend b { color: var(--cp-text); font-size: 14px; }
-    .legend-symbol { width: 26px; height: 26px; vertical-align: middle; }
+    .legend-symbol { width: 20px; height: 20px; vertical-align: middle; }
     .legend [data-map="reference"] { white-space: nowrap; }
     .legend [hidden] { display: none; }
     .legend [data-side="german"] b, #objectives [data-side="german"] { color: var(--cp-danger); }
@@ -190,10 +184,12 @@
     #reinforcement-arrivals { border: 1px solid var(--cp-warning); padding: 12px; margin-top: 12px; background: var(--cp-surface); }
     #arrival-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
     #arrival-list button { font: 11px Consolas, monospace; text-align: left; }
-    #reinforcement-schedule { border: 1px solid var(--cp-border); padding: 12px; margin-top: 12px; background: var(--cp-surface); }
-    #reinforcement-schedule p { margin: 8px 0; color: var(--cp-text-muted); font-size: 12px; }
-    #reinforcement-schedule-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; list-style: none; margin: 0; padding: 0; }
-    #reinforcement-schedule-list li { border-left: 4px solid var(--cp-border-strong); background: var(--cp-surface-soft); padding: 8px 10px; font: 11px/1.6 Consolas, monospace; }
+    #reinforcement-schedule { border: 1px solid var(--cp-border); margin-top: 12px; background: var(--cp-surface); }
+    #reinforcement-schedule > summary { cursor: pointer; padding: 10px 12px; font: bold 12px Consolas, monospace; }
+    #reinforcement-schedule > :not(summary) { margin-left: 12px; margin-right: 12px; }
+    #reinforcement-schedule > p { margin-top: 0; margin-bottom: 8px; color: var(--cp-text-muted); font-size: 12px; }
+    #reinforcement-schedule-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 4px; list-style: none; margin-top: 0; margin-bottom: 12px; padding: 0; }
+    #reinforcement-schedule-list li { border-left: 3px solid var(--cp-border-strong); background: var(--cp-surface-soft); padding: 5px 7px; font: 10px/1.4 Consolas, monospace; overflow-wrap: anywhere; }
     #reinforcement-schedule-list li[data-side="american"] { border-left-color: var(--cp-link); }
     #reinforcement-schedule-list li[data-side="german"] { border-left-color: var(--cp-danger); }
     #reinforcement-schedule-list li[data-status="Delayed"] { border-left-color: var(--cp-warning); }
@@ -207,6 +203,11 @@
     footer { max-width: 1440px; margin: auto; border-top: 1px solid var(--cp-border); padding: 16px 28px; font: 10px Consolas, monospace; color: var(--cp-text-muted); }
     dialog { max-width: min(600px, calc(100% - 24px)); max-height: 85vh; overflow-y: auto; border: 1px solid var(--cp-border-strong); border-radius: 8px; padding: 24px; background: var(--cp-surface); color: var(--cp-text); box-shadow: var(--cp-shadow); }
     dialog::backdrop { background: var(--cp-overlay); }
+    #order-of-battle-dialog { width: min(1000px, calc(100% - 24px)); max-width: calc(100% - 24px); }
+    .roster-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    #order-of-battle-dialog .army-roster { max-height: none; }
+    .roster-reinforcements { padding-left: 24px; }
+    .roster-reinforcements li { margin: 12px 0; overflow-wrap: anywhere; }
     dialog h2 { font-size: 20px; margin-bottom: 16px; }
     dialog p { font-size: 14px; line-height: 1.6; }
     dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
@@ -228,9 +229,6 @@
     .battle-loss { min-height: 20px; margin: 12px 0 0; color: var(--cp-danger); font: bold 12px Consolas, monospace; }
     .battle-versus { color: var(--cp-text-muted); font: bold 14px Consolas, monospace; }
     .battle-outcome { margin: 20px 0 0; padding: 12px; background: var(--cp-surface-soft); font: 12px/1.5 Consolas, monospace; text-align: center; }
-    @media (min-width: 801px) {
-      #battlefield { min-width: 0; max-width: min(100%, calc((100dvh - 240px) * var(--map-ratio, 1.4453125))); margin-inline: auto; }
-    }
     @media (max-width: 800px) {
       .layout { grid-template-columns: minmax(0, 1fr); }
       aside { border-left: 0; border-top: 1px solid var(--cp-border); padding: 20px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -241,17 +239,35 @@
     @media (max-width: 600px) {
       .masthead { flex-direction: column; padding: 16px; } .insignia { display: none; }
       h1 { font-size: 24px; } nav { width: 100%; } nav button { flex: 1; padding: 8px; font-size: 12px; }
-      main { padding: 16px; } .status { gap: 10px 16px; } #phase { margin-left: 0; flex-basis: 100%; }
+      main { --page-gutter: 16px; padding: 16px; } .status { gap: 10px 16px; } #phase { margin-left: 0; flex-basis: 100%; }
       aside { grid-template-columns: 1fr; } .objectives-section { grid-column: auto; }
       .sidebar-section { border-left: 0; border-top: 1px solid var(--cp-border); padding: 16px 0 0; }
       .coordinates { display: none; } footer { padding: 16px; line-height: 1.6; }
+    }
+    .subtitle, .status, h2, .coordinates, #unit-tooltip, #legend-tooltip, #unit-tooltip h3,
+    .army-report p, .army-report li, .legend, .legend b, #history-count, .history-intro,
+    #dispatches li, .history-label, .section-label, #unit-kind, dl, .roster-unit, #score,
+    #campaign-leader, .campaign-scoreboard p, #spectator-controls p, #action-story,
+    #order-guidance, #plan-preview, #day-summary, #objectives, #notice, #arrival-list button,
+    #reinforcement-schedule > summary, #reinforcement-schedule > p, #reinforcement-schedule-list li,
+    #manual-command, #battle-details, footer, dialog p, #phase-report-dialog table,
+    #phase-report-movement, .battle-odds, .battle-unit h3, .battle-loss, .battle-versus,
+    .battle-outcome, nav button { font-size: 16px; }
+    .roster-unit { flex-wrap: wrap; overflow-wrap: anywhere; }
+    .roster-unit span { white-space: normal; }
+    #dispatches li { grid-template-columns: minmax(0, 140px) minmax(0, 1fr); }
+    .legend-item { height: auto; min-height: 30px; }
+    @media (max-width: 600px) {
+      #dispatches li { grid-template-columns: minmax(0, 1fr); }
+      .battlefield-reports, .score-comparison, .roster-columns { grid-template-columns: minmax(0, 1fr); }
+      .army-column { grid-row: auto; }
     }
   </style>
 </head>
 <body>
   <header class="masthead">
     <div class="identity"><span class="insignia" aria-hidden="true">[=]</span><div><h1>ARDENNES</h1><p class="subtitle">WINTER OFFENSIVE / DECEMBER 1944</p></div></div>
-    <nav aria-label="Campaign controls"><a href="help.html" target="_blank" rel="noopener" title="Open the player guide and historical background in a new tab">Help &amp; History</a><button id="rules">Rules</button><button id="phase-report-button" hidden>Report / R</button><button id="export">Export Save</button><button id="import">Import Save</button><button id="new-game">New Campaign</button></nav>
+    <nav aria-label="Campaign controls"><a href="help.html" target="_blank" rel="noopener" title="Open the player guide and historical background in a new tab">Help &amp; History</a><button id="rules">Rules</button><button id="order-of-battle-button" aria-haspopup="dialog" aria-controls="order-of-battle-dialog">Order of Battle</button><button id="phase-report-button" hidden>Report / R</button><button id="export">Export Save</button><button id="import">Import Save</button><button id="new-game">New Campaign</button></nav>
   </header>
   <main>
     <div class="status"><span id="date"></span><span id="turn"></span><span id="weather"></span><span id="ruleset-status"></span><span id="seed-status"></span><span id="phase" role="status"></span></div>
@@ -266,33 +282,32 @@
         <div class="map-header"><h2>OPERATIONS MAP</h2><span class="coordinates">ARDENNES SECTOR / WEST &lt; EAST</span></div>
         <div class="battlefield-reports">
           <div class="army-column">
-            <section class="order-of-battle" data-side="american" aria-label="US Order of Battle"><h2>US ORDER OF BATTLE</h2><div id="american-roster" class="army-roster" aria-label="US formations"></div></section>
             <section class="army-report" data-side="american" aria-label="American situation and reports"><h2>AMERICAN / WEST</h2><p><strong>Mission:</strong> Hold the western objectives, delay the offensive and counterattack exposed formations. Deny Germany eight points at the final check.</p><p id="american-army-summary"></p><p id="american-objectives"></p><ol id="american-reports" aria-label="Recent American operations"></ol></section>
           </div>
           <div class="map-scroll">
             <div class="legend" aria-label="Map legend">
-              <span><span class="nationality" data-side="german" aria-hidden="true"></span> Germany</span>
-              <span><span class="nationality" data-side="american" aria-hidden="true"></span> US forces</span>
-              <span id="british-legend" hidden><b>B</b> British / Allied</span>
-              <span id="scoring-legend" hidden><b>VP</b> Marked per-turn scoring position</span>
-              <span><b>=</b> <span id="mechanized-label">Armor</span> / <b>X</b> Infantry</span>
-              <span data-map="legacy" data-terrain="forest"><b>*</b> Forest</span>
-              <span data-map="legacy" data-terrain="ridge"><b>^</b> Ridge</span>
-              <span data-map="legacy" data-terrain="river"><span class="river-key river-key-major" aria-hidden="true"></span> major / <span class="river-key river-key-minor" aria-hidden="true"></span> minor river</span>
-              <span data-map="legacy" data-terrain="road"><b>:</b> Road</span>
-              <span data-map="legacy" data-terrain="town"><b>#</b> Town</span>
-              <span data-map="reference" hidden><canvas class="legend-symbol" data-symbol="plain" width="26" height="26" aria-hidden="true"></canvas> Clear</span>
-              <span data-map="reference" hidden><canvas class="legend-symbol" data-symbol="forest" width="26" height="26" aria-hidden="true"></canvas> Forest</span>
-              <span data-map="reference" hidden><canvas class="legend-symbol" data-symbol="ridge" width="26" height="26" aria-hidden="true"></canvas> Rough</span>
-              <span data-map="reference" hidden><canvas class="legend-symbol" data-symbol="town" width="26" height="26" aria-hidden="true"></canvas> Town</span>
-              <span data-map="reference" hidden><canvas class="legend-symbol" data-symbol="westwall" width="26" height="26" aria-hidden="true"></canvas> Westwall</span>
-              <span data-map="reference" hidden><canvas class="legend-symbol" data-symbol="river" width="26" height="26" aria-hidden="true"></canvas> River edge</span>
-              <span data-map="reference" hidden><b>E</b> Exit / <b>1–28</b> Entry</span>
-              <span data-map="reference" hidden title="Outline colors identify alternate reinforcement edges"><canvas class="legend-symbol" data-symbol="north" width="26" height="26" aria-hidden="true"></canvas> North alternate</span>
-              <span data-map="reference" hidden><canvas class="legend-symbol" data-symbol="west" width="26" height="26" aria-hidden="true"></canvas> West alternate</span>
-              <span data-map="reference" hidden><canvas class="legend-symbol" data-symbol="south" width="26" height="26" aria-hidden="true"></canvas> South alternate</span>
-              <span data-map="reference" hidden><canvas class="legend-symbol" data-symbol="german" width="26" height="26" aria-hidden="true"></canvas> German alternate</span>
-              <span data-terrain="isolated"><b>!</b> Isolated</span>
+              <span class="legend-item" data-side="german" role="img" aria-label="Germany" title="Germany" tabindex="0"><span class="nationality" data-side="german" aria-hidden="true"></span></span>
+              <span class="legend-item" data-side="american" role="img" aria-label="US forces" title="US forces" tabindex="0"><span class="nationality" data-side="american" aria-hidden="true"></span></span>
+              <span id="british-legend" class="legend-item" role="img" aria-label="British / Allied" title="British / Allied" tabindex="0" hidden><b>B</b></span>
+              <span id="scoring-legend" class="legend-item" role="img" aria-label="Marked per-turn scoring position" title="Marked per-turn scoring position" tabindex="0" hidden><b>VP</b></span>
+              <span id="unit-legend" class="legend-item" role="img" aria-label="= Armour / X Infantry / P Airborne or paratroopers / M Mechanised infantry or cavalry" tabindex="0"><b>= X P M</b></span>
+              <span class="legend-item" data-map="legacy" data-terrain="forest" role="img" aria-label="Forest" title="Forest" tabindex="0"><b>*</b></span>
+              <span class="legend-item" data-map="legacy" data-terrain="ridge" role="img" aria-label="Ridge" title="Ridge" tabindex="0"><b>^</b></span>
+              <span class="legend-item" data-map="legacy" data-terrain="river" role="img" aria-label="Major / minor river" title="Major / minor river" tabindex="0"><span class="river-key river-key-major" aria-hidden="true"></span><span class="river-key river-key-minor" aria-hidden="true"></span></span>
+              <span class="legend-item" data-map="legacy" data-terrain="road" role="img" aria-label="Road" title="Road" tabindex="0"><b>:</b></span>
+              <span class="legend-item" data-map="legacy" data-terrain="town" role="img" aria-label="Town" title="Town" tabindex="0"><b>#</b></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="Clear terrain" title="Clear terrain" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="plain" width="26" height="26" aria-hidden="true"></canvas></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="Forest" title="Forest" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="forest" width="26" height="26" aria-hidden="true"></canvas></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="Rough terrain" title="Rough terrain" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="ridge" width="26" height="26" aria-hidden="true"></canvas></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="Town" title="Town" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="town" width="26" height="26" aria-hidden="true"></canvas></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="Westwall" title="Westwall" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="westwall" width="26" height="26" aria-hidden="true"></canvas></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="River edge" title="River edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="river" width="26" height="26" aria-hidden="true"></canvas></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="Exit / entry" title="Exit / entry" tabindex="0" hidden><b>E</b><b>1</b></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="North alternate reinforcement edge; outline colors identify alternate edges" title="North alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="north" width="26" height="26" aria-hidden="true"></canvas></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="West alternate reinforcement edge" title="West alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="west" width="26" height="26" aria-hidden="true"></canvas></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="South alternate reinforcement edge" title="South alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="south" width="26" height="26" aria-hidden="true"></canvas></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="German alternate reinforcement edge" title="German alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="german" width="26" height="26" aria-hidden="true"></canvas></span>
+              <span class="legend-item" data-terrain="isolated" role="img" aria-label="Isolated" title="Isolated" tabindex="0"><b>!</b></span>
             </div>
             <section id="maneuver-panel" aria-label="Pending battle maneuver" hidden>
               <h2>RETREAT / ADVANCE</h2><p id="maneuver-description" aria-live="polite"></p>
@@ -307,14 +322,13 @@
               <button id="resolve-defense">Resolve defensive battle</button><p id="defense-error" role="alert"></p>
             </section>
             <canvas id="battlefield" width="740" height="512" tabindex="0" aria-label="Hex battlefield. German counters have a white-bordered black cross on medium grey; US counters have a white star on dark green; British Allied counters use B. Equals marks mechanized units; X marks infantry. Hover over a counter for unit details. Select friendly units and destinations. Arrow keys move the cursor; Enter activates a hex. Player-aid campaigns also support directions 1–6, F to finish a formation's movement or maneuver, and E to end a phase."></canvas>
-            <section id="reinforcement-schedule" aria-label="Manual campaign reinforcement schedule" hidden>
-              <h2>OFF-MAP / INBOUND REINFORCEMENTS</h2>
+            <details id="reinforcement-schedule" aria-label="Manual campaign reinforcement schedule" hidden>
+              <summary>INBOUND REINFORCEMENTS / <span id="reinforcement-schedule-count">0 WAITING</span></summary>
               <p>Formations waiting to enter. Scheduled arrivals join after that day's combat; blocked arrivals remain here as delayed.</p>
               <ol id="reinforcement-schedule-list"></ol>
-            </section>
+            </details>
           </div>
           <div class="army-column">
-            <section class="order-of-battle" data-side="german" aria-label="German Order of Battle"><h2>GERMAN ORDER OF BATTLE</h2><div id="german-roster" class="army-roster" aria-label="German formations"></div></section>
             <section class="army-report" data-side="german" aria-label="German situation and reports"><h2>GERMAN / EAST</h2><p><strong>Mission:</strong> Concentrate westward, keep supply open, and capture at least eight points. Manual mode also rewards western exits; preserve fuel and combat readiness.</p><p id="german-army-summary"></p><p id="german-objectives"></p><ol id="german-reports" aria-label="Recent German operations"></ol></section>
           </div>
         </div>
@@ -360,7 +374,7 @@
             <select id="defense-strategy"><option value="counter">Counter-attack</option><option value="hold">Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option><option value="flexible">Flexible defense (legacy adaptation)</option></select>
             <label id="defensive-artillery-label" for="defensive-artillery" hidden>Defensive artillery commitment against computer attacks (capped by available points)</label>
             <input id="defensive-artillery" type="number" min="0" max="6" step="1" value="2" hidden>
-            <p>Set your defensive stance and, in player-aid campaigns, artillery commitment before ending combat. CP replaces the classic strength scale. <a href="help.html#manual-mode" target="_blank" rel="noopener">Manual-mode rules and approximations</a></p>
+            <p>Set your defensive stance and artillery commitment before ending combat. CP means combat points. <a href="help.html#manual-mode" target="_blank" rel="noopener">Manual-mode rules and approximations</a></p>
           </section>
         </section>
         <section class="sidebar-section objectives-section"><div class="objective-heading"><h2>OBJECTIVES</h2><span id="score"></span></div><ul id="objectives"></ul></section>
@@ -370,6 +384,18 @@
   <footer>AN ORIGINAL RETRO WARGAME / INSPIRED BY THE TRS-80 ERA / NOT AFFILIATED WITH SSI</footer>
   <input id="save-file" type="file" accept=".json,application/json" hidden>
   <div id="unit-tooltip" role="tooltip" hidden></div>
+  <div id="legend-tooltip" role="tooltip" hidden></div>
+  <dialog id="order-of-battle-dialog" aria-labelledby="order-of-battle-title">
+    <h2 id="order-of-battle-title">Order of Battle</h2>
+    <p>Unit symbols: <strong>[=] armour, [X] infantry, [P] airborne / paratroopers, [M] mechanised infantry / cavalry</strong>. These distinguish formation types visually; their existing movement and combat rules are unchanged.</p>
+    <p>The two numbers beside each active formation are <strong>combat points / remaining movement points</strong>. For example, <strong>55 / 0</strong> means 55 combat points (current fighting strength) and no movement points remaining for the current phase.</p>
+    <p>Select a formation to inspect it on the map; only your commanded army can receive orders. Reinforcement schedules show arrival turn, date and current status. Scheduled arrivals join after that day's combat; blocked arrivals are delayed.</p>
+    <div class="roster-columns">
+      <section class="order-of-battle" data-side="american" aria-label="US Order of Battle"><h2>US ORDER OF BATTLE</h2><div id="american-roster" class="army-roster" aria-label="US formations"></div><h3>Reinforcements</h3><ol id="american-roster-reinforcements" class="roster-reinforcements" aria-label="Allied reinforcement schedule"></ol></section>
+      <section class="order-of-battle" data-side="german" aria-label="German Order of Battle"><h2>GERMAN ORDER OF BATTLE</h2><div id="german-roster" class="army-roster" aria-label="German formations"></div><h3>Reinforcements</h3><ol id="german-roster-reinforcements" class="roster-reinforcements" aria-label="German reinforcement schedule"></ol></section>
+    </div>
+    <div class="actions"><button data-close="order-of-battle-dialog">Close</button></div>
+  </dialog>
   <dialog id="phase-report-dialog" aria-labelledby="phase-report-title">
     <h2 id="phase-report-title" tabindex="-1">Army Status Report</h2>
     <p id="phase-report-date"></p>
@@ -379,16 +405,10 @@
     <div class="actions"><button data-close="phase-report-dialog">Continue</button></div>
   </dialog>
   <dialog id="rules-dialog" aria-labelledby="rules-title"><h2 id="rules-title">Campaign Rules</h2>
-    <p><strong>These paragraphs describe Classic mode.</strong> Manual-based campaigns use separate movement/combat phases, combined attacks, artillery, strategy, local/general supply, fuel and readiness. Germany cannot move on turn 1. See the <a href="help.html#manual-mode" target="_blank" rel="noopener">manual-based guide</a> for that mode and its explicitly documented approximations.</p>
-    <p>Command the German offensive over twelve daily turns, 16-27 December. Hold at least eight objective points after the final American response to win. Eliminate all opposing formations for an early victory.</p>
-    <p>Select a German counter or a formation in the roster. In Move mode, white dots mark reachable destinations; the yellow outline marks the selected unit. In Attack mode, select an adjacent American counter. A unit can move several times within its allowance but may attack only once. Combat consumes all remaining movement.</p>
-    <p>Undo Move reverses movement orders in reverse order, restoring movement points and town control. Successful combat, ending the turn, restarting, importing a save or reloading the page clears undo history.</p>
-    <p>Counter numbers show strength / remaining movement. Armor has five movement points; infantry has four. Plains, roads and towns cost one point, forests two, ridges and rivers three. Entering an enemy-adjacent hex ends movement. Units cannot stack.</p>
-    <p>Combat odds compare current strength, attack and defense ratings, terrain and supply. Forests, ridges and towns favor defenders. A seeded die roll determines losses and possible retreat. Blocked retreats cause extra losses; zero strength eliminates a formation.</p>
-    <p>Supply must trace a route to the friendly map edge, east for Germany and west for America, without crossing enemy units or unoccupied enemy zones of control. Isolated units lose two movement points, fight at reduced effectiveness and lose one strength per day after the first turn.</p>
-    <p>Fog covers the opening. Snow can occur on days four through seven, reducing movement and making off-road armor movement more expensive. Clear skies from day eight add one point to American combat damage. American reinforcements arrive on days three, five and seven. Arriving counters appear immediately on the map with a NEW marker for that turn. The reinforcement list below the map lets you locate each arrival.</p>
-    <p>End Turn runs the American response and starts the next day. Town control changes as units enter. The browser autosaves after orders; Export Save and Import Save transfer campaigns. On a focused map, use arrow keys and Enter to select a hex. On small screens the map scrolls horizontally.</p>
-    <p>This is an original scenario with a simplified ruleset, not the original game's exact map or combat tables.</p>
+    <p>New campaigns use the Manual-based rules: separate movement and combat phases, combined attacks, artillery, strategy, supply, fuel and readiness. Germany cannot move on turn 1. The rules are an adaptation; see the <a href="help.html#manual-mode" target="_blank" rel="noopener">Manual-based guide</a> for details and documented approximations.</p>
+    <p>Command either side across the twelve daily turns from 16–27 December. Follow the victory assessment on the campaign screen for the current objective and scoring. The computer controls the opposing side unless you choose Two players / Hotseat.</p>
+    <p>Use the controls beside the map to issue movement and combat orders. New campaigns autosave in the browser; Export Save and Import Save transfer campaigns. Existing saves retain their saved rules.</p>
+    <p>This is an original scenario, not the original game's exact map or combat tables.</p>
     <div class="actions"><button data-close="rules-dialog">Close</button></div>
   </dialog>
   <dialog id="battle-dialog" class="battle-report" aria-labelledby="battle-title">
@@ -419,9 +439,8 @@
     <p id="plan-error" role="alert"></p>
     <div class="actions"><button data-close="combat-plan">Cancel</button><button id="resolve-attack">Resolve Attack</button></div>
   </dialog>
-  <dialog id="restart-dialog" aria-labelledby="restart-title"><h2 id="restart-title">Start a New Campaign?</h2><p>Your current autosave will be replaced. Choose your rules and command side; the computer controls the opposing side.</p>
-    <label for="campaign-ruleset">Campaign rules</label><select id="campaign-ruleset"><option value="classic">Classic (existing simplified game)</option><option value="manual">Manual-based adaptation</option></select>
-    <fieldset id="aid-campaign-options" hidden><legend>Player's aid card options</legend>
+  <dialog id="restart-dialog" aria-labelledby="restart-title"><h2 id="restart-title">Start a New Campaign?</h2><p>Your current autosave will be replaced. New campaigns use the Manual-based rules. Choose your command side; the computer controls the opposing side.</p>
+    <fieldset id="aid-campaign-options"><legend>Player's aid card options</legend>
       <label for="campaign-scenario">Scenario</label><select id="campaign-scenario"><option value="campaign">Full campaign / 16–27 December</option><option value="short">Bastogne–St. Vith / 16–22 December</option></select>
       <label for="german-rating">German strength rating / 1–9</label><input id="german-rating" type="number" min="1" max="9" step="1" value="5">
       <label for="allied-rating">Allied strength rating / 1–9</label><input id="allied-rating" type="number" min="1" max="9" step="1" value="5">
@@ -430,9 +449,9 @@
       <label><input id="campaign-hexes" type="checkbox" checked> Draw hex grid</label>
     </fieldset>
     <label for="campaign-seed">Replay seed (optional; leave blank for a fresh random campaign)</label><input id="campaign-seed" type="number" min="0" max="4294967295" step="1" placeholder="Random">
-    <p>New Manual campaigns incorporate the player’s aid card’s full roster, reinforcement dates, ratings and cumulative victory scoring on the rebuilt 19 × 11 map, plus the Apple-version supplement’s second combat, 25-CP elimination threshold, weighted strategy pressure, air-interdiction reports and R-key status display. Starting positions and unspecified formulas remain documented adaptations. Existing saves keep their original rules. Computer vs Computer supplies the demo; obsolete Apple disk/monitor setup is replaced by browser controls.</p>
+    <p>Manual campaigns incorporate the player’s aid card’s full roster, reinforcement dates, ratings and cumulative victory scoring on the rebuilt 19 × 11 map, plus the Apple-version supplement’s second combat, 25-CP elimination threshold, weighted strategy pressure, air-interdiction reports and R-key status display. Starting positions and unspecified formulas remain documented adaptations. Computer vs Computer supplies the demo; obsolete Apple disk/monitor setup is replaced by browser controls.</p>
     <p id="restart-error" role="alert"></p>
-    <div class="actions"><button data-close="restart-dialog">Cancel</button><button data-command-side="german">Command Germany</button><button data-command-side="american">Command America</button><button data-command-side="computer">Computer vs Computer</button><button data-command-side="hotseat" hidden>Two players / Hotseat</button></div></dialog>
+    <div class="actions"><button data-close="restart-dialog">Cancel</button><button data-command-side="german">Command Germany</button><button data-command-side="american">Command America</button><button data-command-side="computer">Computer vs Computer</button><button data-command-side="hotseat">Two players / Hotseat</button></div></dialog>
   <script src="rot.js"></script><script src="reference-map.js"></script><script src="aid-card.js"></script><script src="manual-maneuvers.js"></script><script src="manual-rules.js"></script><script src="game.js"></script>
 </body>
 </html>

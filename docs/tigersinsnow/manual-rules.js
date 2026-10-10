@@ -563,7 +563,7 @@
         const unit = units.get(entry.id);
         const status = unit ? unit.exited ? 'Exited' : unit.hp > 0 ? 'On map' : 'Eliminated' :
           state.pending.includes(entry.id) ? 'Delayed' : entry.turn <= state.turn ? 'Due after combat' : 'Scheduled';
-        return { id: entry.id, name: entry.name, side: entry.side, turn: entry.turn,
+        return { id: entry.id, name: entry.name, side: entry.side, type: entry.type, turn: entry.turn,
           date: `${15 + entry.turn} DEC`, strength: base.aidCard.active(state) ? base.aidCard.strength(entry, state) : entry.hp,
           nationality: entry.nationality, entry: entry.entry, status };
       }).sort((first, second) => first.turn - second.turn || first.side.localeCompare(second.side) ||
