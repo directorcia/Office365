@@ -1,0 +1,32 @@
+:root {
+  --cp-force-us: #24452d;
+  --cp-force-german: #62676b;
+  --cp-force-white: #ffffff;
+  --cp-force-black: #000000;
+}
+.nationality {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 20px;
+  position: relative;
+  vertical-align: middle;
+}
+.nationality[data-side="american"] { background: var(--cp-force-us); }
+.nationality[data-side="german"] { background: var(--cp-force-german); }
+.nationality::before { content: ""; display: block; width: 14px; height: 14px; background: var(--cp-force-white); }
+.nationality[data-side="american"]::before {
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 94%, 50% 72%, 21% 94%, 32% 57%, 2% 35%, 39% 35%);
+}
+.nationality[data-side="german"]::before,
+.nationality[data-side="german"]::after {
+  clip-path: polygon(25% 0%, 75% 0%, 75% 25%, 100% 25%, 100% 75%, 75% 75%, 75% 100%, 25% 100%, 25% 75%, 0% 75%, 0% 25%, 25% 25%);
+}
+.nationality[data-side="german"]::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--cp-force-black);
+}

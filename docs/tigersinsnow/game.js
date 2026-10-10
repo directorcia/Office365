@@ -2,8 +2,11 @@
   'use strict';
   const ROT = typeof module === 'object' ? require('./rot.js') : root.ROT;
   const createManualRules = typeof module === 'object' ? require('./manual-rules.js') : root.createManualRules;
+  const referenceMap = typeof module === 'object' ? require('./reference-map.js') : root.ReferenceMap;
+  const aidCard = typeof module === 'object' ? require('./aid-card.js') : root.AidCard;
   let manualRules;
   const COLS = 15, ROWS = 12, LAST_TURN = 12;
+  const REFERENCE_RIVER_WIDTH = 3;
   const DIRECTIONS = ROT.DIRS[6];
   const TERRAIN = {
     plain: { cost: 1, defense: 1, symbol: '.' },
@@ -11,7 +14,8 @@
     ridge: { cost: 3, defense: 1.7, symbol: '^' },
     river: { cost: 3, defense: 1.3, symbol: '~' },
     road: { cost: 1, defense: 1, symbol: ':' },
-    town: { cost: 1, defense: 1.8, symbol: '#' }
+    town: { cost: 1, defense: 1.8, symbol: '#' },
+    westwall: { cost: 4, defense: 2.75, symbol: '}' }
   };
   const opponent = side => side === 'german' ? 'american' : 'german';
   const REINFORCEMENTS = {
@@ -24,6 +28,13 @@
   const distance = (first, second) => Math.max(Math.abs(first.y - second.y),
     (Math.abs(first.x - second.x) + Math.abs(first.y - second.y)) / 2);
   const neighbors = (state, tile) => DIRECTIONS.map(([dx, dy]) => state.map[key(tile.x + dx, tile.y + dy)]).filter(Boolean);
+  const mapDimensions = state => state.referenceVersion === 2 ?
+    { cols: referenceMap.COLS, rows: referenceMap.ROWS } : { cols: COLS, rows: ROWS };
+  const riverCourses = [
+    { size: 'major', points: [[7, 258], [30, 245], [53, 258], [76, 244], [99, 258], [99, 284], [122, 298], [145, 284], [168, 298], [191, 284], [191, 258], [214, 244], [237, 258], [260, 244], [283, 258], [306, 244], [329, 258], [352, 244], [375, 258], [375, 284], [398, 298], [421, 284], [444, 298], [467, 284], [490, 298], [513, 284], [513, 258], [536, 244], [559, 258], [582, 244], [605, 258], [628, 244], [651, 258], [651, 284], [674, 298], [697, 285], [720, 298], [720, 324]] },
+    { size: 'minor', points: [[283, 18], [283, 44], [306, 58], [306, 84], [329, 98], [352, 84], [375, 98], [375, 124], [398, 138], [421, 124], [421, 98], [444, 84], [467, 98], [490, 84], [513, 98], [536, 84], [559, 98], [559, 124], [582, 138], [605, 124], [628, 138], [651, 124], [674, 138]] },
+    { size: 'minor', points: [[7, 364], [30, 378], [53, 364], [76, 378], [99, 364], [122, 378], [122, 404], [145, 418], [168, 404], [191, 418], [214, 404], [237, 418], [260, 404], [260, 378], [283, 364], [306, 378], [329, 364], [352, 378], [375, 364], [398, 378], [421, 364], [444, 378], [444, 404], [467, 418], [490, 404], [513, 418], [513, 444], [536, 458], [559, 444], [559, 418], [582, 404], [605, 418], [628, 404], [651, 418], [674, 404], [697, 418], [720, 404], [720, 378]] }
+  ];
   const occupant = (state, tile) => state.units.find(unit => unit.hp > 0 && !unit.exited && unit.x === tile.x && unit.y === tile.y);
   const enemiesNear = (state, tile, side) => neighbors(state, tile).some(next => {
     const unit = occupant(state, next);
@@ -125,9 +136,18 @@
       attack: type === 'armor' ? 8 : 5, defense: type === 'armor' ? 6 : 5,
       mobility: type === 'armor' ? 5 : 4, mp: 0, fired: false, supplied: true };
   }
-  function createGame(seed = 19441216, ruleset = 'classic', playerSide = 'german') {
+  function createGame(seed = 19441216, ruleset = 'classic', playerSide = 'german', referenceVersion = 2, options = {}) {
     seed = parseSeed(seed);
     if (!['classic', 'manual'].includes(ruleset)) throw new Error('Unknown campaign ruleset.');
+    if (!options || typeof options !== 'object' || Array.isArray(options) ||
+      (options.playMode !== undefined && !['human','computer','hotseat'].includes(options.playMode)) ||
+      (options.appleSupplement !== undefined && typeof options.appleSupplement !== 'boolean')) {
+      throw new Error('Choose valid campaign options and player controls.');
+    }
+    if (options.playMode === 'hotseat' && (ruleset !== 'manual' || referenceVersion !== 2 || options.aidCard === false)) {
+      throw new Error('Two-player hotseat requires the new Manual player-aid rules.');
+    }
+    if (ruleset === 'manual' && ![1, 2].includes(referenceVersion)) throw new Error('Unknown Manual map revision.');
     const state = { version: 1, turn: 1, phase: 'german', weather: 'Fog', seed, initialSeed: seed,
       map: {}, units: [], log: [], score: 0, winner: null };
     for (let row = 0; row < ROWS; row++) {
@@ -135,7 +155,10 @@
         const tile = { ...position(col, row), col, row, terrain: 'plain', owner: null };
         if ((col * 7 + row * 11) % 13 < 4) tile.terrain = 'forest';
         if (row < 4 && col > 5 && col < 10) tile.terrain = 'ridge';
-        if (col === 3 || (col === 8 && row > 4)) tile.terrain = 'river';
+        if (col === 3 || (col === 8 && row > 4)) {
+          tile.terrain = 'river';
+          tile.riverSize = col === 3 ? 'major' : 'minor';
+        }
         if (row === 5 || row === 8 || (col === 6 && row > 3)) tile.terrain = 'road';
         state.map[key(tile.x, tile.y)] = tile;
       }
@@ -161,7 +184,7 @@
       makeUnit('a7', 'Bastogne Garrison', 'american', 'infantry', 6, 8, 6)
     ];
     addLog(state, '16 DEC 1944 / German offensive begins.');
-    if (ruleset === 'manual') return manualRules.initialize(state, playerSide);
+    if (ruleset === 'manual') return manualRules.initialize(state, playerSide, options.playMode !== 'computer', referenceVersion, options);
     beginSide(state, 'german');
     state.dayStart = daySnapshot(state);
     return state;
@@ -259,6 +282,7 @@
     return attack / Math.max(0.1, defense);
   }
   function orderReason(state, unit, order) {
+    if (state.pendingBattle || state.pendingDefense) return 'Complete the pending defensive battle, retreat or advance before issuing another order.';
     if (state.winner) return 'The campaign has finished.';
     if (state.playMode === 'computer') return 'Spectator mode: the computers issue orders; you can inspect either army.';
     if (!unit || unit.hp <= 0 || unit.exited) return 'Select a living formation.';
@@ -367,20 +391,26 @@
     const friends = state.units.filter(friend => friend.side === unit.side && friend.hp > 0 && !friend.exited && friend.id !== unit.id);
     const objectives = Object.values(state.map).filter(tile => tile.value);
     const current = state.map[key(unit.x, unit.y)], weak = unit.hp < unit.maxHp * 0.35;
-    const approaching = enemies.filter(enemy => state.map[key(enemy.x, enemy.y)].col <= 8 ||
+    const westernSector = state.referenceVersion === 2 ? Math.floor(mapDimensions(state).cols / 2) : 8;
+    const approaching = enemies.filter(enemy => state.map[key(enemy.x, enemy.y)].col <= westernSector ||
       objectives.some(tile => tile.owner === unit.side && distance(enemy, tile) <= 4));
     if (current.value && current.owner === unit.side && !weak &&
       (unit.side === 'german' || !approaching.length || enemiesNear(state, current, unit.side))) return null;
     let targets = weak ? objectives.filter(tile => tile.owner === unit.side && !enemiesNear(state, tile, unit.side)) :
       objectives.filter(tile => tile.owner !== unit.side || !occupant(state, tile));
+    if (state.referenceVersion === 2 && unit.side === 'german' && !weak) {
+      targets = objectives.filter(tile => tile.owner !== unit.side);
+    }
     if (!weak && unit.side === 'american' && approaching.length) targets = approaching;
-    if (!targets.length) targets = Object.values(state.map).filter(tile => tile.col === (unit.side === 'german' && !weak ? 0 : unit.side === 'german' ? 14 : 0));
+    if (!targets.length) targets = Object.values(state.map).filter(tile =>
+      state.referenceVersion === 2 && unit.side === 'german' && !weak ? tile.exit :
+        tile.col === (unit.side === 'german' && !weak ? 0 : unit.side === 'german' ? mapDimensions(state).cols - 1 : 0));
     const target = targets.slice().sort((a, b) =>
       (distance(unit, a) - (a.value || 0) * 0.6) - (distance(unit, b) - (b.value || 0) * 0.6))[0];
     const rank = tile => {
       const adjacent = enemies.filter(enemy => distance(tile, enemy) === 1);
       const support = friends.filter(friend => distance(tile, friend) <= 2).length;
-      const terrain = state.ruleset === 'manual' ? manualRules.terrainDefense(state, tile) : TERRAIN[tile.terrain].defense;
+      const terrain = state.ruleset === 'manual' ? manualRules.terrainDefense(state, tile, unit.side) : TERRAIN[tile.terrain].defense;
       const favorable = adjacent.some(enemy => combatOdds(state, { ...unit, x: tile.x, y: tile.y }, enemy) >= 1);
       const exposed = adjacent.length * (weak ? 7 : unit.side === 'american' ? favorable || support >= 2 ? 0.4 : 2.8 : 1.2);
       const captures = tile.value && tile.owner !== unit.side ? tile.value * 2 : 0;
@@ -519,6 +549,7 @@
     if (parsed && parsed.version === 2) return manualRules.deserialize(parsed);
     const template = createGame();
     if (!parsed || parsed.version !== 1 || !Number.isInteger(parsed.turn) || parsed.turn < 1 || parsed.turn > LAST_TURN ||
+      parsed.appleSupplementVersion !== undefined || parsed.strategyPressure !== undefined || parsed.airInterdiction !== undefined ||
       !['german', 'american', 'finished'].includes(parsed.phase) || !['Fog', 'Snow', 'Clear'].includes(parsed.weather) ||
       !Number.isInteger(parsed.seed) || parsed.seed < 0 || parsed.seed > 4294967295 ||
       ![null, 'german', 'american'].includes(parsed.winner) ||
@@ -591,6 +622,7 @@
       /entry blocked|arrival/i.test(entry) ? 'Reinforcement' : 'Update', title: entry, detail: '' };
   }
   function campaignStanding(state) {
+    if (aidCard.active(state)) return aidCard.standing(state);
     const target = 8;
     const leader = state.winner || (state.score >= target ? 'german' : 'american');
     return { points: state.score, target, leader,
@@ -600,7 +632,7 @@
           `Germany needs ${target - state.score} more points to reach its target.`,
       provisional: !state.winner };
   }
-  const api = { createGame, neighbors, occupant, distance, reachable, move, attack, combatOdds,
+  const api = { createGame, neighbors, riverCourses, referenceMap, aidCard, mapDimensions, occupant, distance, reachable, move, attack, combatOdds,
     isSupplied, beginSide, endTurn, computerTurn, simulateDay, simulateAction, deserialize, arrivalsThisTurn, campaignStanding, describeDispatch, armySummary, reportOperation, TERRAIN, key,
     battlePreview, orderReason, validTargets, parseSeed, restoreMetadata, daySnapshot, summarizeDay, planMovement };
   manualRules = createManualRules(api);
@@ -632,6 +664,40 @@
   const SAVE_KEY = 'winter-offensive-v1';
   const COMMAND_SIDE_KEY = 'winter-offensive-command-side';
   const moveHistory = [];
+  let lastReportPhase = null;
+  function showPhaseReport() {
+    if (!manualRules.supplement(state) || busy) return;
+    const report = manualRules.phaseReport(state);
+    $('phase-report-date').textContent = `${report.date} / ${report.weather} / ${report.phase} / Score ${report.score}`;
+    $('phase-report-armies').replaceChildren();
+    for (const army of report.armies) {
+      const row = document.createElement('tr');
+      for (const value of [army.side === 'american' ? 'Allied' : 'German', army.supply, army.victory, army.artillery, army.fuel ?? 'N/A']) {
+        const cell = document.createElement('td'); cell.textContent = String(value); row.append(cell);
+      }
+      $('phase-report-armies').append(row);
+    }
+    const air = report.interdiction;
+    $('phase-report-interdiction').textContent = air ?
+      `Turn ${air.turn} Allied air interdiction: German fuel reduced ${air.fuel} points; supply reduced ${air.supply} points. Movement reductions per formation:` : '';
+    $('phase-report-movement').replaceChildren();
+    for (const [id, loss] of Object.entries(air?.movement || {})) {
+      const unit = state.units.find(unit => unit.id === id);
+      const item = document.createElement('li'); item.textContent = `${unit.name}: ${loss} MP`; $('phase-report-movement').append(item);
+    }
+    if (!$('phase-report-dialog').open) $('phase-report-dialog').showModal();
+    $('phase-report-title').focus({ preventScroll: true });
+    $('phase-report-dialog').scrollTop = 0;
+    lastReportPhase = `${state.turn}:${state.phase}:${state.orderPhase}`;
+  }
+  function automaticPhaseReport() {
+    $('phase-report-button').hidden = !manualRules.supplement(state);
+    $('phase-report-button').disabled = busy;
+    if (manualRules.supplement(state) && !busy && !observing() && !state.winner &&
+      lastReportPhase !== `${state.turn}:${state.phase}:${state.orderPhase}` && !document.querySelector('dialog[open]')) {
+      showPhaseReport();
+    }
+  }
   function resetSideReports() {
     setActionVisual(null);
     $('action-story').textContent = 'Campaign ready. Select a formation or follow computer orders with Next Action.';
@@ -710,7 +776,8 @@
   } catch { message('Saved campaign could not be loaded. A new campaign is ready.'); }
   const restoredSelection = state.units.find(unit => unit.id === selected);
   if (restoredSelection) cursor = { x: restoredSelection.x, y: restoredSelection.y };
-  const center = tile => ({ x: 30 + tile.x * 23, y: 31 + tile.y * 40 });
+  const center = tile => state.referenceVersion === 2 ? referenceMap.center(tile) :
+    { x: 30 + tile.x * 23, y: 31 + tile.y * 40 };
   function hex(tile, inset = 0) {
     const point = center(tile);
     context.beginPath();
@@ -721,11 +788,81 @@
     }
     context.closePath();
   }
+  function drawReferenceTerrain(ctx, terrain, point, palette) {
+    ctx.fillStyle = palette[terrain];
+    if (terrain === 'forest' || terrain === 'ridge') {
+      const marks = terrain === 'forest' ? [[0,-8],[-6,-2],[6,-2],[0,4],[-6,10],[6,10]] : [[0,-5],[-6,5],[6,5]];
+      for (const [dx, dy] of marks) ctx.fillRect(point.x + dx - 4, point.y + dy - 2, 8, 3);
+    } else if (terrain === 'town') {
+      ctx.fillRect(point.x - 6, point.y - 6, 12, 12);
+    } else if (terrain === 'westwall') {
+      ctx.strokeStyle = palette.westwall; ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(point.x + 2, point.y - 11);
+      ctx.lineTo(point.x - 2, point.y - 4); ctx.lineTo(point.x + 2, point.y + 3);
+      ctx.lineTo(point.x - 2, point.y + 11); ctx.stroke();
+    }
+  }
+  const alternateColor = (edge, palette, ink) => edge === 'north' ? palette.highlight :
+    edge === 'south' ? palette.town : edge === 'west' ? palette.forest : ink;
+  function drawReferenceLegend(palette, ink) {
+    for (const symbol of document.querySelectorAll('.legend-symbol')) {
+      const ctx = symbol.getContext('2d'), type = symbol.dataset.symbol;
+      ctx.clearRect(0, 0, 26, 26);
+      if (['plain', 'river', 'north', 'west', 'south', 'german'].includes(type)) {
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * 60 - 30) * Math.PI / 180;
+          const x = 13 + 11 * Math.cos(angle), y = 13 + 11 * Math.sin(angle);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = type === 'plain' || type === 'river' ? ink : alternateColor(type, palette, ink);
+        ctx.lineWidth = 1; ctx.stroke();
+        if (type === 'river') {
+          ctx.strokeStyle = palette.river; ctx.lineWidth = REFERENCE_RIVER_WIDTH; ctx.beginPath();
+          ctx.moveTo(13, 2); ctx.lineTo(13 + 11 * Math.sqrt(3) / 2, 7.5);
+          ctx.lineTo(13 + 11 * Math.sqrt(3) / 2, 18.5); ctx.stroke();
+        }
+      } else drawReferenceTerrain(ctx, type, { x: 13, y: 13 }, palette);
+    }
+  }
+  function drawNationality(side, x, y, palette) {
+    context.save();
+    context.translate(x, y);
+    context.fillStyle = palette.forceWhite;
+    context.beginPath();
+    if (side === 'british') {
+      context.font = 'bold 12px Consolas, monospace'; context.fillText('B', 0, 0);
+    } else if (side === 'american') {
+      for (let index = 0; index < 10; index++) {
+        const angle = -Math.PI / 2 + index * Math.PI / 5;
+        const radius = index % 2 ? 2.6 : 6;
+        const px = Math.cos(angle) * radius, py = Math.sin(angle) * radius;
+        if (index === 0) context.moveTo(px, py); else context.lineTo(px, py);
+      }
+      context.closePath(); context.fill();
+    } else {
+      context.fillRect(-3, -6, 6, 12);
+      context.fillRect(-6, -3, 12, 6);
+      context.fillStyle = palette.forceBlack;
+      context.fillRect(-2, -5, 4, 10);
+      context.fillRect(-5, -2, 10, 4);
+    }
+    context.restore();
+  }
   function draw() {
+    const width = state.referenceVersion === 2 ? 920 : 740, height = state.referenceVersion === 2 ? 475 : 512;
+    if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+    canvas.style.setProperty('--map-ratio', width / height);
     const style = getComputedStyle(document.documentElement);
     const dark = document.documentElement.dataset.theme === 'dark';
-    const ink = style.getPropertyValue(dark ? '--cp-text' : '--cp-surface').trim();
-    const paper = style.getPropertyValue(dark ? '--cp-surface' : '--cp-text').trim();
+    const reference = state.referenceVersion === 2;
+    const ink = style.getPropertyValue(reference ? '--cp-text' : dark ? '--cp-text' : '--cp-surface').trim();
+    const paper = style.getPropertyValue(reference ? '--cp-bg-elevated' : dark ? '--cp-surface' : '--cp-text').trim();
+    document.querySelector('.coordinates').textContent = reference ? 'REFERENCE MAP / 19 × 11 / WEST < EAST' : 'ARDENNES SECTOR / WEST < EAST';
+    for (const entry of document.querySelectorAll('.legend [data-map]')) {
+      entry.hidden = (entry.dataset.map === 'reference') !== reference;
+    }
     const palette = {
       plain: ink,
       forest: style.getPropertyValue('--cp-success').trim(),
@@ -733,11 +870,21 @@
       river: style.getPropertyValue('--cp-link').trim(),
       road: style.getPropertyValue('--cp-warning').trim(),
       town: style.getPropertyValue('--cp-accent').trim(),
+      westwall: style.getPropertyValue('--cp-warning').trim(),
       german: style.getPropertyValue('--cp-danger').trim(),
       american: style.getPropertyValue('--cp-link').trim(),
       highlight: style.getPropertyValue('--cp-warning').trim(),
-      counterText: style.getPropertyValue(dark ? '--cp-accent-fg' : '--cp-surface').trim()
+      forceUS: style.getPropertyValue('--cp-force-us').trim(),
+      forceGerman: style.getPropertyValue('--cp-force-german').trim(),
+      forceWhite: style.getPropertyValue('--cp-force-white').trim(),
+      forceBlack: style.getPropertyValue('--cp-force-black').trim()
     };
+    if (aidCard.active(state) && !state.display.color) {
+      for (const field of ['forest','ridge','river','road','town','westwall','german','american','highlight']) palette[field] = ink;
+    }
+    if (reference) drawReferenceLegend(palette, ink);
+    $('british-legend').hidden = !aidCard.active(state);
+    $('scoring-legend').hidden = !aidCard.active(state);
     context.fillStyle = paper; context.fillRect(0, 0, canvas.width, canvas.height);
     context.font = '12px Consolas, monospace'; context.textAlign = 'center'; context.textBaseline = 'middle';
     const unit = state.units.find(candidate => candidate.id === selected);
@@ -745,10 +892,11 @@
     for (const tile of Object.values(state.map)) {
       const point = center(tile);
       context.fillStyle = palette[tile.terrain];
-      context.globalAlpha = tile.value ? 0.5 : tile.terrain === 'plain' ? 0.04 : tile.terrain === 'river' ? 0.4 : 0.23;
+      context.globalAlpha = tile.value ? 0.5 : tile.terrain === 'plain' ? 0.04 : tile.terrain === 'river' ? 0 : reference ? 0.08 : 0.23;
       hex(tile, 1); context.fill(); context.globalAlpha = 1;
       context.strokeStyle = ink; context.globalAlpha = 0.25; context.lineWidth = 1;
-      hex(tile); context.stroke(); context.globalAlpha = 1;
+      if (!aidCard.active(state) || state.display.hexes) { hex(tile); context.stroke(); }
+      context.globalAlpha = 1;
       if (options.has(key(tile.x, tile.y))) {
         context.fillStyle = paper; context.beginPath();
         context.arc(point.x, point.y + 8, 5, 0, Math.PI * 2); context.fill();
@@ -757,17 +905,53 @@
       }
       context.fillStyle = tile.value ? ink : palette[tile.terrain];
       context.globalAlpha = tile.value ? 1 : 0.9;
-      context.fillText(TERRAIN[tile.terrain].symbol, point.x, point.y);
+      if (reference) {
+        drawReferenceTerrain(context, tile.terrain, point, palette);
+      } else if (tile.terrain !== 'river') {
+        context.fillText(TERRAIN[tile.terrain].symbol, point.x, point.y);
+      }
       context.globalAlpha = 1;
+      if (state.referenceVersion === 2 && (tile.entry || tile.exit || tile.alternate)) {
+        context.font = '9px Consolas, monospace';
+        context.fillStyle = alternateColor(tile.alternate, palette, ink);
+        context.fillText(`${tile.exit ? 'E ' : ''}${tile.entry || ''}`, point.x, point.y - 18);
+        if (tile.alternate) {
+          context.globalAlpha = 0.65; hex(tile, 3); context.strokeStyle = context.fillStyle; context.stroke(); context.globalAlpha = 1;
+        }
+        context.font = '12px Consolas, monospace';
+      }
+      if (aidCard.active(state)) {
+        const germanVP = aidCard.edgeAward(tile, 'german') * aidCard.multiplier(state);
+        const alliedVP = aidCard.edgeAward(tile, 'american');
+        if (germanVP || alliedVP) {
+          context.font = '9px Consolas, monospace'; context.fillStyle = ink;
+          context.fillText(`${germanVP || alliedVP}VP`, point.x, point.y + 18);
+          context.font = '12px Consolas, monospace';
+        }
+      }
+    }
+    const drawnRivers = reference ? referenceMap.riverSegments.map(points => ({ size: 'minor', points })) : riverCourses;
+    for (const river of drawnRivers) {
+      context.strokeStyle = palette.river;
+      context.lineWidth = reference ? REFERENCE_RIVER_WIDTH : river.size === 'minor' ? 1.5 : 3;
+      context.lineJoin = 'round';
+      context.lineCap = 'round';
+      context.beginPath();
+      river.points.forEach(([x, y], index) => {
+        if (index === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      });
+      context.stroke();
     }
     for (const counter of state.units.filter(candidate => candidate.hp > 0 && !candidate.exited)) {
       const point = center(counter);
-      context.fillStyle = palette[counter.side];
-      context.strokeStyle = ink; context.lineWidth = 1;
+      context.fillStyle = counter.side === 'american' ? palette.forceUS : palette.forceGerman;
+      context.strokeStyle = palette.forceWhite; context.lineWidth = 1;
       context.fillRect(point.x - 16, point.y - 12, 32, 24); context.strokeRect(point.x - 16, point.y - 12, 32, 24);
-      context.fillStyle = palette.counterText;
+      drawNationality(counter.nationality === 'british' ? 'british' : counter.side, point.x - 6, point.y - 5, palette);
+      context.fillStyle = palette.forceWhite;
       context.font = 'bold 11px Consolas, monospace';
-      context.fillText(`${counter.side === 'german' ? 'G' : 'A'}${counter.type === 'armor' ? '=' : 'X'}`, point.x, point.y - 4);
+      context.fillText(counter.type === 'armor' ? '=' : 'X', point.x + 8, point.y - 4);
       context.font = '10px Consolas, monospace'; context.fillText(`${counter.hp}/${counter.mp}`, point.x, point.y + 7);
       if (counter.id === selected) { context.strokeStyle = palette.highlight; context.lineWidth = 2; hex(counter, 1); context.stroke(); }
       if (!counter.supplied) { context.fillStyle = palette.highlight; context.fillText('!', point.x + 20, point.y); }
@@ -835,14 +1019,30 @@
     context.fillText('WEST / MEUSE', 10, 499); context.textAlign = 'right'; context.fillText('EAST / GERMAN SUPPLY', 720, 499);
   }
   function render() {
+    $('unit-tooltip').hidden = true;
+    renderManeuvers();
     draw();
     renderSideReports();
     $('date').textContent = `${15 + state.turn} DEC 1944`;
-    $('turn').textContent = `TURN ${state.turn} / ${LAST_TURN}`;
+    $('turn').textContent = `TURN ${state.turn} / ${aidCard.lastTurn(state)}`;
     $('weather').textContent = state.weather.toUpperCase();
     $('seed-status').textContent = state.initialSeed === undefined ? 'LEGACY / SEED UNKNOWN' : `SEED ${state.initialSeed}`;
-    $('score').textContent = `${state.score} / 8`;
+    $('score').textContent = aidCard.active(state) ? `${state.score} NET VP` : `${state.score} / 8`;
     const manual = state.ruleset === 'manual';
+    const card = aidCard.active(state);
+    const alliedRoster = document.querySelector('.order-of-battle[data-side="american"]');
+    alliedRoster.querySelector('h2').textContent = card ? 'ALLIED ORDER OF BATTLE' : 'US ORDER OF BATTLE';
+    alliedRoster.setAttribute('aria-label', card ? 'Allied Order of Battle' : 'US Order of Battle');
+    $('american-roster').setAttribute('aria-label', card ? 'Allied formations' : 'US formations');
+    document.querySelector('.army-report[data-side="american"] h2').textContent = card ? 'ALLIED / WEST' : 'AMERICAN / WEST';
+    document.querySelector('.score-army[data-side="american"] h2').textContent = card ? 'ALLIED / WEST' : 'AMERICAN / WEST';
+    $('mechanized-label').textContent = card ? 'Mechanized' : 'Armor';
+    document.querySelector('.army-report[data-side="german"] h2 + p').textContent = card ?
+      'Mission: score casualties, marked edge presence, occupied towns and timely exits. Reach a German victory level at the final check.' :
+      'Mission: concentrate westward, keep supply open and capture at least eight points. Adapted Manual rules also reward exits.';
+    document.querySelector('.army-report[data-side="american"] h2 + p').textContent = card ?
+      'Mission: inflict German casualties, deny town and exit awards, and gain points at marked eastern positions.' :
+      'Mission: hold the western objectives, delay the offensive and deny Germany eight points at the final check.';
     for (const side of ['american', 'german']) {
       const summary = armySummary(state, side);
       $(`${side}-held-points`).textContent = String(summary.objectivePoints);
@@ -856,10 +1056,13 @@
     $('campaign-leader').textContent = standing.status;
     $('campaign-leader').dataset.side = standing.leader;
     $('campaign-score-detail').textContent = `${standing.detail}${standing.provisional ? ' Provisional: combat, captures and elimination can change the outcome.' : ''}`;
-    $('campaign-score-basis').textContent = manual ?
+    $('campaign-score-basis').textContent = card ?
+      `Cumulative player-aid VP: casualties 1 per CP; German marked south/north presence ${3 * aidCard.multiplier(state)}/${10 * aidCard.multiplier(state)}, Bastogne ${50 * aidCard.multiplier(state)}, Marche/Rochefort ${25 * aidCard.multiplier(state)} each per turn; Allied marked east presence 20; German exits CP × (16 − turn/4). Town awards require occupation, not just ownership. Ratings G${state.ratings.german}/A${state.ratings.american}.` : manual ?
       'Adapted German score: objectives + exits − Allied breakthrough. Not the original SSI scoring table.' :
       'German score: currently controlled objective points.';
-    $('campaign-score-progress').value = Math.min(standing.target, standing.points);
+    $('victory-rule-title').textContent = card ? 'PLAYER-AID VICTORY / GERMAN VP − ALLIED VP' : 'EXISTING VICTORY RULE / GERMAN SCORE';
+    $('campaign-score-progress').max = standing.target;
+    $('campaign-score-progress').value = Math.max(0, Math.min(standing.target, standing.points));
     $('phase').textContent = state.winner ? `${state.winner.toUpperCase()} VICTORY` : busy ? 'PROCESSING PHASE' :
       observing() ? `COMPUTER VS COMPUTER / ${autoplay ? 'PLAYING' : 'PAUSED'}` :
         `${commandSide.toUpperCase()} ${manual ? state.orderPhase.toUpperCase() : 'ORDERS'}`;
@@ -872,24 +1075,30 @@
       $(`${side}-day-summary`).textContent = state.daySummary?.[side] ||
         `${side === 'american' ? 'America' : 'Germany'}: the first day has not finished yet.`;
     }
-    $('ruleset-status').textContent = manual ? 'MANUAL-BASED ADAPTATION' : 'CLASSIC RULES';
+    $('ruleset-status').textContent = manualRules.supplement(state) ? 'MANUAL / APPLE SUPPLEMENT' :
+      card ? 'MANUAL / PLAYER-AID RULES' : manual ? 'MANUAL-BASED ADAPTATION' : 'CLASSIC RULES';
     $('manual-command').hidden = !manual;
     if (manual) {
       $('resources').textContent = `Supply ${state.generalSupply[commandSide]} / Artillery ${state.artillery[commandSide]} / German fuel ${state.fuel}`;
       $('defense-strategy').value = state.defenseStrategy;
       $('defense-strategy').disabled = observing() || busy;
     }
+    $('defensive-artillery-label').hidden = !card; $('defensive-artillery').hidden = !card;
+    if (card) {
+      $('defensive-artillery').value = state.defensiveArtillery;
+      $('defensive-artillery').disabled = observing() || busy || Boolean(state.pendingBattle);
+    }
     $('end-turn').textContent = manual && state.orderPhase === 'movement' ? 'End Movement' : manual ? 'End Combat / Day' : 'End Turn';
     const unit = state.units.find(candidate => candidate.id === selected);
     $('unit-name').textContent = unit ? unit.name : 'No unit selected';
-    $('unit-kind').textContent = unit ? `${unit.side.toUpperCase()} / ${unit.type.toUpperCase()}` : 'GERMAN COMMAND';
+    $('unit-kind').textContent = unit ? `${unit.nationality === 'british' ? 'BRITISH / ALLIED' : unit.side.toUpperCase()} / ${unit.type.toUpperCase()}` : 'GERMAN COMMAND';
     $('strength').textContent = unit ? `${unit.hp} / ${unit.maxHp}` : '-';
     $('movement').textContent = unit ? String(unit.mp) : '-';
     $('supply').textContent = unit ? manual ? manualRules.localSupply(state, unit).toUpperCase() : unit.supplied ? 'CONNECTED' : 'ISOLATED' : '-';
     $('supply').dataset.status = unit ? unit.supplied ? 'connected' : 'isolated' : '';
     $('combat').textContent = unit ? `${unit.fired ? 'COMMITTED' : 'AVAILABLE'}${manual ? ` / readiness ${unit.readiness}/7` : ''}` : '-';
     for (const command of ['move', 'attack', 'end-turn']) {
-      $(command).disabled = observing() || busy || Boolean(state.winner) || (command !== 'end-turn' && (!unit || unit.hp <= 0 || unit.exited)) ||
+      $(command).disabled = observing() || busy || Boolean(state.winner) || Boolean(state.pendingBattle || state.pendingDefense) || (command !== 'end-turn' && (!unit || unit.hp <= 0 || unit.exited)) ||
         (manual && command !== 'end-turn' && (command === 'move' ? state.orderPhase !== 'movement' : state.orderPhase !== 'combat'));
       if (command !== 'end-turn') {
         const reason = orderReason(state, unit, command);
@@ -906,16 +1115,20 @@
     $('move').setAttribute('aria-pressed', String(mode === 'move'));
     $('attack').setAttribute('aria-pressed', String(mode === 'attack'));
     $('undo-move').disabled = observing() || busy || Boolean(state.winner) || moveHistory.length === 0;
-    $('roster').replaceChildren();
-    state.units.filter(candidate => (observing() || candidate.side === commandSide) && candidate.hp > 0 && !candidate.exited).forEach(counter => {
+    for (const side of ['american', 'german']) $(`${side}-roster`).replaceChildren();
+    state.units.filter(candidate => candidate.hp > 0 && !candidate.exited).forEach(counter => {
       const button = document.createElement('button');
       button.className = 'roster-unit'; button.setAttribute('aria-pressed', String(counter.id === selected));
-      button.textContent = `${observing() ? `${counter.side === 'german' ? 'G' : 'A'} / ` : ''}${counter.type === 'armor' ? '[=]' : '[X]'} ${counter.name}`;
+      button.textContent = `${counter.nationality === 'british' ? 'BRITISH ' : ''}${counter.type === 'armor' ? '[=]' : '[X]'} ${counter.name}`;
       const stats = document.createElement('span'); stats.textContent = `${counter.hp} / ${counter.mp}`; button.append(stats);
       button.disabled = busy;
       button.onclick = () => { selected = counter.id; cursor = { x: counter.x, y: counter.y }; render(); };
-      $('roster').append(button);
+      $(`${counter.side}-roster`).append(button);
     });
+    for (const side of ['american', 'german']) {
+      const roster = $(`${side}-roster`);
+      if (!roster.childElementCount) roster.textContent = 'No active formations.';
+    }
     $('objectives').replaceChildren();
     Object.values(state.map).filter(tile => tile.value).forEach(tile => {
       const row = document.createElement('li');
@@ -953,11 +1166,83 @@
       };
       $('arrival-list').append(button);
     }
+    const schedulePanel = $('reinforcement-schedule');
+    schedulePanel.hidden = state.ruleset !== 'manual';
+    const scheduleList = $('reinforcement-schedule-list');
+    scheduleList.replaceChildren();
+    if (state.ruleset === 'manual') {
+      const incoming = manualRules.offMapReinforcements(state);
+      if (!incoming.length) {
+        const row = document.createElement('li');
+        row.textContent = 'No formations are waiting to enter.';
+        scheduleList.append(row);
+      }
+      for (const entry of incoming) {
+        const row = document.createElement('li');
+        row.dataset.side = entry.side;
+        row.dataset.status = entry.status;
+        row.textContent = `TURN ${entry.turn} / ${entry.date} — ${entry.nationality === 'british' ? 'BRITISH / ALLIED' : entry.side.toUpperCase()} / ${entry.name} / ${entry.strength} CP${entry.entry ? ` / entry ${entry.entry}` : ''} / ${entry.status}`;
+        scheduleList.append(row);
+      }
+    }
     $('new-game').disabled = busy; $('import').disabled = busy; $('export').disabled = busy;
+    automaticPhaseReport();
+  }
+  function renderManeuvers() {
+    $('defense-panel').hidden = !state.pendingDefense;
+    if (state.pendingDefense) {
+      const pending = state.pendingDefense, defender = state.units.find(unit => unit.id === pending.defenderId);
+      selected = defender.id; cursor = { x: defender.x, y: defender.y };
+      $('defense-description').textContent = `${pending.ids.map(id => state.units.find(unit => unit.id === id).name).join(', ')} will attack ${defender.name}. Choose your strategy and defensive artillery for this battle.`;
+      $('battle-defense-strategy').value = state.defenseStrategy;
+      $('battle-defense-artillery').max = state.artillery[state.playerSide];
+      $('battle-defense-artillery').value = Math.min(state.defensiveArtillery,state.artillery[state.playerSide]);
+    }
+    const task = manualRules.maneuvers.current(state);
+    $('maneuver-panel').hidden = !task;
+    $('maneuver-directions').replaceChildren();
+    if (!task) return;
+    const unit = state.units.find(unit => unit.id === task.id);
+    selected = unit.id; cursor = { x: unit.x, y: unit.y };
+    const eligible = state.pendingBattle.secondCombatIds || [];
+    $('maneuver-description').textContent = `${eligible.length ? `Units eligible for second combat: ${eligible.map(id => state.units.find(unit => unit.id === id).name).join(', ')}. ` : ''}${unit.name}: ${task.kind}, ${task.remaining} hex(es) remaining. ${task.kind === 'advance' && !task.path.length ? 'The first step must enter the vacated enemy hex. ' : ''}${task.kind === 'retreat' ? 'Stopping early causes additional losses.' : 'Advance is optional.'} Choose 1–6 or F to finish.`;
+    const labels = ['NE','E','SE','SW','W','NW'];
+    const legal = manualRules.maneuvers.choices(state);
+    for (let direction = 1; direction <= 6; direction++) {
+      const button = document.createElement('button');
+      button.textContent = `${direction} / ${labels[direction - 1]}`;
+      button.disabled = busy || !legal.some(choice => choice.direction === direction);
+      button.onclick = () => doManeuver(direction);
+      $('maneuver-directions').append(button);
+    }
+    const finish = document.createElement('button');
+    finish.textContent = task.kind === 'retreat' ? 'F / Stop retreat (extra losses)' : 'F / Decline further advance';
+    finish.disabled = busy; finish.onclick = () => doManeuver('finish');
+    $('maneuver-directions').append(finish);
+  }
+  function doManeuver(direction) {
+    if (busy || !state.pendingBattle) return;
+    try {
+      const result = manualRules.chooseManeuver(state, direction);
+      moveHistory.length = 0; persist();
+      mode = state.orderPhase === 'combat' ? 'attack' : 'move';
+      $('maneuver-error').textContent = '';
+      $('action-story').textContent = result.pending ? 'Maneuver step completed; choose the next direction.' :
+        `Battle maneuvers complete. ${result.units.map(unit => `${unit.name}: ${unit.loss} CP lost, ${unit.remaining} left`).join('; ')}.`;
+      render();
+    } catch (error) { $('maneuver-error').textContent = error.message; }
   }
   function activate(tile) {
     if (!tile || busy || state.winner) return;
     const target = occupant(state, tile);
+    if (state.pendingDefense) { message('Choose defensive strategy and artillery in the pending battle panel first.'); return; }
+    if (state.pendingBattle) {
+      const task = manualRules.maneuvers.current(state), unit = state.units.find(unit => unit.id === task.id);
+      const choice = manualRules.maneuvers.choices(state).find(choice => choice.tile === tile);
+      if (choice) doManeuver(choice.direction);
+      else message(`Finish ${unit.name}'s ${task.kind} using a highlighted direction or F.`);
+      return;
+    }
     if (observing()) {
       if (target) selected = target.id;
       render(); return;
@@ -974,7 +1259,11 @@
         setActionVisual({ side: unit.side, path: [from, ...option.path] });
         $('action-story').textContent = `${unit.name} moved along the highlighted route to column ${tile.col + 1}, row ${tile.row + 1}. ${unit.mp} movement points remain.`;
         moveHistory.push(previous); message('Movement complete.'); persist();
-      } else message(orderReason(state, unit, 'move') || 'Destination blocked: choose an empty dotted hex within the movement budget. Enemy zones and terrain restrict the route.');
+      } else {
+        if (manualRules.supplement(state)) persist();
+        message(state.ruleset === 'manual' && manualRules.movementWarning(state, unit, tile) ||
+          orderReason(state, unit, 'move') || 'Destination blocked: choose an empty dotted hex within the movement budget. Enemy zones and terrain restrict the route.');
+      }
     } else message('No enemy target in this hex.');
     render();
   }
@@ -989,7 +1278,85 @@
     const point = center(tile);
     if (Math.hypot(point.x - x, point.y - y) < 27) { cursor = { x: tile.x, y: tile.y }; activate(tile); }
   });
+  canvas.addEventListener('pointermove', event => {
+    const tooltip = $('unit-tooltip');
+    const bounds = canvas.getBoundingClientRect();
+    const x = (event.clientX - bounds.left) * canvas.width / bounds.width;
+    const y = (event.clientY - bounds.top) * canvas.height / bounds.height;
+    const unit = state.units.find(candidate => {
+      const point = center(candidate);
+      return candidate.hp > 0 && !candidate.exited &&
+        Math.abs(point.x - x) <= 16 && Math.abs(point.y - y) <= 12;
+    });
+    if (!unit || event.pointerType === 'touch') { tooltip.hidden = true; return; }
+    const manual = state.ruleset === 'manual';
+    const title = document.createElement('h3');
+    title.textContent = unit.name;
+    const tile = state.map[key(unit.x, unit.y)];
+    const details = [
+      `${unit.nationality === 'british' ? 'British / Allied' : unit.side === 'american' ? 'US' : 'German'} ${unit.type === 'armor' ? 'mechanized' : 'infantry'}`,
+      `${manual ? 'Combat points' : 'Strength'}: ${unit.hp} / ${unit.maxHp}`,
+      `Movement: ${unit.mp} / ${unit.mobility} MP`,
+      `Supply: ${manual ? manualRules.localSupply(state, unit) : unit.supplied ? 'connected' : 'isolated'}`,
+      `Combat: ${unit.fired ? 'already attacked' : 'not yet attacked'}`,
+      `Terrain: ${tile.terrain} / column ${tile.col + 1}, row ${tile.row + 1}`
+    ];
+    if (manual) details.push(`Readiness: ${unit.readiness} / 7`);
+    tooltip.replaceChildren(title, ...details.map(text => {
+      const paragraph = document.createElement('p');
+      paragraph.textContent = text;
+      return paragraph;
+    }));
+    tooltip.hidden = false;
+    const box = tooltip.getBoundingClientRect();
+    const left = event.clientX + 16 + box.width > document.documentElement.clientWidth ?
+      event.clientX - box.width - 16 : event.clientX + 16;
+    const top = event.clientY + 16 + box.height > document.documentElement.clientHeight ?
+      event.clientY - box.height - 16 : event.clientY + 16;
+    tooltip.style.left = `${Math.max(8, left)}px`;
+    tooltip.style.top = `${Math.max(8, top)}px`;
+  });
+  canvas.addEventListener('pointerleave', () => { $('unit-tooltip').hidden = true; });
+  document.addEventListener('keydown', event => {
+    if ($('phase-report-dialog').open) {
+      event.preventDefault(); event.stopImmediatePropagation(); $('phase-report-dialog').close(); return;
+    }
+    if (manualRules.supplement(state) && !busy && event.key.toLowerCase() === 'r' &&
+      !event.ctrlKey && !event.altKey && !event.metaKey &&
+      (event.target.closest('#combat-plan') ||
+        (!document.querySelector('dialog[open]') && !['INPUT','SELECT','TEXTAREA'].includes(event.target.tagName)))) {
+      event.preventDefault(); showPhaseReport(); return;
+    }
+    if (event.key === 'Escape') $('unit-tooltip').hidden = true;
+  });
+  document.addEventListener('scroll', () => { $('unit-tooltip').hidden = true; }, true);
   canvas.addEventListener('keydown', event => {
+    if (aidCard.active(state) && !observing() && !busy && !state.winner) {
+      if (state.pendingBattle && (/^[1-6]$/.test(event.key) || event.key.toLowerCase() === 'f')) {
+        event.preventDefault(); doManeuver(event.key.toLowerCase() === 'f' ? 'finish' : Number(event.key)); return;
+      }
+      if (!state.pendingBattle && event.key.toLowerCase() === 'e') {
+        event.preventDefault(); $('end-turn').click(); return;
+      }
+      if (state.orderPhase === 'movement' && /^[1-6]$/.test(event.key)) {
+        event.preventDefault();
+        const unit = state.units.find(unit => unit.id === selected);
+        if (unit && unit.side === commandSide) {
+          const [dx,dy] = aidCard.directions[Number(event.key) - 1];
+          const tile = state.map[key(unit.x + dx, unit.y + dy)];
+          if (tile) { mode = 'move'; activate(tile); }
+          else message('That direction leaves the map.');
+        }
+        return;
+      }
+      if (state.orderPhase === 'movement' && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        if (manualRules.finishMovement(state, selected)) {
+          persist(); render(); message('Formation movement finished.');
+        } else message('Choose an active friendly formation with movement points remaining.');
+        return;
+      }
+    }
     const delta = { ArrowLeft: [-2, 0], ArrowRight: [2, 0], ArrowUp: [cursor.y % 2 ? -1 : 1, -1], ArrowDown: [cursor.y % 2 ? -1 : 1, 1] }[event.key];
     if (delta) {
       event.preventDefault();
@@ -1008,6 +1375,11 @@
     plannedDefender = defender.id;
     $('plan-target').textContent = `Attack ${defender.name} / ${defender.hp} ${manual ? 'CP' : 'strength'}`;
     $('manual-plan-options').hidden = !manual;
+    $('hotseat-defense-options').hidden = state.playMode !== 'hotseat';
+    if (state.playMode === 'hotseat') {
+      $('plan-defense-artillery').max = state.artillery[defender.side];
+      $('plan-defense-artillery').value = '0';
+    }
     $('plan-attackers').replaceChildren();
     for (const unit of eligible) {
       const label = document.createElement('label'), input = document.createElement('input');
@@ -1028,7 +1400,9 @@
     try {
       const ids = [...$('plan-attackers').querySelectorAll('input:checked')].map(input => input.value);
       const preview = battlePreview(state, ids, plannedDefender, {
-        strategy: $('plan-strategy').value, artillery: Number($('plan-artillery').value)
+        strategy: $('plan-strategy').value, artillery: Number($('plan-artillery').value),
+        ...(state.playMode === 'hotseat' ? { defenseStrategy: $('plan-defense-strategy').value,
+          defensiveArtillery: Number($('plan-defense-artillery').value) } : {})
       });
       const heading = document.createElement('strong'); heading.textContent = `${preview.odds.toFixed(2)}:1 nominal attack odds`;
       const detail = document.createElement('p'); detail.textContent = preview.detail;
@@ -1056,7 +1430,9 @@
         return;
       }
       const result = manualRules.resolveAttack(state, ids, plannedDefender, {
-        strategy: $('plan-strategy').value, artillery: Number($('plan-artillery').value)
+        strategy: $('plan-strategy').value, artillery: Number($('plan-artillery').value),
+        ...(state.playMode === 'hotseat' ? { defenseStrategy: $('plan-defense-strategy').value,
+          defensiveArtillery: Number($('plan-defense-artillery').value) } : {})
       });
       moveHistory.length = 0; persist(); $('combat-plan').close(); render();
       const attackers = result.units.slice(0, -1), defender = result.units[result.units.length - 1];
@@ -1084,6 +1460,24 @@
     if (state.ruleset !== 'manual' || busy || observing()) return;
     state.defenseStrategy = event.target.value; persist();
   };
+  $('defensive-artillery').onchange = event => {
+    if (!aidCard.active(state) || busy || observing() || state.pendingBattle) return;
+    const value = Number(event.target.value);
+    if (!event.target.validity.valid || !Number.isInteger(value) || value < 0 || value > 6) {
+      event.target.value = state.defensiveArtillery; message('Defensive artillery must be a whole number from 0 to 6.'); return;
+    }
+    state.defensiveArtillery = value; persist();
+  };
+  $('resolve-defense').onclick = () => {
+    if (!state.pendingDefense || busy) return;
+    try {
+      if (!$('battle-defense-artillery').validity.valid) throw new Error('Choose an available whole-number artillery commitment.');
+      const result = manualRules.chooseDefense(state, $('battle-defense-strategy').value, Number($('battle-defense-artillery').value));
+      $('defense-error').textContent = '';
+      $('action-story').textContent = `Defensive battle resolved: ${result.units.map(unit => `${unit.name} lost ${unit.loss} CP (${unit.remaining} left)`).join('; ')}. ${result.pending ? 'Complete the pending retreat or advance.' : 'Review side reports for maneuvers.'}`;
+      persist(); mode = state.orderPhase === 'combat' ? 'attack' : 'move'; render();
+    } catch (error) { $('defense-error').textContent = error.message; }
+  };
   $('undo-move').onclick = () => {
     if (observing() || busy || state.winner || moveHistory.length === 0) return;
     const previous = moveHistory[moveHistory.length - 1];
@@ -1103,9 +1497,12 @@
     setTimeout(() => {
       try {
         endTurn(state, commandSide);
+        if (state.playMode === 'hotseat') commandSide = state.playerSide;
         if (state.ruleset === 'manual') mode = state.orderPhase === 'combat' ? 'attack' : 'move';
-        if (!state.units.some(unit => unit.id === selected && unit.hp > 0 && !unit.exited)) {
+        if (!state.units.some(unit => unit.id === selected && unit.side === commandSide && unit.hp > 0 && !unit.exited)) {
           selected = state.units.find(unit => unit.side === commandSide && unit.hp > 0 && !unit.exited)?.id || null;
+          const unit = state.units.find(unit => unit.id === selected);
+          if (unit) cursor = { x: unit.x, y: unit.y };
         }
         persist(); message(state.winner ? 'Campaign complete.' : 'New orders ready.');
       }
@@ -1162,9 +1559,21 @@
     }
     catch (error) { $('restart-error').textContent = error.message; return; }
     const computer = button.dataset.commandSide === 'computer';
-    commandSide = computer ? 'german' : button.dataset.commandSide;
-    moveHistory.length = 0;
-    state = createGame(seed, $('campaign-ruleset').value, commandSide);
+    const hotseat = button.dataset.commandSide === 'hotseat';
+    const newSide = computer || hotseat ? 'german' : button.dataset.commandSide;
+    try {
+      if ($('campaign-ruleset').value === 'manual' &&
+        (!$('german-rating').validity.valid || !$('allied-rating').validity.valid)) {
+        throw new Error('Ratings must be whole numbers from 1 to 9.');
+      }
+      state = createGame(seed, $('campaign-ruleset').value, newSide, 2, {
+        scenario: $('campaign-scenario').value,
+        ratings: { german: Number($('german-rating').value), american: Number($('allied-rating').value) },
+        display: { color: $('campaign-color').checked, hexes: $('campaign-hexes').checked },
+        ...(computer || hotseat ? { playMode: computer ? 'computer' : 'hotseat' } : {})
+      });
+    } catch (error) { $('restart-error').textContent = error.message; return; }
+    commandSide = newSide; moveHistory.length = 0; lastReportPhase = null;
     resetSideReports();
     if (computer) state.playMode = 'computer';
     if (commandSide === 'american' && state.ruleset !== 'manual') {
@@ -1179,7 +1588,13 @@
     try { localStorage.setItem(COMMAND_SIDE_KEY, commandSide); }
     catch { message('Campaign started, but your command side could not be saved.'); }
   });
+  $('campaign-ruleset').onchange = () => {
+    const manual = $('campaign-ruleset').value === 'manual';
+    $('aid-campaign-options').hidden = !manual;
+    document.querySelector('[data-command-side="hotseat"]').hidden = !manual;
+  };
   $('rules').onclick = () => { pauseSimulation(); render(); $('rules-dialog').showModal(); };
+  $('phase-report-button').onclick = showPhaseReport;
   document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => $(button.dataset.close).close());
   $('export').onclick = () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }));
@@ -1196,6 +1611,7 @@
       pauseSimulation();
       moveHistory.length = 0;
       state = loaded;
+      lastReportPhase = null;
       resetSideReports();
       if (state.ruleset === 'manual') commandSide = state.playerSide;
       if (observing()) commandSide = 'german';

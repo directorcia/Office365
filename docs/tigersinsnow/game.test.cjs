@@ -1,7 +1,210 @@
 'use strict';
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const game = require('./game.js');
+const engine = require('./game.js');
+// Keep the existing regression fixtures on their original adapted rules revision.
+const game = { ...engine, createGame: (seed, ruleset, side, revision) =>
+  engine.createGame(seed, ruleset, side, revision, { aidCard: false }) };
+
+test('reference map transcribes dimensions, terrain, towns, entries and shared river edges', () => {
+  const state = game.createGame(42, 'manual'), reference = game.referenceMap;
+  assert.equal(state.referenceVersion, 2);
+  assert.deepEqual(game.mapDimensions(state), { cols: 19, rows: 11 });
+  assert.equal(Object.keys(state.map).length, 209);
+  assert.ok(reference.terrainRows.every(row => row.length === 19));
+  const tile = (col, row) => {
+    const point = reference.position(col, row);
+    return state.map[game.key(point.x, point.y)];
+  };
+  assert.equal(tile(7, 4).name, 'MARCHE');
+  assert.equal(tile(6, 5).name, 'ROCHEFORT');
+  assert.equal(tile(11, 7).name, 'BASTOGNE');
+  assert.equal(tile(16, 0).terrain, 'westwall');
+  assert.equal(tile(18, 4).terrain, 'forest');
+  assert.equal(tile(3, 6).terrain, 'plain');
+  assert.equal(tile(14, 0).terrain, 'ridge');
+  assert.deepEqual(reference.entries.map(entry => entry.number), Array.from({ length: 28 }, (_, i) => i + 1));
+  for (const entry of reference.entries) assert.equal(tile(entry.col, entry.row).entry, entry.number);
+  assert.deepEqual(reference.entries.find(entry => entry.number === 24), { number: 24, col: 6, row: 10, edge: 'south', x: 13, y: 10 });
+  assert.equal(new Set(reference.riverEdges.map(({ a, b }) => reference.edgeKey(a, b))).size, reference.riverEdges.length);
+  reference.riverEdges.forEach(({ a, b }, index) => {
+    assert.ok(state.map[game.key(a.x, a.y)] && state.map[game.key(b.x, b.y)]);
+    assert.equal(game.distance(a, b), 1);
+    assert.ok(reference.crossesRiver(a, b) && reference.crossesRiver(b, a));
+    const segment = reference.riverSegments[index];
+    assert.ok(Math.abs(Math.hypot(segment[1][0] - segment[0][0], segment[1][1] - segment[0][1]) - 26) < 1e-8);
+    for (const point of segment) {
+      for (const hex of [a, b]) {
+        const center = reference.center(hex);
+        assert.ok(Array.from({ length: 6 }, (_, i) => (i * 60 - 30) * Math.PI / 180).some(angle =>
+          Math.hypot(point[0] - center.x - 26 * Math.cos(angle), point[1] - center.y - 26 * Math.sin(angle)) < 1e-8));
+      }
+    }
+  });
+  assert.equal(tile(9, 0).exit, true);
+  assert.equal(tile(10, 0).exit, false);
+  assert.equal(tile(0, 8).exit, false);
+});
+
+test('reference river movement is seeded, symmetric and identical in planning and execution', () => {
+  const reference = game.referenceMap, { a, b } = reference.riverEdges[0];
+  const observed = { german: new Set(), american: new Set() };
+  for (let seed = 0; seed < 50; seed++) {
+    const state = game.createGame(seed, 'manual');
+    for (const side of ['german', 'american']) {
+      const before = JSON.stringify(state);
+      const cost = game.manual.crossingCost(state, a, b, side);
+      observed[side].add(cost);
+      assert.ok(side === 'german' ? cost >= 3 && cost <= 7 : cost >= 2 && cost <= 5);
+      assert.equal(game.manual.crossingCost(state, b, a, side), cost);
+      assert.equal(JSON.stringify(state), before, 'Preview must not consume randomness');
+    }
+  }
+  assert.deepEqual([...observed.german].sort(), [3, 4, 5, 6, 7]);
+  assert.deepEqual([...observed.american].sort(), [2, 3, 4, 5]);
+  for (const side of ['german', 'american']) {
+    const state = game.createGame(42, 'manual');
+    state.units.forEach(unit => { unit.hp = 0; });
+    Object.values(state.map).forEach(tile => { tile.terrain = 'forest'; });
+    const unit = state.units.find(unit => unit.side === side);
+    Object.assign(unit, { ...a, hp: unit.maxHp, mp: 10 });
+    state.phase = side; state.orderPhase = 'movement';
+    state.map[game.key(b.x, b.y)].terrain = 'plain';
+    const cost = 2 + game.manual.crossingCost(state, a, b, side);
+    assert.equal(game.manual.movementCost(state, a, state.map[game.key(b.x, b.y)], unit), cost);
+    assert.equal(game.reachable(state, unit).get(game.key(b.x, b.y)).remaining, 10 - cost);
+    assert.ok(game.move(state, unit.id, b.x, b.y));
+    assert.equal(unit.mp, 10 - cost);
+    assert.equal(game.manual.crossingCost(state, b, b, side), 0);
+  }
+});
+
+test('reference combat applies river penalties per attacker and side-specific Westwall modifiers', () => {
+  const state = game.createGame(42, 'manual'), reference = game.referenceMap;
+  state.units.forEach(unit => { unit.hp = 0; });
+  const { a, b } = reference.riverEdges[0];
+  const attacker = state.units.find(unit => unit.id === 'g1'), defender = state.units.find(unit => unit.id === 'a1');
+  Object.assign(attacker, a, { hp: 100, readiness: 6 });
+  Object.assign(defender, b, { hp: 75, readiness: 6 });
+  state.map[game.key(a.x, a.y)].terrain = 'plain'; state.map[game.key(b.x, b.y)].terrain = 'plain';
+  state.artillery = { german: 0, american: 0 };
+  const crossed = game.combatOdds(state, attacker, defender);
+  state.referenceVersion = 1;
+  assert.equal(game.combatOdds(state, attacker, defender), crossed * 2);
+  state.referenceVersion = 2;
+  assert.equal(game.battlePreview(state, [attacker.id], defender.id).odds, crossed);
+  const extra = state.units.find(unit => unit.id === 'g2');
+  const dry = game.neighbors(state, defender).find(tile => !reference.crossesRiver(tile, defender));
+  Object.assign(extra, { x: dry.x, y: dry.y, hp: 100, readiness: 6 });
+  state.map[game.key(dry.x, dry.y)].terrain = 'plain';
+  assert.equal(game.battlePreview(state, [attacker.id, extra.id], defender.id).odds,
+    game.combatOdds(state, attacker, defender) + game.combatOdds(state, extra, defender));
+  extra.hp = 0;
+  const baseOdds = game.combatOdds(state, attacker, defender);
+  state.map[game.key(a.x, a.y)].terrain = 'westwall';
+  assert.equal(game.combatOdds(state, attacker, defender), baseOdds * 2);
+  state.map[game.key(b.x, b.y)].terrain = 'westwall';
+  assert.equal(game.manual.terrainDefense(state, state.map[game.key(b.x, b.y)], 'american'), 1);
+  attacker.side = 'american'; defender.side = 'german';
+  assert.equal(game.manual.terrainDefense(state, state.map[game.key(b.x, b.y)], 'german'), 2.75);
+  state.map[game.key(a.x, a.y)].terrain = 'plain';
+  const alliedPlain = game.combatOdds(state, attacker, defender);
+  state.map[game.key(a.x, a.y)].terrain = 'westwall';
+  assert.equal(game.combatOdds(state, attacker, defender), alliedPlain);
+});
+
+test('reference reinforcements use numbered entries and immediate appropriate-edge alternatives', () => {
+  for (const [id, number, col, row] of [['a9',28,0,1], ['a10',21,2,10], ['a11',6,0,0], ['g9',14,18,0]]) {
+    const state = game.createGame(42, 'manual');
+    state.units = state.units.filter(unit => unit.id !== id);
+    state.arrivals = state.arrivals.filter(arrival => arrival !== id);
+    state.turn = 5;
+    const entry = game.referenceMap.entries.find(entry => entry.number === number);
+    const blocker = state.units.find(unit => unit.id === 'g1');
+    blocker.x = entry.x; blocker.y = entry.y;
+    game.manual.reinforce(state);
+    const arrived = state.units.find(unit => unit.id === id);
+    const expected = game.referenceMap.position(col, row);
+    assert.deepEqual({ x: arrived.x, y: arrived.y }, expected);
+    assert.ok(!state.pending.includes(id));
+    assert.equal(game.manual.reinforcementSchedule(state).find(entry => entry.id === id).entry, number);
+    assert.deepEqual(game.deserialize(JSON.stringify(state)), state);
+  }
+  const state = game.createGame(42, 'manual');
+  for (const [id, number] of [['a8',24], ['a9',28]]) {
+    const unit = state.units.find(unit => unit.id === id), entry = game.referenceMap.entries.find(entry => entry.number === number);
+    assert.equal(game.key(unit.x, unit.y), game.key(entry.x, entry.y));
+  }
+});
+
+test('reference reinforcements stay delayed when every appropriate alternate is occupied', () => {
+  const state = game.createGame(42, 'manual');
+  state.turn = 5;
+  const alternatives = Object.values(state.map).filter(tile => tile.alternate === 'south');
+  alternatives.forEach((tile, i) => {
+    const occupied = game.occupant(state, tile);
+    if (!occupied) state.units.push({ ...state.units[0], id: `block${i}`, x: tile.x, y: tile.y });
+  });
+  game.manual.reinforce(state);
+  assert.ok(state.pending.includes('a10'));
+  assert.ok(!state.units.some(unit => unit.id === 'a10'));
+  assert.equal(game.manual.offMapReinforcements(state).find(entry => entry.id === 'a10').status, 'Delayed');
+  game.occupant(state, alternatives[0]).hp = 0;
+  game.manual.reinforce(state);
+  assert.ok(!state.pending.includes('a10'));
+  assert.ok(state.arrivals.includes('a10'));
+});
+
+test('all map revisions round-trip without migrating terrain, objectives or saved allowances', () => {
+  for (const revision of [undefined, 1, 2]) {
+    const state = game.createGame(42, 'manual', 'german', revision || 1);
+    if (revision === undefined) delete state.referenceVersion;
+    state.units.forEach(unit => { unit.mobility = unit.type === 'armor' ? 24 : 20; });
+    const restored = game.deserialize(JSON.stringify(state));
+    assert.deepEqual(restored, state);
+    assert.equal(Object.keys(restored.map).length, revision === 2 ? 209 : 180);
+    assert.deepEqual(game.mapDimensions(restored), revision === 2 ? { cols: 19, rows: 11 } : { cols: 15, rows: 12 });
+  }
+  const state = game.createGame(42, 'manual');
+  for (const patch of [{ referenceVersion: 3 }, { initialSeed: undefined }, { units: state.units.map((unit, i) => i ? unit : { ...unit, x: 0, y: 0 }) }]) {
+    assert.throws(() => game.deserialize(JSON.stringify({ ...state, ...patch })), /Invalid/i);
+  }
+  assert.equal(Object.keys(game.createGame(42).map).length, 180);
+});
+
+test('reference-map AI finishes sixty seeded campaigns with valid occupation and scoring', t => {
+  const wins = { german: 0, american: 0 };
+  for (let seed = 1; seed <= 60; seed++) {
+    const state = game.createGame(seed, 'manual'); state.playMode = 'computer';
+    for (let day = 0; !state.winner && day < 12; day++) game.simulateDay(state);
+    assert.ok(state.winner);
+    assert.equal(game.campaignStanding(state).target, 8);
+    const active = state.units.filter(unit => unit.hp > 0 && !unit.exited);
+    assert.equal(new Set(active.map(unit => game.key(unit.x, unit.y))).size, active.length);
+    assert.ok(active.every(unit => state.map[game.key(unit.x, unit.y)]));
+    wins[state.winner]++;
+  }
+  t.diagnostic(`reference map: ${JSON.stringify(wins)}; seeds 1-60; geographic fidelity is not a claim of scenario balance`);
+});
+
+test('reference-map German AI seeks northern exits after securing its town objectives', () => {
+  const state = game.createGame(42, 'manual'), unit = state.units.find(unit => unit.id === 'g1');
+  state.units.forEach(counter => { counter.hp = 0; });
+  Object.values(state.map).forEach(tile => {
+    tile.terrain = 'plain';
+    if (tile.value) tile.owner = 'german';
+  });
+  Object.assign(unit, game.referenceMap.position(10, 0), { hp: 100, mp: 10 });
+  state.orderPhase = 'movement';
+  const order = game.planMovement(state, unit);
+  assert.ok(order);
+  assert.equal(order.tile.exit, true);
+  assert.equal(order.tile.row, 0);
+  assert.ok(game.move(state, unit.id, order.tile.x, order.tile.y));
+  game.manual.finishDay(state);
+  assert.equal(unit.exited, true);
+  assert.equal(state.exitPoints, 10);
+});
 
 test('campaign history explains battle losses and event types without changing source logs', () => {
   const battle = game.describeDispatch('1 SS Panzer > 99 Infantry: 1.4:1 / losses 2:4.');
@@ -26,7 +229,7 @@ test('army situation summaries reflect strength, objectives and inactive formati
       const summary = game.armySummary(state, side);
       assert.equal(summary.formations, active.length);
       assert.equal(summary.strength, active.reduce((sum, unit) => sum + unit.hp, 0));
-      assert.equal(summary.objectives.length, side === 'american' ? 5 : 0);
+      assert.equal(summary.objectives.length, side === 'american' ? ruleset === 'manual' ? 3 : 5 : 0);
       active[0].hp = 0;
       assert.equal(game.armySummary(state, side).formations, active.length - 1);
       if (ruleset === 'manual') {
@@ -40,11 +243,12 @@ test('army situation summaries reflect strength, objectives and inactive formati
 test('balanced objective points transfer between sides without changing victory scoring', () => {
   for (const ruleset of ['classic', 'manual']) {
     const state = game.createGame(1, ruleset);
-    assert.equal(game.armySummary(state, 'american').objectivePoints, 15);
+    const total = ruleset === 'manual' ? 7 : 15;
+    assert.equal(game.armySummary(state, 'american').objectivePoints, total);
     assert.equal(game.armySummary(state, 'german').objectivePoints, 0);
     const town = Object.values(state.map).find(tile => tile.name === 'BASTOGNE');
     town.owner = 'german';
-    assert.equal(game.armySummary(state, 'american').objectivePoints, 12);
+    assert.equal(game.armySummary(state, 'american').objectivePoints, total - 3);
     assert.equal(game.armySummary(state, 'german').objectivePoints, 3);
     const before = JSON.stringify(state);
     game.armySummary(state, 'american'); game.armySummary(state, 'german');
@@ -118,6 +322,16 @@ test('scenario has a valid hex map, unique counters and connected initial supply
   assert.equal(Object.keys(state.map).length, 180);
   assert.equal(new Set(state.units.map(unit => game.key(unit.x, unit.y))).size, state.units.length);
   assert.ok(state.units.filter(unit => unit.side === 'german').every(unit => unit.supplied));
+  const rivers = Object.values(state.map).filter(tile => tile.terrain === 'river');
+  assert.ok(rivers.some(tile => tile.riverSize === 'major'));
+  assert.ok(rivers.some(tile => tile.riverSize === 'minor'));
+  assert.ok(rivers.every(tile => tile.riverSize === (tile.col === 3 ? 'major' : 'minor')));
+  assert.deepEqual(game.riverCourses.map(course => [course.size, course.points.length]),
+    [['major', 38], ['minor', 23], ['minor', 38]]);
+  assert.ok(game.riverCourses.every(course => course.points.slice(1).every(([x, y], index) => {
+    const [previousX, previousY] = course.points[index];
+    return Math.abs(Math.hypot(x - previousX, y - previousY) - 26) < 2;
+  })), 'River lines must follow connected hex edges');
   assert.equal(game.neighbors(state, state.map['14,6']).length, 6);
 });
 test('movement respects terrain budget, occupied tiles and the active side', () => {
@@ -197,6 +411,7 @@ test('manual mode preserves classic defaults and starts with German combat, not 
   assert.equal(state.orderPhase, 'combat');
   assert.equal(state.phase, 'german');
   assert.ok(state.units.filter(unit => unit.side === 'german').every(unit => unit.mp === 0));
+  assert.ok(state.units.every(unit => unit.mobility === (unit.type === 'armor' ? 10 : 8)));
   assert.equal(game.reachable(state, state.units[0]).size, 0);
   assert.ok(game.manual.eligibleAttackers(state, state.units.find(unit => unit.id === 'a1')).length);
   assert.deepEqual(game.deserialize(JSON.stringify(state)), state);
@@ -204,6 +419,40 @@ test('manual mode preserves classic defaults and starts with German combat, not 
   assert.equal(american.phase, 'american');
   assert.equal(american.orderPhase, 'movement');
   assert.ok(american.units.filter(unit => unit.side === 'american').every(unit => unit.mp <= unit.mobility / 2));
+});
+
+test('manual turn-two movement budget matches five armor or four infantry clear hexes', () => {
+  const state = game.createGame(1, 'manual');
+  state.turn = 2;
+  state.weather = 'Overcast';
+  game.manual.beginSide(state, 'german');
+  assert.ok(state.units.filter(unit => unit.side === 'german' && unit.type === 'armor')
+    .every(unit => unit.mp === 10));
+  assert.ok(state.units.filter(unit => unit.side === 'german' && unit.type === 'infantry')
+    .every(unit => unit.mp === 8));
+});
+
+test('manual reinforcement schedule exposes reference-card dates, strengths and arrival status', () => {
+  const state = game.createGame(1, 'manual');
+  const schedule = game.manual.reinforcementSchedule(state);
+  assert.deepEqual(schedule.map(({ date, name, strength, status }) => [date, name, strength, status]), [
+    ['16 DEC', '101 Airborne', 70, 'On map'],
+    ['16 DEC', '82 Airborne', 70, 'On map'],
+    ['16 DEC', '116 Panzer', 100, 'On map'],
+    ['18 DEC', '2 SS Panzer', 115, 'Scheduled'],
+    ['18 DEC', '9 SS Panzer', 115, 'Scheduled'],
+    ['20 DEC', '3 Armored', 100, 'Scheduled'],
+    ['20 DEC', '4 Armored', 100, 'Scheduled']
+  ]);
+  state.units.find(unit => unit.id === 'a8').hp = 0;
+  assert.equal(game.manual.reinforcementSchedule(state).find(entry => entry.id === 'a8').status, 'Eliminated');
+  assert.deepEqual(game.manual.offMapReinforcements(state).map(entry => entry.id),
+    ['g10', 'g9', 'a11', 'a10']);
+  state.turn = 3;
+  assert.equal(game.manual.reinforcementSchedule(state).find(entry => entry.id === 'g9').status, 'Due after combat');
+  state.pending.push('g9');
+  assert.equal(game.manual.reinforcementSchedule(state).find(entry => entry.id === 'g9').status, 'Delayed');
+  assert.equal(game.manual.offMapReinforcements(state).find(entry => entry.id === 'g9').status, 'Delayed');
 });
 
 test('manual mode advances movement to combat without advancing the day for either side', () => {
@@ -225,7 +474,7 @@ test('manual mode advances movement to combat without advancing the day for eith
 });
 
 test('manual local supply uses consecutive gaps, friendly support and airdrops', () => {
-  const state = game.createGame(1, 'manual');
+  const state = game.createGame(1, 'manual', 'german', 1);
   const unit = state.units.find(unit => unit.id === 'g1');
   unit.x = 14; unit.y = 6;
   const ring = [[13, 5], [15, 5], [16, 6], [15, 7], [13, 7], [12, 6]];
@@ -263,7 +512,7 @@ test('manual movement consumes terrain points, fuel and readiness while replacem
 });
 
 test('manual zone entry costs four extra MP and armor alone can continue through a zone', () => {
-  const state = game.createGame(1, 'manual');
+  const state = game.createGame(1, 'manual', 'german', 1);
   state.units.forEach(unit => { unit.hp = 0; });
   Object.values(state.map).forEach(tile => { tile.terrain = 'river'; });
   const unit = state.units.find(unit => unit.id === 'g1'), enemy = state.units.find(unit => unit.id === 'a1');
@@ -315,8 +564,8 @@ test('manual combined combat validates artillery, preserves seeded results and r
   assert.deepEqual(game.deserialize(JSON.stringify(state)), state);
 });
 
-test('manual blocked reinforcement waits one phase before alternative entry and both sides arrive', () => {
-  const state = game.createGame(1, 'manual');
+test('legacy manual blocked reinforcement waits one phase before alternative entry and both sides arrive', () => {
+  const state = game.createGame(1, 'manual', 'german', 1);
   // Remove the already-arrived day-one unit to exercise blocked entry independently.
   state.units = state.units.filter(unit => unit.id !== 'a8');
   state.arrivals = state.arrivals.filter(id => id !== 'a8');
@@ -453,7 +702,7 @@ test('new manual campaigns use card data while legacy manual saves retain old te
   for (const [id, hp] of Object.entries(expected)) {
     assert.equal(state.units.find(unit => unit.id === id).maxHp, hp);
   }
-  assert.deepEqual(game.manual.COST, { plain: 2, road: 1, town: 3, forest: 6, ridge: 4, river: 8 });
+  assert.deepEqual(game.manual.COST, { plain: 2, road: 1, town: 3, forest: 6, ridge: 4, river: 8, westwall: 4 });
   for (const [terrain, defense] of [['forest', 2], ['ridge', 1.5], ['town', 2.25], ['plain', 1]]) {
     assert.equal(game.manual.terrainDefense(state, { terrain }), defense);
   }
@@ -464,8 +713,11 @@ test('new manual campaigns use card data while legacy manual saves retain old te
   assert.ok(!state.units.some(unit => unit.id === 'a10'));
   state.turn = 5; game.manual.reinforce(state);
   assert.ok(state.units.some(unit => unit.id === 'a10') && state.units.some(unit => unit.id === 'a11'));
+  assert.equal(state.units.find(unit => unit.id === 'a10').mobility, 10);
+  assert.equal(state.units.find(unit => unit.id === 'a11').mobility, 10);
 
-  const legacy = game.createGame(1, 'manual');
+  const legacy = game.createGame(1, 'manual', 'german', 1);
+  legacy.units.forEach(unit => { unit.mobility = unit.type === 'armor' ? 24 : 20; });
   delete legacy.referenceVersion; delete legacy.initialSeed;
   delete legacy.dayStart; delete legacy.reports;
   legacy.units = legacy.units.filter(unit => !['a8', 'a9', 'g8'].includes(unit.id));
@@ -512,24 +764,25 @@ test('objective-focused AI has varied outcomes across 60 seeds without changing 
   for (const ruleset of ['classic', 'manual']) {
     const wins = { german: 0, american: 0 };
     for (let seed = 1; seed <= 60; seed++) {
-      const state = game.createGame(seed, ruleset); state.playMode = 'computer';
+      const state = game.createGame(seed, ruleset, 'german', 1); state.playMode = 'computer';
       while (!state.winner) game.simulateDay(state);
       wins[state.winner]++;
       assert.equal(game.campaignStanding(state).target, 8);
     }
     assert.ok(wins.german > 0 && wins.american > 0, 'Neither army should win every seeded benchmark');
-    t.diagnostic(`${ruleset}: ${JSON.stringify(wins)}; seeds 1–60; not a claim of 50/50 historical balance`);
+    t.diagnostic(`${ruleset} legacy-map benchmark: ${JSON.stringify(wins)}; seeds 1–60; not a claim of 50/50 historical balance`);
   }
 });
 
 test('manual exits remove counters from occupation and award adapted victory points', () => {
   const state = game.createGame(1, 'manual');
   const unit = state.units.find(unit => unit.id === 'g1');
-  unit.x = 0; unit.y = 0;
+  const exit = Object.values(state.map).find(tile => tile.exit);
+  unit.x = exit.x; unit.y = exit.y;
   const hp = unit.hp;
   game.manual.finishDay(state);
   assert.equal(unit.exited, true);
-  assert.equal(game.occupant(state, state.map['0,0']), undefined);
+  assert.equal(game.occupant(state, exit), undefined);
   assert.equal(state.exitPoints, Math.ceil(hp / 10));
   assert.equal(game.reachable(state, unit).size, 0);
 });
