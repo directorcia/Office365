@@ -8,6 +8,8 @@
     const ATTACK = { recon: 0.35, probe: 0.6, assault: 1, major: 1.5 };
     const DEFENSE = { counter: 1.6, hold: 1.3, flexible: 1, delay: 0.7, withdrawal: 0.5 };
     const supplement = state => base.aidCard.active(state) && state.appleSupplementVersion === 1;
+    const movementAllowance = (state, type) => state.movementVersion === 1 ?
+      type === 'armor' ? 30 : 24 : type === 'armor' ? 10 : 8;
     const strategyWeight = { recon: 1, probe: 1, assault: 3, major: 9 };
     function alteredStrategyChance(state, side, strategy) {
       const baseline = (side === 'german' ? 0.04 : 0.08) * ATTACK[strategy];
@@ -166,7 +168,7 @@
       }
       if (referenceVersion === 2 && options.aidCard !== false) {
         Object.assign(state, base.aidCard.options(options), { aidCardVersion: 1,
-          victoryPoints: { german: 0, american: 0 }, casualties: { german: 0, american: 0 }, defensiveArtillery: 2 });
+          movementVersion: 1, victoryPoints: { german: 0, american: 0 }, casualties: { german: 0, american: 0 }, defensiveArtillery: 2 });
         if (options.appleSupplement !== false) {
           state.appleSupplementVersion = 1;
           state.strategyPressure = { german: 0, american: 0 };
@@ -198,7 +200,7 @@
     function makeCardUnit(state, entry, tile) {
       const hp = base.aidCard.strength(entry, state);
       return { id: entry.id, name: entry.name, nationality: entry.nationality, side: entry.side, type: entry.type,
-        x: tile.x, y: tile.y, hp, maxHp: hp, mobility: entry.type === 'armor' ? 10 : 8, mp: 0,
+        x: tile.x, y: tile.y, hp, maxHp: hp, mobility: movementAllowance(state, entry.type), mp: 0,
         attack: entry.type === 'armor' ? 8 : 5, defense: entry.type === 'armor' ? 6 : 5,
         fired: false, defended: false, exited: false, supplied: true, supplyState: 'supplied', readiness: 6,
         ...(supplement(state) ? { combatCount: 0 } : {}) };
@@ -209,6 +211,20 @@
         (enters ? 4 + (enemyNear(state, from, unit.side) ? 4 : 0) : 0);
     }
     function movementWarning(state, unit, tile) {
+      if (unit && tile && living(unit) && !state.winner && !state.pendingBattle && !state.pendingDefense &&
+        state.orderPhase === 'movement' && state.phase === unit.side && base.distance(unit, tile) === 1) {
+        if (base.occupant(state, tile)) return 'Destination occupied: units cannot stack.';
+        if (base.aidCard.active(state) && unit.side === 'american' && unit.type === 'infantry' &&
+          enemyNear(state, tile, unit.side) &&
+          (enemyNear(state, unit, unit.side) ? tile.x >= unit.x : unit.beganInZoc)) {
+          return 'Allied infantry cannot enter this enemy zone: movement between zones is restricted to directions 4, 5 and 6, and re-entry is forbidden after leaving a starting zone.';
+        }
+        const terrain = costs(state)[tile.terrain], river = crossingCost(state, unit, tile, unit.side);
+        const zone = enemyNear(state, tile, unit.side) ? 4 + (enemyNear(state, unit, unit.side) ? 4 : 0) : 0;
+        if (unit.mp < terrain + river + zone && !(supplement(state) && unit.side === 'american' && river)) {
+          return `${unit.name}: needs ${terrain + river + zone} MP (${terrain} terrain + ${river} river + ${zone} enemy zone); ${unit.mp} MP remaining.`;
+        }
+      }
       if (!supplement(state) || !unit || !tile || !living(unit) || state.winner ||
         state.pendingBattle || state.pendingDefense || state.orderPhase !== 'movement' || state.phase !== unit.side ||
         unit.side !== 'american' || base.distance(unit, tile) !== 1 || base.occupant(state, tile) ||
@@ -727,6 +743,9 @@
       }
       const points = value => Number.isFinite(value) && value >= 0 && value <= 1000000 && Number.isInteger(value * 4);
       if (parsed.aidCardVersion !== undefined && !card) throw new Error('Unknown player-aid rules revision.');
+      if (parsed.movementVersion !== undefined && (!card || parsed.movementVersion !== 1)) {
+        throw new Error('Unknown movement rules revision.');
+      }
       if (card) {
         base.aidCard.options(parsed);
         if (parsed.referenceVersion !== 2 || !parsed.victoryPoints || !parsed.casualties || !parsed.ratings || !parsed.display ||
@@ -779,7 +798,7 @@
           (card && (unit.nationality !== expected.nationality || unit.maxHp !== base.aidCard.strength(expected, template) ||
             expected.turn > parsed.turn || (unit.beganInZoc !== undefined && typeof unit.beganInZoc !== 'boolean'))) ||
           (supplement(parsed) && !integer(unit.combatCount, 0, 2)) ||
-          unit.hp > unit.maxHp || !integer(unit.mobility, 1, 24) || !integer(unit.mp, 0, unit.mobility) ||
+          unit.hp > unit.maxHp || !integer(unit.mobility, 1, parsed.movementVersion === 1 ? 30 : 24) || !integer(unit.mp, 0, unit.mobility) ||
           !integer(unit.attack, 1, 12) || !integer(unit.defense, 1, 12) || !integer(unit.readiness, 0, 7) ||
           !['fired', 'defended', 'exited', 'supplied'].every(field => typeof unit[field] === 'boolean') ||
           !['supplied', 'limited', 'isolated'].includes(unit.supplyState) ||
@@ -818,6 +837,7 @@
         template.strategyPressure = { ...parsed.strategyPressure };
         template.airInterdiction = structuredClone(parsed.airInterdiction);
       }
+      if (parsed.movementVersion !== undefined) template.movementVersion = parsed.movementVersion;
       if (parsed.playMode !== undefined) template.playMode = parsed.playMode;
       if (parsed.referenceVersion !== undefined) template.referenceVersion = parsed.referenceVersion;
       if (parsed.aidFlow !== undefined) {

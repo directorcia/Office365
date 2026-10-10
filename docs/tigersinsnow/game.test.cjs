@@ -685,11 +685,14 @@ test('battle previews explain modifiers without spending resources or randomness
 
 test('order guidance identifies phase, spent movement, commitment and isolation', () => {
   const state = game.createGame(1, 'manual'), unit = state.units[0];
+  assert.match(game.orderReason(state, unit, 'move'), /no movement on day 1/i);
+  state.turn = 2;
   assert.match(game.orderReason(state, unit, 'move'), /Movement is closed/);
+  state.orderPhase = 'combat';
   unit.fired = true;
   assert.match(game.orderReason(state, unit, 'attack'), /already attacked/);
   unit.fired = false; state.orderPhase = 'movement'; unit.mp = 0;
-  assert.match(game.orderReason(state, unit, 'move'), /No affordable/);
+  assert.match(game.orderReason(state, unit, 'move'), /no movement points remaining/i);
   assert.match(game.orderReason(state, unit, 'attack'), /End Movement/);
   state.playMode = 'computer';
   assert.match(game.orderReason(state, unit, 'move'), /Spectator/);

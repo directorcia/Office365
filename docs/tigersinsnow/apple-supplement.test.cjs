@@ -11,6 +11,43 @@ const restore = state => {
 };
 const seedForRoll = value => Number(((BigInt(value) - 1013904223n) * 4276115653n) & 0xffffffffn);
 
+test('revised movement crosses rough river enemy zones and retains legacy save allowances', () => {
+  for (let seed=1;seed<=20;seed++) {
+    const state=game.createGame(seed,'manual','german',2,{playMode:'hotseat'});
+    assert.equal(state.movementVersion,1);
+    assert.ok(state.units.every(unit=>unit.mobility===(unit.type==='armor'?30:24)));
+    assert.ok(state.units.filter(unit=>unit.side==='german').every(unit=>unit.mp===0));
+    state.turn=2;state.weather='Overcast';
+    rules.beginSide(state,'german');
+    const unit=state.units.find(unit=>unit.name==='12th VG DIV');
+    state.units.forEach(counter=>{counter.hp=0;});
+    Object.assign(unit,point(16,4),{hp:unit.maxHp});
+    const enemy=state.units.find(counter=>counter.side==='american');
+    Object.assign(enemy,point(16,3),{hp:enemy.maxHp});
+    rules.beginSide(state,'german');
+    assert.equal(unit.mp,24);
+    const destination=state.map[game.key(point(15,4).x,point(15,4).y)];
+    const cost=rules.movementCost(state,unit,destination,unit);
+    assert.ok(cost>=15&&cost<=19);
+    unit.mp=8;
+    const before=JSON.stringify(state);
+    assert.match(rules.movementWarning(state,unit,destination),/8 enemy zone/);
+    assert.equal(JSON.stringify(state),before);
+    assert.equal(game.move(state,unit.id,destination.x,destination.y),false);
+    unit.mp=24;
+    assert.ok(game.reachable(state,unit).has(game.key(destination.x,destination.y)));
+    assert.ok(game.move(state,unit.id,destination.x,destination.y));
+    assert.equal(unit.mp,0);
+    restore(state);
+    const legacy=game.createGame(seed,'manual','german',2,{playMode:'hotseat'});
+    delete legacy.movementVersion;
+    legacy.units.forEach(counter=>{counter.mobility=counter.type==='armor'?10:8;});
+    restore(legacy);
+    const invalid=structuredClone(legacy);invalid.movementVersion=2;
+    assert.throws(()=>game.deserialize(JSON.stringify(invalid)),/movement rules revision/);
+  }
+});
+
 function advanceFixture(limit, roll, legacy=false) {
   const state = game.createGame(42,'manual','german',2,{appleSupplement:!legacy});
   state.units.forEach(unit => { unit.hp=0; });

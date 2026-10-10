@@ -16,6 +16,10 @@ Use these interactive simulators to walk through common Microsoft 365 security s
 | [M365 Mail Security](https://directorcia.github.io/Office365/m365-mail-security-sim.html) | Demonstrates Exchange Online and Defender for Office 365 mail flow, filtering, and policy evaluation order. |
 | [Image Model Comparison](https://directorcia.github.io/Office365/image-comparison.html) | Compares image-generation results from different models, including creation dates and image properties. |
 
+## Games
+
+- [Tigers in the Snow / Ardennes: Winter Offensive](https://directorcia.github.io/Office365/tigersinsnow/) — A browser-based retro wargame inspired by the Battle of the Bulge.
+
 ## Connect
 
 - Twitter: [@directorcia](https://www.twitter.com/directorcia)

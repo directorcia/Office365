@@ -67,6 +67,8 @@
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--cp-bg); color: var(--cp-text); font-family: "Segoe UI", Aptos, Calibri, sans-serif; font-size: 16px; }
+    .support-notice { margin: 0; padding: 12px 28px; background: var(--cp-surface); border-bottom: 1px solid var(--cp-border); }
+    .support-notice a { color: var(--cp-link); }
     button, input { font: inherit; }
     button { cursor: pointer; border: 1px solid var(--cp-border-strong); border-radius: 4px; background: var(--cp-surface); color: var(--cp-text); padding: 9px 13px; min-height: 40px; }
     button:hover:not(:disabled) { background: var(--cp-surface-soft); border-color: var(--cp-text); }
@@ -87,6 +89,7 @@
     #phase { margin-left: auto; color: var(--cp-accent); font-weight: bold; }
     .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
     .map-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--cp-border); padding-bottom: 12px; gap: 12px; }
+    .map-header[hidden] { display: none; }
     h2 { font: bold 12px Consolas, monospace; margin: 0; letter-spacing: 0; }
     .coordinates { font: 11px Consolas, monospace; color: var(--cp-text-muted); }
     .map-scroll { overflow-x: auto; margin-top: 12px; }
@@ -142,6 +145,7 @@
     #dispatches p { margin: 4px 0 0; color: var(--cp-text-muted); }
     @media (max-width: 600px) { #dispatches li { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
     aside { border-top: 1px solid var(--cp-border); padding-top: 20px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+    aside[hidden] { display: none; }
     .section-label { color: var(--cp-text-muted); font: 10px Consolas, monospace; margin: 0 0 12px; }
     #unit-name { font: bold 20px Consolas, monospace; margin: 0 0 6px; overflow-wrap: anywhere; }
     #unit-kind { font: 10px Consolas, monospace; color: var(--cp-text-muted); }
@@ -178,6 +182,9 @@
     #day-summary { margin-top: 16px; }
     #day-summary p { margin: 8px 0; }
     #plan-preview strong { color: var(--cp-accent); }
+    #plan-preview details { margin-top: 8px; }
+    #plan-preview details summary { cursor: pointer; }
+    #plan-preview details p { margin: 8px 0; }
     #restart-error { color: var(--cp-danger); }
     #objectives { padding: 0; margin: 12px 0 0; list-style: none; font: 11px/2 Consolas, monospace; }
     #notice { min-height: 36px; font-size: 12px; color: var(--cp-text-muted); margin: 16px 0 0; }
@@ -265,12 +272,13 @@
   </style>
 </head>
 <body>
+  <p class="support-notice">Use and source made available for free. Support these projects via <a href="https://ko-fi.com/ciaops" target="_blank" rel="noopener">https://ko-fi.com/ciaops</a>.</p>
   <header class="masthead">
     <div class="identity"><span class="insignia" aria-hidden="true">[=]</span><div><h1>ARDENNES</h1><p class="subtitle">WINTER OFFENSIVE / DECEMBER 1944</p></div></div>
     <nav aria-label="Campaign controls"><a href="help.html" target="_blank" rel="noopener" title="Open the player guide and historical background in a new tab">Help &amp; History</a><button id="rules">Rules</button><button id="order-of-battle-button" aria-haspopup="dialog" aria-controls="order-of-battle-dialog">Order of Battle</button><button id="phase-report-button" hidden>Report / R</button><button id="export">Export Save</button><button id="import">Import Save</button><button id="new-game">New Campaign</button></nav>
   </header>
   <main>
-    <div class="status"><span id="date"></span><span id="turn"></span><span id="weather"></span><span id="ruleset-status"></span><span id="seed-status"></span><span id="phase" role="status"></span></div>
+    <div class="status"><span id="date"></span><span id="turn"></span><span id="weather"></span><span id="ruleset-status" hidden></span><span id="seed-status" hidden></span><span id="phase" role="status"></span></div>
     <div class="orders" role="group" aria-label="Unit orders"><button id="move" aria-pressed="true">Move</button><button id="attack" aria-pressed="false">Attack</button><button id="undo-move" disabled aria-label="Undo Move" title="Undo the last move (before combat or ending the turn)">&#8630; Undo</button><button id="end-turn">End Turn</button></div>
     <section id="spectator-controls" aria-label="Computer versus computer playback" hidden>
       <button id="simulation-play">Play</button> <button id="simulation-action">Next Action</button> <button id="simulation-step">Next Day</button>
@@ -279,7 +287,7 @@
     </section>
     <div class="layout">
       <section aria-label="Battlefield">
-        <div class="map-header"><h2>OPERATIONS MAP</h2><span class="coordinates">ARDENNES SECTOR / WEST &lt; EAST</span></div>
+        <div class="map-header" hidden><span class="coordinates" hidden></span></div>
         <div class="battlefield-reports">
           <div class="army-column">
             <section class="army-report" data-side="american" aria-label="American situation and reports"><h2>AMERICAN / WEST</h2><p><strong>Mission:</strong> Hold the western objectives, delay the offensive and counterattack exposed formations. Deny Germany eight points at the final check.</p><p id="american-army-summary"></p><p id="american-objectives"></p><ol id="american-reports" aria-label="Recent American operations"></ol></section>
@@ -333,7 +341,7 @@
           </div>
         </div>
         <div id="notice" role="status" aria-live="polite"></div>
-        <div id="action-story" role="status" aria-live="polite">Select a formation. Destination dots mark legal moves; target outlines mark legal attacks. Click an enemy in Attack mode to preview a battle before committing.</div>
+        <div id="action-story" hidden></div>
         <section id="reinforcement-arrivals" aria-label="Reinforcements arriving this turn" aria-live="polite" hidden>
           <h2>REINFORCEMENTS / NEW ON THE MAP</h2>
           <div id="arrival-list"></div>
@@ -364,24 +372,23 @@
           <p id="campaign-score-detail"></p><p id="campaign-score-basis"></p>
         </div>
       </section>
-      <aside aria-label="Player command">
-        <section><p class="section-label">SELECTED FORMATION</p><h2 id="unit-name"></h2><div id="unit-kind"></div>
+      <aside aria-label="Player command" hidden aria-hidden="true">
+        <section hidden aria-hidden="true"><h2 id="unit-name"></h2><div id="unit-kind"></div>
           <dl><dt>STRENGTH</dt><dd id="strength"></dd><dt>MOVEMENT</dt><dd id="movement"></dd><dt>SUPPLY</dt><dd id="supply"></dd><dt>COMBAT</dt><dd id="combat"></dd></dl>
-          <p id="order-guidance" aria-live="polite"></p>
-          <section id="manual-command" aria-label="Manual-mode command settings" hidden>
-            <p id="resources"></p>
-            <label for="defense-strategy">Defensive stance against computer attacks</label>
-            <select id="defense-strategy"><option value="counter">Counter-attack</option><option value="hold">Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option><option value="flexible">Flexible defense (legacy adaptation)</option></select>
-            <label id="defensive-artillery-label" for="defensive-artillery" hidden>Defensive artillery commitment against computer attacks (capped by available points)</label>
-            <input id="defensive-artillery" type="number" min="0" max="6" step="1" value="2" hidden>
-            <p>Set your defensive stance and artillery commitment before ending combat. CP means combat points. <a href="help.html#manual-mode" target="_blank" rel="noopener">Manual-mode rules and approximations</a></p>
-          </section>
+        </section>
+        <p id="order-guidance" aria-live="polite"></p>
+        <section id="manual-command" aria-label="Manual-mode command settings" hidden>
+          <p id="resources"></p>
+          <label for="defense-strategy">Defensive stance against computer attacks</label>
+          <select id="defense-strategy"><option value="counter">Counter-attack</option><option value="hold">Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option><option value="flexible">Flexible defense (legacy adaptation)</option></select>
+          <label id="defensive-artillery-label" for="defensive-artillery" hidden>Defensive artillery commitment against computer attacks (capped by available points)</label>
+          <input id="defensive-artillery" type="number" min="0" max="6" step="1" value="2" hidden>
+          <p>Set your defensive stance and artillery commitment before ending combat. CP means combat points. <a href="help.html#manual-mode" target="_blank" rel="noopener">Manual-mode rules and approximations</a></p>
         </section>
         <section class="sidebar-section objectives-section"><div class="objective-heading"><h2>OBJECTIVES</h2><span id="score"></span></div><ul id="objectives"></ul></section>
       </aside>
     </div>
   </main>
-  <footer>AN ORIGINAL RETRO WARGAME / INSPIRED BY THE TRS-80 ERA / NOT AFFILIATED WITH SSI</footer>
   <input id="save-file" type="file" accept=".json,application/json" hidden>
   <div id="unit-tooltip" role="tooltip" hidden></div>
   <div id="legend-tooltip" role="tooltip" hidden></div>
@@ -405,7 +412,7 @@
     <div class="actions"><button data-close="phase-report-dialog">Continue</button></div>
   </dialog>
   <dialog id="rules-dialog" aria-labelledby="rules-title"><h2 id="rules-title">Campaign Rules</h2>
-    <p>New campaigns use the Manual-based rules: separate movement and combat phases, combined attacks, artillery, strategy, supply, fuel and readiness. Germany cannot move on turn 1. The rules are an adaptation; see the <a href="help.html#manual-mode" target="_blank" rel="noopener">Manual-based guide</a> for details and documented approximations.</p>
+    <p>New campaigns use the Manual-based rules: separate movement and combat phases, combined attacks, artillery, strategy, supply, fuel and readiness. Germany cannot move on turn 1. New player-aid campaigns use provisional 24 MP infantry / 30 MP mechanized allowances; existing saves retain their allowances. The rules are an adaptation; see the <a href="help.html#manual-mode" target="_blank" rel="noopener">Manual-based guide</a> for details and documented approximations.</p>
     <p>Command either side across the twelve daily turns from 16–27 December. Follow the victory assessment on the campaign screen for the current objective and scoring. The computer controls the opposing side unless you choose Two players / Hotseat.</p>
     <p>Use the controls beside the map to issue movement and combat orders. New campaigns autosave in the browser; Export Save and Import Save transfer campaigns. Existing saves retain their saved rules.</p>
     <p>This is an original scenario, not the original game's exact map or combat tables.</p>

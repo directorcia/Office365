@@ -292,11 +292,17 @@
     if (state.playMode === 'computer') return 'Spectator mode: the computers issue orders; you can inspect either army.';
     if (!unit || unit.hp <= 0 || unit.exited) return 'Select a living formation.';
     if (unit.side !== state.phase) return 'Wait for this army’s orders phase.';
+    if (order === 'move' && state.ruleset === 'manual' && state.turn === 1 && unit.side === 'german') {
+      return 'German opening turn: no movement on day 1; Germany starts in combat.';
+    }
     if (state.ruleset === 'manual' && state.orderPhase !== (order === 'move' ? 'movement' : 'combat')) {
       return order === 'move' ? 'Movement is closed. End combat to reach the next day.' : 'End Movement before issuing attacks.';
     }
     if (unit.fired) return 'This formation has already attacked and spent its movement today.';
-    if (order === 'move' && !reachable(state, unit).size) return 'No affordable empty destinations remain. Terrain, enemy zones or spent movement block this order.';
+    if (order === 'move' && !reachable(state, unit).size) {
+      return unit.mp <= 0 ? `${unit.name} has no movement points remaining this phase.` :
+        'No legal destinations are reachable with the remaining movement points. Terrain costs, occupied hexes and enemy zones may block movement.';
+    }
     if (order === 'attack' && state.ruleset === 'manual' && manualRules.localSupply(state, unit) === 'isolated') {
       return 'This formation is isolated and cannot attack. Open a supply gap or bring friendly support.';
     }
@@ -683,10 +689,11 @@
       $('phase-report-armies').append(row);
     }
     const air = report.interdiction;
+    const movementReductions = Object.entries(air?.movement || {}).filter(([, loss]) => loss > 0);
     $('phase-report-interdiction').textContent = air ?
-      `Turn ${air.turn} Allied air interdiction: German fuel reduced ${air.fuel} points; supply reduced ${air.supply} points. Movement reductions per formation:` : '';
+      `Turn ${air.turn} Allied air interdiction: German fuel reduced ${air.fuel} points; supply reduced ${air.supply} points.${movementReductions.length ? ' Movement reductions per formation:' : ''}` : '';
     $('phase-report-movement').replaceChildren();
-    for (const [id, loss] of Object.entries(air?.movement || {})) {
+    for (const [id, loss] of movementReductions) {
       const unit = state.units.find(unit => unit.id === id);
       const item = document.createElement('li'); item.textContent = `${unit.name}: ${loss} MP`; $('phase-report-movement').append(item);
     }
@@ -1081,8 +1088,8 @@
       $(`${side}-day-summary`).textContent = state.daySummary?.[side] ||
         `${side === 'american' ? 'America' : 'Germany'}: the first day has not finished yet.`;
     }
-    $('ruleset-status').textContent = manualRules.supplement(state) ? 'MANUAL / APPLE SUPPLEMENT' :
-      card ? 'MANUAL / PLAYER-AID RULES' : manual ? 'MANUAL-BASED ADAPTATION' : 'CLASSIC RULES';
+    $('ruleset-status').textContent = card ? 'MANUAL / PLAYER-AID RULES' :
+      manual ? 'MANUAL-BASED ADAPTATION' : 'CLASSIC RULES';
     $('manual-command').hidden = !manual;
     if (manual) {
       $('resources').textContent = `Supply ${state.generalSupply[commandSide]} / Artillery ${state.artillery[commandSide]} / German fuel ${state.fuel}`;
@@ -1282,7 +1289,12 @@
       render(); return;
     }
     const unit = state.units.find(candidate => candidate.id === selected);
-    if (target && target.side === commandSide) { selected = target.id; render(); return; }
+    if (target && target.side === commandSide) {
+      selected = target.id;
+      const reason = orderReason(state, target, 'move');
+      message(reason || `${target.name}: ${target.mp} MP available. Choose a dotted destination.`);
+      render(); return;
+    }
     if (mode === 'attack' && target && unit) {
       openCombatPlan(target); return;
     } else if (mode === 'move') {
@@ -1335,6 +1347,10 @@
       `Combat: ${unit.fired ? 'already attacked' : 'not yet attacked'}`,
       `Terrain: ${tile.terrain} / column ${tile.col + 1}, row ${tile.row + 1}`
     ];
+    if (!observing() && unit.side === commandSide) {
+      const movementReason = orderReason(state, unit, 'move');
+      if (movementReason) details.push(`Cannot move: ${movementReason}`);
+    }
     if (manual) details.push(`Readiness: ${unit.readiness} / 7`);
     tooltip.replaceChildren(title, ...details.map(text => {
       const paragraph = document.createElement('p');
@@ -1465,9 +1481,13 @@
           defensiveArtillery: Number($('plan-defense-artillery').value) } : {})
       });
       const heading = document.createElement('strong'); heading.textContent = `${preview.odds.toFixed(2)}:1 nominal attack odds`;
+      const note = document.createElement('p'); note.textContent = 'Actual losses and outcomes may vary.';
+      const more = document.createElement('details');
+      const summary = document.createElement('summary'); summary.textContent = 'Show combat details';
       const detail = document.createElement('p'); detail.textContent = preview.detail;
       const risk = document.createElement('p'); risk.textContent = preview.risk;
-      $('plan-preview').replaceChildren(heading, detail, risk);
+      more.append(summary, detail, risk);
+      $('plan-preview').replaceChildren(heading, note, more);
       $('resolve-attack').disabled = false; $('plan-error').textContent = '';
     } catch (error) {
       $('plan-preview').textContent = error.message; $('resolve-attack').disabled = true;
