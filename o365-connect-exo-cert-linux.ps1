@@ -46,6 +46,13 @@
     retrieve a SecureString from a secret vault and pass it with -noprompt.
     Passwords are never written to profiles. Do not use Linux ConvertFrom-SecureString
     output as a substitute for a secret vault: it is not Windows DPAPI encryption.
+.PARAMETER CertificatePasswordEnvironmentVariable
+    Name of an environment variable containing the PFX password, injected by your
+    scheduler or secret manager. Used for generation and connection when the
+    corresponding SecureString password parameter is omitted. The value is never
+    printed or saved. Environment variables are not a secret vault and may be
+    accessible to other processes running as the same user; prefer passing a
+    SecureString from a vault when running from a PowerShell automation script.
 .PARAMETER CertificateThumbprint
     Optional expected thumbprint; also read from profiles and checked against PFX.
 .PARAMETER CertificateMapPath
@@ -68,7 +75,8 @@
     Optional tenant-approved public client ID for Microsoft Graph device sign-in.
     If omitted, uses the Microsoft Graph PowerShell client.
 .PARAMETER noprompt
-    Disable prompts. Requires a password parameter and preinstalled modules.
+    Disable prompts. Alias: -Headless. Requires a password parameter or a named
+    password environment variable, and preinstalled modules. Skips update checks.
     Cannot be combined with ProvisionEntraApp, which requires admin sign-in.
 .PARAMETER noupdate
     Skip the Exchange module Gallery version check. Updates otherwise require
@@ -85,13 +93,19 @@
 .EXAMPLE
     ./o365-connect-exo-cert-linux.ps1 -UseCertificateAuth -Organization contoso.onmicrosoft.com -AppId 11111111-2222-3333-4444-555555555555 -CertificateFilePath /home/admin/.local/share/ciaops/exo/auth.pfx -CertificatePassword $vaultPassword -noprompt -noupdate
     Connect unattended with a SecureString retrieved separately from a secret vault.
+.EXAMPLE
+    pwsh -NoProfile -NonInteractive -File ./o365-connect-exo-cert-linux.ps1 -UseCertificateAuth -Tenant ciaopslabs.onmicrosoft.com -Headless -CertificatePasswordEnvironmentVariable EXO_PFX_PASSWORD
+    Connect without prompts using EXO_PFX_PASSWORD injected into the process by
+    a scheduler or secret manager. Provision the profile and install modules first.
+    To run Exchange commands, invoke this script from the same PowerShell job that
+    runs those commands; a connection ends when its pwsh process exits.
 .NOTES
     CIAOPS - Script provided as is. Use at own risk. No guarantees or warranty provided.
 #>
 #requires -Version 7.4
 [CmdletBinding()]
 param(
-    [switch]$noprompt,
+    [Alias('Headless')][switch]$noprompt,
     [switch]$noupdate,
     [switch]$enableLog,
     [switch]$GenerateLocalCertificate,
@@ -102,6 +116,7 @@ param(
     [securestring]$GeneratedPfxPassword,
     [string]$CertificateFilePath,
     [securestring]$CertificatePassword,
+    [string]$CertificatePasswordEnvironmentVariable,
     [string]$CertificateThumbprint,
     [string]$CertificateMapPath,
     [string]$Tenant,
@@ -181,9 +196,17 @@ function Save-ExoLinuxProfile {
 }
 
 function Get-ExoPfxPassword {
-    param([securestring]$Password, [switch]$NoPrompt)
+    param([securestring]$Password, [switch]$NoPrompt, [string]$EnvironmentVariable)
+    if ($null -eq $Password -and $EnvironmentVariable) {
+        $environmentPassword = [Environment]::GetEnvironmentVariable($EnvironmentVariable, 'Process')
+        if ([string]::IsNullOrEmpty($environmentPassword)) {
+            throw "PFX password environment variable '$EnvironmentVariable' is missing or empty."
+        }
+        try { $Password = ConvertTo-SecureString -String $environmentPassword -AsPlainText -Force }
+        finally { $environmentPassword = $null }
+    }
     if ($null -eq $Password) {
-        if ($NoPrompt) { throw 'Supply a SecureString PFX password when using -noprompt.' }
+        if ($NoPrompt) { throw 'Headless mode requires a SecureString PFX password or -CertificatePasswordEnvironmentVariable.' }
         $Password = Read-Host -Prompt 'PFX password' -AsSecureString
     }
     if ($Password.Length -eq 0) { throw 'An empty PFX password is not permitted.' }
@@ -336,7 +359,7 @@ try {
         $transcribing = $true
     }
     if ($GenerateLocalCertificate) {
-        $password = Get-ExoPfxPassword -Password $GeneratedPfxPassword -NoPrompt:$noprompt
+        $password = Get-ExoPfxPassword -Password $GeneratedPfxPassword -NoPrompt:$noprompt -EnvironmentVariable $CertificatePasswordEnvironmentVariable
         $generated = New-ExoLinuxCertificate -SubjectName $GeneratedCertSubject -YearsValid $GeneratedCertYearsValid -OutputPath $GeneratedCertOutputPath -Password $password
         Write-Host "Public certificate: $($generated.CerPath)"
         Write-Host "Encrypted private key: $($generated.PfxPath)"
@@ -357,7 +380,7 @@ try {
             Connect-ExchangeOnline -Device -Organization $Organization -ShowBanner:$false -ErrorAction Stop | Out-Null
             try {
                 $graphTenantId = (Get-MgContext -ErrorAction Stop).TenantId
-                $exchangeTenantId = (Get-OrganizationConfig -ErrorAction Stop).ExternalDirectoryOrganizationId
+                $exchangeTenantId = (Get-ConnectionInformation -ErrorAction Stop | Select-Object -First 1).TenantID
                 $domains = @(Get-AcceptedDomain -ErrorAction Stop | ForEach-Object { $_.DomainName.ToString() })
                 if (-not $graphTenantId -or $exchangeTenantId -ne $graphTenantId -or $domains -notcontains $Organization) {
                     throw "The Graph and Exchange sign-ins must be for '$Organization' in the same tenant; refusing RBAC changes."
@@ -406,7 +429,7 @@ try {
     if (-not ($Organization -and $AppId -and $CertificateFilePath)) {
         throw 'Connection requires Organization, AppId and CertificateFilePath. Windows thumbprint-only profiles need a certificateFilePath pointing to an exported PFX.'
     }
-    $password = Get-ExoPfxPassword -Password $CertificatePassword -NoPrompt:$noprompt
+    $password = Get-ExoPfxPassword -Password $CertificatePassword -NoPrompt:$noprompt -EnvironmentVariable $CertificatePasswordEnvironmentVariable
     $localCertificate = Import-ExoLinuxPfx -Path $CertificateFilePath -Password $password
     if (-not $localCertificate.HasPrivateKey) { throw 'The certificate has no private key. Supply a PFX, not a public CER.' }
     if ($CertificateThumbprint -and $localCertificate.Thumbprint -ne ($CertificateThumbprint -replace '[^0-9a-fA-F]', '')) {
