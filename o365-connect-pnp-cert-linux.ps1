@@ -315,6 +315,11 @@ function New-PnpLinuxEntraApp {
         $existing = Invoke-PnpLinuxGraph -Path "applications/$($application.id)?`$select=keyCredentials,requiredResourceAccess"
         $keyIdentifier = [Convert]::ToBase64String($publicCertificate.GetCertHash())
         $keys = @($existing.keyCredentials | Where-Object { $_.customKeyIdentifier -ne $keyIdentifier })
+        foreach ($existingKey in $keys) {
+            if ([string]::IsNullOrWhiteSpace($existingKey.key)) {
+                throw "Microsoft Graph did not return public key material for existing credential '$($existingKey.keyId)'. Refusing to replace keyCredentials or remove existing certificates. Retrieve the application with `$select=keyCredentials before retrying."
+            }
+        }
         $keys += @(@{
             type = 'AsymmetricX509Cert'; usage = 'Verify'; displayName = "PNP-$($publicCertificate.Thumbprint)"
             key = [Convert]::ToBase64String($publicCertificate.RawData); customKeyIdentifier = $keyIdentifier
