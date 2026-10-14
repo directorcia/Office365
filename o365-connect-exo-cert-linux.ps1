@@ -372,12 +372,12 @@ try {
             Scopes = @('Application.ReadWrite.All', 'AppRoleAssignment.ReadWrite.All'); ErrorAction = 'Stop'
         }
         if ($SetupClientId) { $graphParameters.ClientId = $SetupClientId }
-        Connect-MgGraph @graphParameters | Out-Null
+        Connect-MgGraph @graphParameters
         try {
             $displayName = if ($AppDisplayName) { $AppDisplayName } else { $GeneratedCertSubject }
             $provisioned = New-ExoLinuxEntraApp -DisplayName $displayName -CerPath $generated.CerPath
             Write-Host "Provisioned app: $($provisioned.AppId). Assigning full Exchange administration rights."
-            Connect-ExchangeOnline -Device -Organization $Organization -ShowBanner:$false -ErrorAction Stop | Out-Null
+            Connect-ExchangeOnline -Device -Organization $Organization -ShowBanner:$false -ErrorAction Stop
             try {
                 $graphTenantId = (Get-MgContext -ErrorAction Stop).TenantId
                 $exchangeTenantId = (Get-ConnectionInformation -ErrorAction Stop | Select-Object -First 1).TenantID
