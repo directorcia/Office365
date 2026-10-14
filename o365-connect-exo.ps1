@@ -6,6 +6,10 @@ param(
 <# CIAOPS
 Script provided as is. Use at own risk. No guarantees or warranty provided.
 Description - Log to Exchange Online using the V2 module
+An active Exchange Online connection in the current PowerShell process is reused.
+Security & Compliance connections do not count as Exchange Online connections.
+Older modules are checked for an open Exchange Online remote PowerShell session.
+The -noprompt switch skips installation/update questions, not authentication when needed.
 Reference - https://docs.microsoft.com/en-us/powershell/exchange/exchange-online/exchange-online-powershell-v2/exchange-online-powershell-v2?view=exchange-ps
 Source - https://github.com/directorcia/Office365/blob/master/o365-connect-exo.ps1
 Prerequisites = 1
@@ -122,15 +126,38 @@ catch {
 write-host -foregroundcolor $processmessagecolor "Exchange Online PowerShell module loaded"
 
 ## Connect to Exchange Online service
-write-host -foregroundcolor $processmessagecolor "Connecting to Exchange Online"
-$connectparams = (Get-Command Connect-ExchangeOnline).Parameters
 $connected = $false
 try {
-    Connect-ExchangeOnline -ShowProgress:$false -ShowBanner:$false -ErrorAction Stop | Out-Null
-    $connected = $true
+    if (Get-Command -Name Get-ConnectionInformation -ErrorAction SilentlyContinue) {
+        $activeConnection = Get-ConnectionInformation -ErrorAction Stop | Where-Object {
+            $_.State -eq 'Connected' -and $_.TokenStatus -eq 'Active' -and $_.IsEopSession -eq $false
+        } | Select-Object -First 1
+        $connected = $null -ne $activeConnection
+    }
+    else {
+        $activeSession = Get-PSSession -ErrorAction Stop | Where-Object {
+            $_.ConfigurationName -eq 'Microsoft.Exchange' -and
+            $_.ComputerName -eq 'outlook.office365.com' -and $_.State -eq 'Opened'
+        } | Select-Object -First 1
+        $connected = $null -ne $activeSession
+    }
 }
 catch {
-    Write-Host -ForegroundColor $warningmessagecolor "Primary connect failed ($($_.Exception.Message))"
+    Write-Host -ForegroundColor $warningmessagecolor "Unable to check existing Exchange Online connections ($($_.Exception.Message)). A new connection will be attempted."
+}
+$connectparams = (Get-Command Connect-ExchangeOnline).Parameters
+if ($connected) {
+    Write-Host -ForegroundColor $processmessagecolor "Already connected to Exchange Online - skipping reconnect."
+}
+else {
+    write-host -foregroundcolor $processmessagecolor "Connecting to Exchange Online"
+    try {
+        Connect-ExchangeOnline -ShowProgress:$false -ShowBanner:$false -ErrorAction Stop | Out-Null
+        $connected = $true
+    }
+    catch {
+        Write-Host -ForegroundColor $warningmessagecolor "Primary connect failed ($($_.Exception.Message))"
+    }
 }
 if (-not $connected -and $connectparams.ContainsKey('UseWebLogin')) {      ## UseWebLogin removed in module v3+
     Write-Host -ForegroundColor $warningmessagecolor "Retrying with web login..."
