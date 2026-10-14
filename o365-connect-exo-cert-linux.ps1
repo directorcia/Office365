@@ -100,6 +100,7 @@
     To run Exchange commands, invoke this script from the same PowerShell job that
     runs those commands; a connection ends when its pwsh process exits.
 .NOTES
+    Documentation: https://github.com/directorcia/Office365/wiki/Exchange-Online-certificate-authentication-on-Linux
     CIAOPS - Script provided as is. Use at own risk. No guarantees or warranty provided.
 #>
 #requires -Version 7.4

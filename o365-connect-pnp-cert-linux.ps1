@@ -95,6 +95,7 @@
 .NOTES
     CIAOPS - Script provided as is. Use at own risk. No guarantees or warranty provided.
 .LINK
+    https://github.com/directorcia/Office365/wiki/SharePoint-Online-certificate-authentication-on-Linux
     https://pnp.github.io/powershell/cmdlets/Connect-PnPOnline.html
 #>
 #requires -Version 7.4.6
