@@ -158,7 +158,7 @@ function Write-PnpPrivateFile {
 function Read-PnpProfiles {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) { return }
-    $map = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+    $map = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable -NoEnumerate -ErrorAction Stop
     if ($map -is [System.Collections.IDictionary] -and $map.Contains('profiles')) { return $map.profiles }
     if ($map -is [array]) { return $map }
     throw "Invalid profile map: $Path. Expected an array or an object containing profiles."
