@@ -4,14 +4,22 @@
 .DESCRIPTION
     Certificate-based counterpart of az-connect-si.ps1 for PowerShell 7.4+.
     Loads only Az.Accounts and Az.SecurityInsights, not the full Az module.
-    Requires an existing Entra service principal with its public certificate
-    registered and Azure RBAC access to the target Sentinel workspace (for
-    example, Microsoft Sentinel Responder to manage incidents).
+    One-time setup: use the existing SecurityMonitor app or a new Entra app.
+    Assign its service principal the Microsoft Sentinel Responder role on the
+    Sentinel workspace or its resource group to manage incidents. Register the
+    public certificate on the app and keep the matching encrypted PFX, including
+    its private key, on the computer running this script. This script does not
+    create apps, certificates, or role assignments.
 
     Uses an encrypted PFX file, without importing it into a certificate store.
     Azure context autosave is disabled for this process. Run this script in the
     same PowerShell session as the Sentinel commands; exiting pwsh ends the session.
     The current process's Azure context is replaced, not other saved contexts.
+
+    For profile-based runs, first connect once with -SaveProfile -ProfileName and
+    explicit -Tenant, -AppId, -SubscriptionId and -CertificateFilePath values,
+    as shown in the first example. A saved profile is optional when all four
+    connection values are supplied explicitly on every run.
 
     Profiles default to $XDG_CONFIG_HOME/ciaops/sentinel/az-si-cert-auth.json
     or ~/.config/ciaops/sentinel/az-si-cert-auth.json. Passwords are never saved.
@@ -53,11 +61,15 @@
     installation and updates use CurrentUser and confirmation, without sudo.
 .EXAMPLE
     ./az-connect-si-cert-linux.ps1 -UseCertificateAuth -Tenant contoso.onmicrosoft.com -AppId 11111111-2222-3333-4444-555555555555 -SubscriptionId aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee -CertificateFilePath /home/admin/auth.pfx -ProfileName sentinel -SaveProfile -noupdate
+    One-time profile setup after configuring the app, certificate, and RBAC role.
     Prompt for the PFX password, connect, and save non-secret connection details.
 .EXAMPLE
-    pwsh -NoProfile -NonInteractive -File ./az-connect-si-cert-linux.ps1 -UseCertificateAuth -ProfileName sentinel -Headless -CertificatePasswordEnvironmentVariable SENTINEL_PFX_PASSWORD
-    Connect using a saved profile and a scheduler-injected password. Invoke this
-    script from the same automation job that runs the Sentinel commands.
+    ./az-connect-si-cert-linux.ps1 -UseCertificateAuth -ProfileName sentinel -Headless -CertificatePasswordEnvironmentVariable SENTINEL_PFX_PASSWORD
+    Connect in the current PowerShell process using a saved profile and a
+    scheduler-injected password. Run the incident-close script afterward in this
+    same process. For scheduling, use pwsh -NoProfile -NonInteractive -File with a
+    wrapper script that invokes both scripts; running this connector alone with
+    pwsh -File exits immediately after connecting and loses the process context.
 .NOTES
     Authentication reference: https://learn.microsoft.com/powershell/module/az.accounts/connect-azaccount
     CIAOPS - Script provided as is. Use at own risk. No guarantees or warranty provided.
@@ -173,16 +185,16 @@ if (($ProfileName -and -not $SaveProfile) -or -not ($Tenant -and $AppId -and $Su
     if ($profiles.Count -ne 1) {
         throw "Expected one matching profile in '$CertificateMapPath', found $($profiles.Count). Specify -ProfileName or explicit -Tenant, -AppId, -SubscriptionId and -CertificateFilePath."
     }
-    $profile = $profiles[0]
-    if (-not $Tenant) { $Tenant = $profile.tenant }
-    if (-not $AppId) { $AppId = $profile.appId }
-    if (-not $SubscriptionId) { $SubscriptionId = $profile.subscriptionId }
+    $selectedProfile = $profiles[0]
+    if (-not $Tenant) { $Tenant = $selectedProfile.tenant }
+    if (-not $AppId) { $AppId = $selectedProfile.appId }
+    if (-not $SubscriptionId) { $SubscriptionId = $selectedProfile.subscriptionId }
     if (-not $CertificateFilePath) {
-        $CertificateFilePath = $profile.certificateFilePath
+        $CertificateFilePath = $selectedProfile.certificateFilePath
         if ($CertificateFilePath -and -not [IO.Path]::IsPathRooted($CertificateFilePath)) {
             $CertificateFilePath = Join-Path (Split-Path -Parent $CertificateMapPath) $CertificateFilePath
         }
-        if (-not $CertificateThumbprint) { $CertificateThumbprint = $profile.certificateThumbprint }
+        if (-not $CertificateThumbprint) { $CertificateThumbprint = $selectedProfile.certificateThumbprint }
     }
 }
 if (-not ($Tenant -and $AppId -and $SubscriptionId -and $CertificateFilePath)) {
