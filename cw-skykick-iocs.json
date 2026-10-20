@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "indicators": [
+    {
+      "ip": "144.172.64.128",
+      "confidence": "High",
+      "activity": "Successful application sign-ins",
+      "successfulAppSignInSeverity": "High",
+      "notes": "Huntress 19 Oct update: this was the only listed IP producing application sign-ins."
+    },
+    {
+      "ip": "144.172.64.99",
+      "confidence": "Medium",
+      "activity": "Password spray",
+      "successfulAppSignInSeverity": "Medium",
+      "notes": "Huntress 19 Oct update: password-spray source; no application sign-ins reported."
+    },
+    {
+      "ip": "144.172.64.60",
+      "confidence": "Medium",
+      "activity": "Password spray",
+      "successfulAppSignInSeverity": "Medium",
+      "notes": "Huntress 19 Oct update: password-spray source; no application sign-ins reported."
+    },
+    {
+      "ip": "144.172.94.243",
+      "confidence": "Medium",
+      "activity": "Password spray",
+      "successfulAppSignInSeverity": "Medium",
+      "notes": "Huntress 19 Oct update: password-spray source; no application sign-ins reported."
+    }
+  ]
+}

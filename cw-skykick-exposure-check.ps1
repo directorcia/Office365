@@ -10,12 +10,14 @@
          3f9cd7a0-127a-4ed4-bf06-2f830d5616b7): enabled state, app role assignments,
          OAuth2 grants, directory roles.
       2. Service principal sign-ins since 1 Oct 2026 for those apps and IOC IPs (needs Entra ID P1).
+            IOC IPs are loaded from a confidence-weighted JSON file; all sign-in types from those IPs
+            are also checked for the Huntress 15-16 Oct audit window.
         3. Directory audit since 13 Oct 2026 (Add member to role / Update application /
             Add service principal credentials) plus a scan of all app registrations and
             service principals for credentials whose validity starts since 13 Oct. Graph
             credential objects do not expose their creation time.
       4. Conditional Access policies excluding those apps (needs Policy.Read.All).
-      5. Verdict: Not present / Present-no-activity / Suspicious, with recommended actions.
+    5. Verdict: Not present / Present-no-activity / Action-required / Review-credentials / Suspicious.
     A check that fails for licence/permission reasons is reported as 'Unavailable', not fatal.
     One tenant failing never aborts the run.
 
@@ -41,8 +43,14 @@
     Report folder. Defaults to the current folder.
 .PARAMETER SinceSignIns / SinceAudit
     UTC start dates. Defaults 2026-10-01 and 2026-10-13.
+.PARAMETER IocConfigPath
+    JSON file containing IOC IPs, confidence, and activity notes. Defaults to the sidecar JSON.
+.PARAMETER IocAuditStart / IocAuditEnd
+    UTC boundaries for the IOC sign-in audit window. End is exclusive; defaults to 15-17 Oct 2026.
 .PARAMETER Headless
-    Never prompt; suppress the opening of the HTML report.
+    Suppress the opening of the HTML report.
+.PARAMETER DryRun
+    Validate tenant and IOC inputs only. Do not connect to Graph or write reports.
 .EXAMPLE
     ./cw-skykick-exposure-check.ps1 -TenantId contoso.onmicrosoft.com -UseDeviceCode
 .EXAMPLE
@@ -63,7 +71,11 @@ param(
     [string]$OutputPath = (Get-Location).Path,
     [datetime]$SinceSignIns = [datetime]::new(2026,10,1,0,0,0,[DateTimeKind]::Utc),
     [datetime]$SinceAudit   = [datetime]::new(2026,10,13,0,0,0,[DateTimeKind]::Utc),
-    [switch]$Headless
+    [string]$IocConfigPath = (Join-Path $PSScriptRoot 'cw-skykick-iocs.json'),
+    [datetime]$IocAuditStart = [datetime]::new(2026,10,15,0,0,0,[DateTimeKind]::Utc),
+    [datetime]$IocAuditEnd = [datetime]::new(2026,10,17,0,0,0,[DateTimeKind]::Utc),
+    [switch]$Headless,
+    [switch]$DryRun
 )
 
 Set-StrictMode -Version 3
@@ -81,9 +93,26 @@ $CwAppIds = [ordered]@{
 }
 $CwOwnerTenant = '3f9cd7a0-127a-4ed4-bf06-2f830d5616b7'
 $CwNamePattern = 'ConnectWise|SkyKick'
-$IocIps        = @('144.172.64.128','144.172.64.99','144.172.64.60','144.172.94.243')
+$iocConfig = Get-Content -LiteralPath $IocConfigPath -Raw | ConvertFrom-Json
+if (-not $iocConfig.PSObject.Properties['indicators'] -or -not $iocConfig.indicators) {
+    throw "IOC config '$IocConfigPath' must contain a non-empty 'indicators' array."
+}
+$IocByIp = @{}
+foreach ($indicator in $iocConfig.indicators) {
+    $parsedIp = $null
+    if (-not $indicator.ip -or -not [System.Net.IPAddress]::TryParse([string]$indicator.ip, [ref]$parsedIp)) {
+        throw "IOC config '$IocConfigPath' contains an invalid IP address."
+    }
+    if ($indicator.confidence -notin 'High','Medium','Low') {
+        throw "IOC '$($indicator.ip)' must have confidence High, Medium, or Low."
+    }
+    if ($IocByIp.ContainsKey([string]$indicator.ip)) { throw "IOC config contains duplicate IP '$($indicator.ip)'." }
+    $IocByIp[[string]$indicator.ip] = $indicator
+}
+$IocIps        = @($IocByIp.Keys)
 $IocUaPattern  = 'Python-urllib|python-requests|curl/'
-$PrivRoles     = @('62e90394-69f5-4237-9190-012177145e10','29232cdf-9323-42fd-ade2-1d097af3e4de','7be44c8a-adaf-4e2a-84d6-ab2649e08a13') # GA, Exchange Admin, Priv Auth Admin
+$PrivRoles     = @('62e90394-69f5-4237-9190-012177145e10','29232cdf-9323-42fd-ade2-1d097af3e4de','7be44c8a-adaf-4e2a-84d6-ab2649e08a13','9b895d92-2cd3-44c7-9d02-a6ac2d5ea5c3','158c047a-c907-4556-b7ef-446551a6b5f7') # GA, Exchange Admin, Priv Auth Admin, App Admin, Cloud App Admin
+$PrivRoleNames = @('Global Administrator','Exchange Administrator','Privileged Authentication Administrator','Application Administrator','Cloud Application Administrator')
 $SydneyTz      = try { [TimeZoneInfo]::FindSystemTimeZoneById('Australia/Sydney') } catch { [TimeZoneInfo]::Local }
 $RequiredPerms = 'Application.Read.All','Directory.Read.All','AuditLog.Read.All','RoleManagement.Read.Directory','Policy.Read.All'
 #endregion
@@ -93,11 +122,13 @@ function Write-Status([string]$Msg, [string]$Colour = 'Gray') { Write-Host $Msg 
 function ConvertTo-Local($utc) {
     if (-not $utc) { return $null }
     $d = ([datetimeoffset]$utc).UtcDateTime
-    [TimeZoneInfo]::ConvertTimeFromUtc($d, $SydneyTz).ToString('yyyy-MM-dd HH:mm:ss') + ' AET'
+    $local = [TimeZoneInfo]::ConvertTimeFromUtc($d, $SydneyTz)
+    $zone = if ($SydneyTz.IsDaylightSavingTime($local)) { 'AEDT' } else { 'AEST' }
+    $local.ToString('yyyy-MM-dd HH:mm:ss') + " $zone"
 }
 function Invoke-GraphGet {
     # Read-only wrapper: GET only, follows @odata.nextLink, retries 429/503/504 honouring Retry-After.
-    param([Parameter(Mandatory)][string]$Uri, [switch]$Eventual, [int]$MaxPages = 200)
+    param([Parameter(Mandatory)][string]$Uri, [switch]$Eventual, [int]$MaxPages = 1000)
     $headers = @{}; if ($Eventual) { $headers['ConsistencyLevel'] = 'eventual' }
     $results = [System.Collections.Generic.List[object]]::new()
     $next = $Uri; $page = 0
@@ -179,7 +210,12 @@ function Test-Tenant {
         }
         $ctx = Get-MgContext
         $r.GrantedPermissions = @($ctx.Scopes)
-        $r.MissingPermissions = @($RequiredPerms | Where-Object { $_ -notin $ctx.Scopes -and ($_ -replace 'Read','ReadWrite') -notin $ctx.Scopes })
+        if ($ctx.PSObject.Properties['AuthType'] -and $ctx.AuthType -eq 'AppOnly') {
+            $r.MissingPermissions = @()
+            Write-Status '  App-only authentication; delegated-scope comparison skipped' DarkGray
+        } else {
+            $r.MissingPermissions = @($RequiredPerms | Where-Object { $_ -notin $ctx.Scopes -and ($_ -replace 'Read','ReadWrite') -notin $ctx.Scopes })
+        }
         if ($r.MissingPermissions) { Write-Status "  Missing permissions: $($r.MissingPermissions -join ', ')" Yellow }
         try { $org = Invoke-GraphGet 'https://graph.microsoft.com/v1.0/organization?$select=id,displayName'; $r.TenantDisplayName = $org[0].displayName } catch {}
     } catch {
@@ -246,43 +282,110 @@ function Test-Tenant {
         try {
             foreach ($a in $appIdsToQuery) {
                 Write-Host '.' -NoNewline -ForegroundColor Cyan
-                $found += Invoke-GraphGet "$base and appId eq '$a'&`$top=500"
+                $found += Invoke-GraphGet "$base and appId eq '$a'&`$top=999"
             }
             foreach ($ip in $IocIps) {
                 Write-Host '.' -NoNewline -ForegroundColor Cyan
-                $found += Invoke-GraphGet "$base and ipAddress eq '$ip'&`$top=500"
+                $found += Invoke-GraphGet "$base and ipAddress eq '$ip'&`$top=999"
             }
         } finally { Write-Host '' }
         $found = @($found | Sort-Object id -Unique)
         foreach ($s in $found) {
-            $ioc = ($s.ipAddress -in $IocIps) -or ($s.userAgent -match $IocUaPattern)
-            if ($ioc) { $suspicious.Add("Sign-in by $($s.appDisplayName) from $($s.ipAddress) UA '$($s.userAgent)' at $(ConvertTo-Local $s.createdDateTime)") }
+            $ipIoc = $IocByIp[[string]$s.ipAddress]
+            $uaIoc = $s.userAgent -match $IocUaPattern
+            $ioc = [bool]$ipIoc -or $uaIoc
+            $successful = $null -ne $s.status.errorCode -and [int]$s.status.errorCode -eq 0
+            $servicePrincipalSignIn = @($s.signInEventTypes) -contains 'servicePrincipal'
+            $severity = if ($ipIoc -and $ipIoc.successfulAppSignInSeverity -and $successful -and $servicePrincipalSignIn) { $ipIoc.successfulAppSignInSeverity }
+                elseif ($ioc) { 'Medium' } else { 'None' }
+            $confidence = if ($ipIoc) { $ipIoc.confidence } elseif ($uaIoc) { 'Low' } else { 'None' }
+            if ($ioc) { $suspicious.Add("$severity severity ($confidence confidence) sign-in by $($s.appDisplayName) from $($s.ipAddress) UA '$($s.userAgent)' at $(ConvertTo-Local $s.createdDateTime)") }
             $r.SignIns += [pscustomobject]@{
-                Time = (ConvertTo-Local $s.createdDateTime); App = $s.appDisplayName; AppId = $s.appId; IP = $s.ipAddress
-                UserAgent = $s.userAgent; Resource = $s.resourceDisplayName; Status = $s.status.errorCode; IoC = $ioc
+                SignInId = $s.id; Time = (ConvertTo-Local $s.createdDateTime); App = $s.appDisplayName; AppId = $s.appId; IP = $s.ipAddress
+                SignInType = (@($s.signInEventTypes) -join ', '); UserAgent = $s.userAgent; Resource = $s.resourceDisplayName
+                Status = $s.status.errorCode; IoC = $ioc; IocConfidence = $confidence; Severity = $severity
             }
         }
         Write-Status "      $($found.Count) sign-in(s)"
+    } $r
+
+    # ---- Check 2a
+    Write-Status '  [2a] IOC sign-ins during the 15-16 Oct audit window'
+    Invoke-Check 'IocAuditWindow' {
+        if ($IocAuditStart.ToUniversalTime() -ge $IocAuditEnd.ToUniversalTime()) { throw 'IocAuditEnd must be later than IocAuditStart.' }
+        $start = $IocAuditStart.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        $end = $IocAuditEnd.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        $windowFound = @()
+        foreach ($ip in $IocIps) {
+            Write-Host '.' -NoNewline -ForegroundColor Cyan
+            $filter = "createdDateTime ge $start and createdDateTime lt $end and ipAddress eq '$ip'"
+            $windowFound += Invoke-GraphGet "https://graph.microsoft.com/beta/auditLogs/signIns?`$filter=$filter&`$top=999"
+        }
+        Write-Host ''
+        $existingIds = @($r.SignIns | ForEach-Object SignInId)
+        $windowFound = @($windowFound | Sort-Object id -Unique)
+        foreach ($s in $windowFound) {
+            if ($s.id -in $existingIds) { continue }
+            $indicator = $IocByIp[[string]$s.ipAddress]
+            $successful = $null -ne $s.status.errorCode -and [int]$s.status.errorCode -eq 0
+            $servicePrincipalSignIn = @($s.signInEventTypes) -contains 'servicePrincipal'
+            $severity = if ($indicator.successfulAppSignInSeverity -and $successful -and $servicePrincipalSignIn) { $indicator.successfulAppSignInSeverity } else { 'Medium' }
+            $suspicious.Add("$severity severity ($($indicator.confidence) confidence) audit-window sign-in by $($s.appDisplayName) from $($s.ipAddress) at $(ConvertTo-Local $s.createdDateTime)")
+            $r.SignIns += [pscustomobject]@{
+                SignInId = $s.id; Time = (ConvertTo-Local $s.createdDateTime); App = $s.appDisplayName; AppId = $s.appId; IP = $s.ipAddress
+                SignInType = (@($s.signInEventTypes) -join ', '); UserAgent = $s.userAgent; Resource = $s.resourceDisplayName
+                Status = $s.status.errorCode; IoC = $true; IocConfidence = $indicator.confidence; Severity = $severity
+            }
+        }
+        Write-Status "      $($windowFound.Count) IOC sign-in(s) in audit window"
     } $r
 
     # ---- Check 3
     Write-Status '  [3] Audit log and new credentials'
     Invoke-Check 'AuditLog' {
         $since = $SinceAudit.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-        foreach ($act in 'Add member to role','Update application','Add service principal credentials','Update application – Certificates and secrets management') {
-            $ev = Invoke-GraphGet "https://graph.microsoft.com/v1.0/auditLogs/directoryAudits?`$filter=activityDateTime ge $since and activityDisplayName eq '$act'&`$top=500"
+        foreach ($act in 'Add member to role','Update application','Add service principal credentials','Update application – Certificates and secrets management','Update application - Certificates and secrets management') {
+            $ev = Invoke-GraphGet "https://graph.microsoft.com/v1.0/auditLogs/directoryAudits?`$filter=activityDateTime ge $since and activityDisplayName eq '$act'&`$top=999"
             foreach ($e in $ev) {
                 $initApp = $e.initiatedBy.app
-                if ($act -ne 'Add member to role' -and -not $initApp) { continue }   # spec: changes made by a service principal
-                $byCw = $initApp -and ($initApp.servicePrincipalId -in $cwSpIds -or $CwAppIds.Contains("$($initApp.appId)") -or $initApp.displayName -match $CwNamePattern)
-                if ($act -eq 'Add member to role' -and -not $byCw -and -not $initApp) { continue }
-                $flag = $byCw -or ($act -eq 'Add member to role' -and $initApp)
-                $initiator = if ($initApp) { "app:$($initApp.displayName) ($($initApp.servicePrincipalId))" } else { "user:$($e.initiatedBy.user.userPrincipalName)" }
                 $ua = ($e.additionalDetails | Where-Object key -eq 'User-Agent' | Select-Object -First 1).value
-                if ($flag) { $suspicious.Add("Audit '$act' by $initiator on $(($e.targetResources | ForEach-Object { $_.displayName }) -join ',') at $(ConvertTo-Local $e.activityDateTime)") }
+                $uaIoc = $ua -match $IocUaPattern
+                if ($act -ne 'Add member to role' -and -not $initApp -and -not $uaIoc) { continue }   # retain suspicious-UA events without an app initiator
+                $byCw = $initApp -and ($initApp.servicePrincipalId -in $cwSpIds -or $CwAppIds.Contains("$($initApp.appId)") -or $initApp.displayName -match $CwNamePattern)
+                if ($act -eq 'Add member to role' -and -not $byCw -and -not $initApp -and -not $uaIoc) { continue }
+                $selfRoleAssignment = $false
+                $assignedRole = $null
+                $privilegedRole = $false
+                if ($act -eq 'Add member to role' -and $initApp -and $initApp.servicePrincipalId -and $e.result -eq 'success') {
+                    $targetServicePrincipalIds = @($e.targetResources | Where-Object type -eq 'ServicePrincipal' | ForEach-Object id)
+                    $roleEvidence = @($e.targetResources | ForEach-Object {
+                        $_.id
+                        $_.displayName
+                        $_.modifiedProperties | Where-Object displayName -match 'role|template' | ForEach-Object { $_.oldValue; $_.newValue }
+                    }) -join ' '
+                    $assignedRole = @($e.targetResources | Where-Object type -eq 'Role' | ForEach-Object displayName | Select-Object -First 1)
+                    if (-not $assignedRole) {
+                        $assignedRole = @($e.targetResources | ForEach-Object { $_.modifiedProperties | Where-Object displayName -match '^Role\.DisplayName$' | ForEach-Object newValue } | Select-Object -First 1)
+                    }
+                    $privilegedRoleName = @($PrivRoleNames | Where-Object { $roleEvidence -match "(?i)(?<![\w])$([regex]::Escape($_))(?![\w])" } | Select-Object -First 1)
+                    $assignedPrivilegedRoleId = @($PrivRoles | Where-Object { $roleEvidence -match [regex]::Escape($_) } | Select-Object -First 1)
+                    $selfRoleAssignment = $initApp.servicePrincipalId -in $targetServicePrincipalIds
+                    $privilegedRole = $privilegedRoleName.Count -gt 0 -or $assignedPrivilegedRoleId.Count -gt 0
+                    if (-not $assignedRole -and $privilegedRoleName) { $assignedRole = $privilegedRoleName }
+                    if (-not $assignedRole -and $assignedPrivilegedRoleId) { $assignedRole = $assignedPrivilegedRoleId }
+                }
+                $flag = [bool]($byCw -or $selfRoleAssignment -or $uaIoc)
+                $initiator = if ($initApp) { "app:$($initApp.displayName) ($($initApp.servicePrincipalId))" } elseif ($e.initiatedBy.user) { "user:$($e.initiatedBy.user.userPrincipalName)" } else { 'unknown' }
+                if ($flag) {
+                    $roleLabel = if ($assignedRole) { "role '$assignedRole'" } else { 'a directory role' }
+                    $reason = if ($selfRoleAssignment) { " HIGH severity: app added itself to $roleLabel" } elseif ($uaIoc) { " suspicious user-agent '$ua'" } else { '' }
+                    $suspicious.Add("Audit '$act' by $initiator$reason on $(($e.targetResources | ForEach-Object { $_.displayName }) -join ',') at $(ConvertTo-Local $e.activityDateTime)")
+                }
                 $r.AuditEvents += [pscustomobject]@{
                     Time = (ConvertTo-Local $e.activityDateTime); Activity = $act; Initiator = $initiator
-                    Target = (($e.targetResources | ForEach-Object { $_.displayName }) -join '; '); UserAgent = $ua; Result = $e.result; Flagged = [bool]$flag
+                    Target = (($e.targetResources | ForEach-Object { $_.displayName }) -join '; '); UserAgent = $ua; Result = $e.result
+                    SelfRoleAssignment = [bool]$selfRoleAssignment; PrivilegedRole = [bool]$privilegedRole
+                    Severity = $(if ($selfRoleAssignment) {'High'} elseif ($flag) {'Medium'} else {'None'}); Flagged = [bool]$flag
                 }
             }
         }
@@ -290,7 +393,7 @@ function Test-Tenant {
     } $r
     Invoke-Check 'CredentialScan' {
         $apps = Invoke-GraphGet 'https://graph.microsoft.com/v1.0/applications?$select=id,appId,displayName,passwordCredentials,keyCredentials&$top=999'
-        $sps = if ($r.Checks['ServicePrincipals'] -eq 'OK') { $allSps } else { Invoke-GraphGet 'https://graph.microsoft.com/v1.0/servicePrincipals?$select=id,appId,displayName,passwordCredentials,keyCredentials&$top=999' }
+        $sps = if ($r.Checks['ServicePrincipals'] -eq 'OK') { $allSps } else { Invoke-GraphGet 'https://graph.microsoft.com/v1.0/servicePrincipals?$select=id,appId,displayName,appOwnerOrganizationId,passwordCredentials,keyCredentials&$top=999' }
         $totalObjects = @($apps).Count + @($sps).Count
         $scannedObjects = 0
         Write-Status "      Scanning credential metadata across $totalObjects app and service-principal objects" DarkGray
@@ -300,10 +403,15 @@ function Test-Tenant {
                 if ($scannedObjects -eq 1 -or $scannedObjects % 100 -eq 0 -or $scannedObjects -eq $totalObjects) {
                     Write-Status "      Credential scan progress: $scannedObjects/$totalObjects objects" DarkGray
                 }
+                $vendorApp = $CwAppIds.Contains([string]$o.appId) -or $o.displayName -match $CwNamePattern
+                if ($set.K -eq 'ServicePrincipal' -and $o.PSObject.Properties['appOwnerOrganizationId']) {
+                    $vendorApp = $vendorApp -or $o.appOwnerOrganizationId -eq $CwOwnerTenant
+                }
                 foreach ($c in @($o.passwordCredentials | Where-Object { $_ }) + @($o.keyCredentials | Where-Object { $_ })) {
                     if ($c.startDateTime -and ([datetimeoffset]$c.startDateTime).UtcDateTime -ge $SinceAudit.ToUniversalTime()) {
                         $r.NewCredentials += [pscustomobject]@{
                             ObjectType = $set.K; DisplayName = $o.displayName; AppId = $o.appId
+                            VendorApp = [bool]$vendorApp
                             CredentialType = $(if ($c.PSObject.Properties['secretText'] -or $c.PSObject.Properties['hint']) {'Secret'} else {'Certificate'})
                             CredentialName = $c.displayName; KeyId = $c.keyId; Start = (ConvertTo-Local $c.startDateTime); End = (ConvertTo-Local $c.endDateTime)
                         }
@@ -329,11 +437,27 @@ function Test-Tenant {
     } $r
 
     # ---- Verdict
-    $r.Verdict = if ($suspicious.Count) { 'Suspicious' } elseif ($r.ServicePrincipals.Count) { 'Present-no-activity' } elseif ($r.Checks['ServicePrincipals'] -eq 'OK') { 'Not present' } else { 'Unknown' }
+    $nonVendorNewCredentials = @($r.NewCredentials | Where-Object { -not $_.VendorApp })
+    $enabledCwApps = @($r.ServicePrincipals | Where-Object { $_.Enabled -eq $true })
+    $r.Verdict = if ($suspicious.Count) { 'Suspicious' }
+        elseif ($nonVendorNewCredentials.Count) { 'Review-credentials' }
+        elseif ($enabledCwApps.Count) { 'Action-required' }
+        elseif ($r.ServicePrincipals.Count) { 'Present-no-activity' }
+        elseif ($r.Checks['ServicePrincipals'] -eq 'OK') { 'Not present' }
+        else { 'Unknown' }
     $rec = @()
     if ($r.ServicePrincipals) { $rec += 'Disable (do NOT delete) the ConnectWise/SkyKick enterprise apps until ConnectWise confirms credential reset.' }
+    $highSeverity = @($r.SignIns | Where-Object Severity -eq 'High')
+    if ($highSeverity) {
+        $highIps = @($highSeverity | Select-Object -ExpandProperty IP -Unique) -join ', '
+        $rec += "HIGH severity: investigate successful application sign-ins from $highIps immediately; found $($highSeverity.Count)."
+    }
     if ($suspicious) { $rec += $suspicious | ForEach-Object { "Investigate: $_" }; $rec += 'Remove unexpected directory roles and secrets/certificates; revoke sessions; open an incident.' }
-    if ($r.NewCredentials) { $rec += 'Confirm every secret/certificate whose validity starts since 13 Oct was added by your team; Graph does not expose credential creation time.' }
+    if ($nonVendorNewCredentials) {
+        $credentialApps = @($nonVendorNewCredentials | Select-Object -ExpandProperty DisplayName -Unique) -join ', '
+        $rec += "Review credentials on non-vendor apps with validity starting since 13 Oct: $credentialApps. Graph does not expose credential creation time."
+    }
+    if (@($r.NewCredentials | Where-Object VendorApp)) { $rec += 'Confirm every vendor-app secret/certificate whose validity starts since 13 Oct was added by your team; Graph does not expose credential creation time.' }
     if ($r.CaExclusions) { $rec += 'Review Conditional Access policies that exclude the ConnectWise apps.' }
     $unavail = @($r.Checks.GetEnumerator() | Where-Object Value -ne 'OK')
     if ($unavail) { $rec += "Re-run once these checks can complete: $(($unavail | ForEach-Object { "$($_.Key) ($($_.Value))" }) -join '; ')" }
@@ -351,7 +475,7 @@ function Write-Html($Results, $Path) {
         '<table><tr>' + (($cols | ForEach-Object { "<th>$(& $enc $_)</th>" }) -join '') + '</tr>' +
         (($rows | ForEach-Object { $row = $_; '<tr>' + (($cols | ForEach-Object { "<td>$(& $enc $row.$_)</td>" }) -join '') + '</tr>' }) -join '') + '</table>' }
     $sb = [System.Text.StringBuilder]::new()
-    [void]$sb.Append("<html><head><meta charset='utf-8'><title>ConnectWise/SkyKick exposure check</title><style>body{font-family:Segoe UI,Arial;margin:20px}table{border-collapse:collapse;margin-bottom:12px}td,th{border:1px solid #ccc;padding:4px 8px;font-size:13px;vertical-align:top}th{background:#eee}.Suspicious{color:#b00}.Not{color:#070}.Present-no-activity,.Unknown,.Error{color:#b60}</style></head><body>")
+    [void]$sb.Append("<html><head><meta charset='utf-8'><title>ConnectWise/SkyKick exposure check</title><style>body{font-family:Segoe UI,Arial;margin:20px}table{border-collapse:collapse;margin-bottom:12px}td,th{border:1px solid #ccc;padding:4px 8px;font-size:13px;vertical-align:top}th{background:#eee}.Suspicious{color:#b00}.Not{color:#070}.Present-no-activity,.Action-required,.Review-credentials,.Unknown,.Error{color:#b60}</style></head><body>")
     [void]$sb.Append("<h1>ConnectWise Cloud Backup (SkyKick) exposure check</h1><p>Generated $(ConvertTo-Local ([datetime]::UtcNow)). Read-only. Source: <a href='https://www.huntress.com/blog/vendor-credential-enables-unauthorized-access'>Huntress</a></p>")
     foreach ($r in $Results) {
         $cls = ($r.Verdict -split ' ')[0]
@@ -371,14 +495,18 @@ function Write-Html($Results, $Path) {
 }
 
 # ---- main
-if (-not (Get-Module -ListAvailable Microsoft.Graph.Authentication)) { throw 'Microsoft.Graph.Authentication is required: Install-Module Microsoft.Graph.Authentication -Scope CurrentUser' }
-Import-Module Microsoft.Graph.Authentication
 $list = switch ($PSCmdlet.ParameterSetName) {
     'Interactive' { @([pscustomobject]@{ TenantId = $TenantId; UseDeviceCode = [bool]$UseDeviceCode; Name = $TenantId; ClientId = $null }) }
     'Csv'         { @(Import-Csv $TenantCsv) }
     'Array'       { @($Tenants | ForEach-Object { [pscustomobject]$_ }) }
 }
 foreach ($t in $list) { foreach ($p in 'Name','ClientId','CertificatePath','CertificateThumbprint','CertificatePasswordEnvironmentVariable','UseDeviceCode') { if (-not $t.PSObject.Properties[$p]) { $t | Add-Member $p $null } } }
+if ($DryRun) {
+    Write-Status "Dry run: validated $($list.Count) tenant target(s) and IOC config '$IocConfigPath'. No Graph calls or reports were made." Cyan
+    return
+}
+if (-not (Get-Module -ListAvailable Microsoft.Graph.Authentication)) { throw 'Microsoft.Graph.Authentication is required: Install-Module Microsoft.Graph.Authentication -Scope CurrentUser' }
+Import-Module Microsoft.Graph.Authentication
 if (-not (Test-Path $OutputPath)) { New-Item -ItemType Directory -Path $OutputPath | Out-Null }
 
 $results = foreach ($t in $list) {
@@ -390,10 +518,21 @@ $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $base  = Join-Path $OutputPath "cw-skykick-exposure_$stamp"
 $results | ForEach-Object { [pscustomobject]@{
     Tenant = $_.Tenant; TenantName = $_.TenantDisplayName; Verdict = $_.Verdict
-    ServicePrincipals = @($_.ServicePrincipals).Count; SignIns = @($_.SignIns).Count; FlaggedAudit = @($_.AuditEvents | Where-Object Flagged).Count
+    ServicePrincipals = @($_.ServicePrincipals).Count; EnabledConnectWiseApps = @($_.ServicePrincipals | Where-Object Enabled -eq $true).Count
+    SignIns = @($_.SignIns).Count; HighSeveritySignIns = @($_.SignIns | Where-Object Severity -eq 'High').Count; FlaggedAudit = @($_.AuditEvents | Where-Object Flagged).Count
+    ReviewCredentials = @($_.NewCredentials | Where-Object { -not $_.VendorApp }).Count
     NewCredentials = @($_.NewCredentials).Count; CaExclusions = @($_.CaExclusions).Count
     UnavailableChecks = (@($_.Checks.GetEnumerator() | Where-Object Value -ne 'OK' | ForEach-Object { "$($_.Key): $($_.Value)" }) -join ' | ')
     MissingPermissions = (@($_.MissingPermissions) -join ', '); Error = $_.Error } } | Export-Csv "$base.csv" -NoTypeInformation
 ConvertTo-Json -InputObject @($results) -Depth 8 | Set-Content "$base.json" -Encoding utf8
 Write-Html $results "$base.html"
 Write-Status "`nReports:`n  $base.csv`n  $base.json`n  $base.html" Green
+if (-not $Headless) {
+    try { Start-Process -FilePath "$base.html" -ErrorAction Stop }
+    catch { Write-Status "Could not open HTML report: $($_.Exception.Message)" Yellow }
+}
+$alertResults = @($results | Where-Object { $_.Verdict -in 'Suspicious','Error' })
+if ($alertResults) {
+    Write-Status "Alert: $($alertResults.Count) tenant result(s) are Suspicious or Error." Red
+    exit 1
+}
