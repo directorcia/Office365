@@ -98,6 +98,8 @@
     CIAOPS - Script provided as is. Use at own risk. No guarantees or warranty provided.
 .LINK
     https://learn.microsoft.com/en-us/microsoftteams/teams-powershell-application-authentication
+.LINK
+    https://github.com/directorcia/Office365/wiki/Microsoft-Teams-Certificate-Authentication-on-Linux
 #>
 #requires -Version 7.4
 [CmdletBinding()]
