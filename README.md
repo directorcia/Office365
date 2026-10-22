@@ -47,6 +47,60 @@ Specify `-AdminUrl` for tenant GUIDs, custom domains or renamed SharePoint tenan
 Use `Get-Help ./o365-connect-spo-cert-linux.ps1 -Full` for all options, including
 using an existing application/PFX without provisioning.
 
+## Microsoft Teams certificate connections on Linux
+
+[o365-connect-tms-cert-linux.ps1](./o365-connect-tms-cert-linux.ps1) generates
+encrypted certificate files, optionally provisions an Entra application, and
+connects to Teams using a loaded certificate object instead of the Windows
+certificate store. Requires Linux, PowerShell 7.4+ and MicrosoftTeams 5.0.0+.
+Missing modules are installed for the current user without sudo; certificate
+generation alone needs no modules.
+
+```powershell
+# One-time setup; prompts for a PFX password and administrator device-code sign-in.
+./o365-connect-tms-cert-linux.ps1 -GenerateLocalCertificate -ProvisionEntraApp -Tenant contoso.onmicrosoft.com
+
+# Subsequent connections; prompts for the encrypted PFX password.
+./o365-connect-tms-cert-linux.ps1 -UseCertificateAuth -ProfileName O365-TMS-AppAuth
+
+# Unattended connection with a password injected by a secret manager.
+./o365-connect-tms-cert-linux.ps1 -UseCertificateAuth -ProfileName O365-TMS-AppAuth -Headless -CertificatePasswordEnvironmentVariable TMS_PFX_PASSWORD
+
+# Run Teams commands in the same PowerShell session.
+Get-CsTenant
+```
+
+Provisioning requires an administrator able to consent to Graph application
+permissions and assign directory roles (for example, a Privileged Role
+Administrator or Global Administrator). It assigns **Teams Administrator** and
+grants Graph `Organization.Read.All`, `User.Read.All`, `Group.ReadWrite.All`,
+`AppCatalog.ReadWrite.All`, `TeamSettings.ReadWrite.All`, `Channel.Delete.All`,
+`ChannelSettings.ReadWrite.All` and `ChannelMember.ReadWrite.All`. These follow
+[Microsoft's Teams app-only requirements](https://learn.microsoft.com/en-us/microsoftteams/teams-powershell-application-authentication),
+not the broader directory permissions in the Windows script. No Skype and Teams
+Tenant Admin API permissions are added. Existing app permissions and certificates
+are preserved.
+
+Certificates and profiles use private XDG data/config directories under
+`ciaops/tms` (directories 700, files 600); passwords are never saved in profiles.
+Custom storage directories must be dedicated to this script because their
+permissions are also restricted. Headless connections require preinstalled modules
+and a supplied password. Use `-CertificatePassword` to pass a SecureString from a
+vault instead of an environment variable when possible.
+
+Use `-Tenant`, `-AppId` and `-CertificateFilePath` to connect with an existing app
+and PFX without provisioning. `-Organization` is an alias for `-Tenant`. Windows
+profiles containing only a thumbprint require an exported PFX. Connections stay
+open in the current session; they end when that PowerShell process exits.
+Not all Teams cmdlets support app-only authentication, and Administrative Unit
+scenarios need additional permissions; see Microsoft's documentation above.
+Use `Get-Help ./o365-connect-tms-cert-linux.ps1 -Full` for all options.
+
+Offline Linux regression checks (no tenant or external modules required):
+`pwsh -NoProfile -File ./tests/o365-connect-tms-cert-linux.Tests.ps1`.
+The [test script](./tests/o365-connect-tms-cert-linux.Tests.ps1) exercises real
+certificate generation and Unix permissions with mocked Microsoft service calls.
+
 ## Games
 
 - [Tigers in the Snow / Ardennes: Winter Offensive](https://directorcia.github.io/Office365/tigersinsnow/) — A browser-based retro wargame inspired by the Battle of the Bulge.

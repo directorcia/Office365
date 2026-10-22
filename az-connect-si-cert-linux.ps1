@@ -29,7 +29,9 @@
 .PARAMETER UseCertificateAuth
     Certificate authentication (the default and only sign-in mode).
 .PARAMETER Tenant
-    Entra tenant ID or domain. Alias: TenantId. Overrides the selected profile.
+    Entra tenant ID GUID, not a domain. Alias: TenantId. Overrides the selected
+    profile. Find it in the Microsoft Entra admin center under Overview > Tenant ID.
+    Saved profiles must also contain a tenant GUID.
 .PARAMETER AppId
     Service principal application/client ID. Alias: ApplicationId.
 .PARAMETER SubscriptionId
@@ -60,7 +62,7 @@
     Skip Gallery update checks. Headless always skips them. Interactive module
     installation and updates use CurrentUser and confirmation, without sudo.
 .EXAMPLE
-    ./az-connect-si-cert-linux.ps1 -UseCertificateAuth -Tenant contoso.onmicrosoft.com -AppId 11111111-2222-3333-4444-555555555555 -SubscriptionId aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee -CertificateFilePath /home/admin/auth.pfx -ProfileName sentinel -SaveProfile -noupdate
+    ./az-connect-si-cert-linux.ps1 -UseCertificateAuth -Tenant 99999999-8888-7777-6666-555555555555 -AppId 11111111-2222-3333-4444-555555555555 -SubscriptionId aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee -CertificateFilePath /home/admin/auth.pfx -ProfileName sentinel -SaveProfile -noupdate
     One-time profile setup after configuring the app, certificate, and RBAC role.
     Prompt for the PFX password, connect, and save non-secret connection details.
 .EXAMPLE
@@ -201,6 +203,9 @@ if (-not ($Tenant -and $AppId -and $SubscriptionId -and $CertificateFilePath)) {
     throw 'Connection requires Tenant, AppId, SubscriptionId and CertificateFilePath, explicitly or from a saved profile.'
 }
 $parsedId = [guid]::Empty
+if (-not [guid]::TryParse($Tenant, [ref]$parsedId) -or $parsedId -eq [guid]::Empty) {
+    throw 'Tenant must be a non-empty Entra tenant ID GUID for Az certificate authentication; tenant domains are not supported. Find the Tenant ID in the Microsoft Entra admin center under Overview > Tenant ID, then pass -Tenant <GUID> or update the saved profile tenant value.'
+}
 if (-not [guid]::TryParse($AppId, [ref]$parsedId)) { throw 'AppId must be an application/client GUID.' }
 if (-not [guid]::TryParse($SubscriptionId, [ref]$parsedId)) { throw 'SubscriptionId must be a subscription GUID.' }
 
