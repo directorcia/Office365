@@ -127,15 +127,21 @@ test('scoring locations include only marked map hexes', () => {
   assert.equal(card.edgeAward(tile(state,18,7),'american'),0);
 });
 
-test('card exits award remaining CP times (16 minus turn/4), exactly once and without a ZOC exception', () => {
-  for(const turn of [1,7,12]) {
+test('card exits require no adjacent enemy and award remaining CP times (16 minus turn) divided by 4 exactly once', () => {
+  for(const [turn,points] of [[1,206.25],[7,123.75],[12,55]]) {
     const state=game.createGame(42,'manual');state.units.forEach(unit=>{unit.hp=0;});
     state.turn=turn;
     const unit=state.units[0],enemy=state.units.find(unit=>unit.side==='american');
     Object.assign(unit,point(0,4),{hp:55});
     Object.assign(enemy,point(1,4),{hp:50});
     card.assessDay(state,game);
-    const points=55*(16-turn/4);
+    assert.equal(state.exitPoints,0);
+    assert.equal(state.victoryPoints.german,0);
+    assert.equal(unit.exited,false);
+    assert.equal(game.occupant(state,tile(state,0,4)),unit);
+    restore(state);
+    enemy.hp=0;
+    card.assessDay(state,game);
     assert.equal(state.exitPoints,points);
     assert.equal(unit.exited,true);
     assert.equal(game.occupant(state,tile(state,0,4)),undefined);
@@ -143,6 +149,31 @@ test('card exits award remaining CP times (16 minus turn/4), exactly once and wi
     card.assessDay(state,game);
     assert.equal(state.exitPoints,points);
     restore(state);
+  }
+});
+
+test('card movement rejects contested exits for infantry and armor without spending resources', () => {
+  for(const type of ['infantry','armor']) {
+    for(const enemyStatus of ['active','eliminated','exited']) {
+      const state=game.createGame(42,'manual');state.units.forEach(unit=>{unit.hp=0;});
+      state.phase='german';state.orderPhase='movement';
+      const unit=state.units.find(unit=>unit.side==='german'&&unit.type===type);
+      const enemy=state.units.find(unit=>unit.side==='american');
+      Object.assign(unit,point(0,5),{hp:55,mp:30});
+      Object.assign(enemy,point(1,4),{hp:enemyStatus==='eliminated'?0:50,exited:enemyStatus==='exited'});
+      const destination=tile(state,0,4),before={...unit},fuel=state.fuel;
+      const allowed=enemyStatus!=='active';
+      assert.equal(game.reachable(state,unit).has(game.key(destination.x,destination.y)),allowed);
+      assert.equal(game.move(state,unit.id,destination.x,destination.y),allowed);
+      if(!allowed) {
+        assert.deepEqual(unit,before);
+        assert.equal(state.fuel,fuel);
+        assert.equal(state.exitPoints,0);
+        assert.deepEqual(state.victoryPoints,{german:0,american:0});
+      } else {
+        assert.equal(game.key(unit.x,unit.y),game.key(destination.x,destination.y));
+      }
+    }
   }
 });
 
@@ -180,6 +211,32 @@ function battleFixture(side='german') {
   state.artillery={german:0,american:0};
   return {state,attacker,defender};
 }
+
+test('rule 7.5 defence defaults to Hold and rejects Flexible in previews and combat', () => {
+  const {state,attacker,defender}=battleFixture();
+  assert.equal(state.defenseStrategy,'hold');
+  defender.hp=75;
+  assert.match(game.manual.preview(state,[attacker.id],defender.id).risk,/Hold position/);
+  state.playMode='computer';
+  assert.equal(game.manual.planBattle(state,attacker).options.defenseStrategy,'hold');
+  const before=JSON.stringify(state);
+  for(const action of ['preview','resolveAttack']) {
+    assert.throws(()=>game.manual[action](state,[attacker.id],defender.id,{defenseStrategy:'flexible'}),/strategy/);
+    assert.equal(JSON.stringify(state),before);
+  }
+});
+
+test('older saves convert Flexible to Hold including pending maneuvers', () => {
+  const {state,attacker,defender}=battleFixture();
+  game.manual.resolveAttack(state,[attacker.id],defender.id);
+  assert.ok(state.pendingBattle);
+  state.defenseStrategy='flexible';state.pendingBattle.defenseStrategy='flexible';
+  const copy=game.deserialize(JSON.stringify(state));
+  assert.equal(copy.defenseStrategy,'hold');
+  assert.equal(copy.pendingBattle.defenseStrategy,'hold');
+  restore(copy);
+  assert.equal(state.defenseStrategy,'flexible');
+});
 
 test('casualty VP equals actual CP removed, including elimination and maneuvers', () => {
   const {state,attacker,defender}=battleFixture();
@@ -405,7 +462,7 @@ test('new card settings and save schemas reject unknown revisions and corrupted 
   const state=game.createGame(42,'manual');
   for(const mutate of [
     s=>{s.aidCardVersion=2;},s=>{s.ratings.german=0;},s=>{s.scenario='invalid';},
-    s=>{s.defensiveArtillery=7;},s=>{s.victoryPoints.german=-1;},s=>{s.victoryPoints.german=0.1;},
+    s=>{s.defensiveArtillery=9;},s=>{s.victoryPoints.german=-1;},s=>{s.victoryPoints.german=0.1;},
     s=>{s.units[0].nationality='british';},s=>{s.units[0].maxHp++;},s=>{s.units[0].beganInZoc='yes';},
     s=>{s.display.hexes='yes';},s=>{s.pendingBattle={};},s=>{s.aidFlow={};}
   ]) {

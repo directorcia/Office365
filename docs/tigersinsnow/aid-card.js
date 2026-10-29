@@ -92,10 +92,13 @@
       if (unit.side === 'german') {
         changes.german += edgeAward(tile, 'german') * factor;
         if (tile.sourcePoints) changes.german += tile.sourcePoints * factor;
-        if (tile.exit) {
-          const points = unit.hp * (16 - state.turn / 4);
+        if (tile.exit && !base.neighbors(state, tile).some(next => {
+          const enemy = base.occupant(state, next);
+          return enemy && enemy.side !== unit.side;
+        })) {
+          const points = unit.hp * (16 - state.turn) / 4;
           changes.german += points; state.exitPoints += points; unit.exited = true; unit.mp = 0;
-          base.reportOperation(state, unit.side, `${unit.name} exited at ${unit.hp} CP × (16 − ${state.turn}/4), earning ${points} VP.`);
+          base.reportOperation(state, unit.side, `${unit.name} exited at ${unit.hp} CP × (16 − ${state.turn}) / 4, earning ${points} VP.`);
         }
       } else changes.american += edgeAward(tile, 'american');
     }

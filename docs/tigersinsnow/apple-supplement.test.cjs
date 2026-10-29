@@ -11,10 +11,198 @@ const restore = state => {
 };
 const seedForRoll = value => Number(((BigInt(value) - 1013904223n) * 4276115653n) & 0xffffffffn);
 
+test('Meuse edges match the supplied red course without including other river branches', () => {
+  const reference=game.referenceMap;
+  assert.equal(reference.meuseEdges.length,31);
+  assert.equal(new Set(reference.meuseEdges.map(({a,b})=>reference.edgeKey(a,b))).size,31);
+  for(const {a,b} of reference.meuseEdges) {
+    assert.equal(game.distance(a,b),1);
+    assert.equal(reference.crossesRiver(a,b),true);
+    assert.equal(reference.crossesMeuse(a,b),true);
+    assert.equal(reference.crossesMeuse(b,a),true);
+  }
+  for(const [ac,ar,bc,br] of [[0,2,1,3],[8,2,9,2],[10,2,11,2],[3,5,3,6],[13,6,14,6],[1,8,2,8]]) {
+    const a=point(ac,ar),b=point(bc,br);
+    assert.equal(reference.crossesRiver(a,b),true);
+    assert.equal(reference.crossesMeuse(a,b),false);
+  }
+});
+
+function britishFixture() {
+  const state=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+  state.turn=9;state.units.forEach(unit=>{unit.hp=0;});
+  rules.reinforce(state);
+  state.units.forEach(unit=>{unit.hp=0;});
+  state.phase='american';state.playerSide='american';state.orderPhase='movement';
+  return state;
+}
+
+test('rule 17.1 blocks all six British formations at the Meuse but permits other crossings', () => {
+  const state=britishFixture();
+  const british=state.units.filter(unit=>unit.nationality==='british');
+  assert.equal(british.length,6);
+  const us=state.units.find(unit=>unit.nationality==='us');
+  for(const unit of [...british,us]) {
+    for(const [ac,ar,bc,br,meuse] of [[1,4,2,4,true],[2,4,1,4,true],[8,2,9,2,false],[9,2,8,2,false],[1,4,1,5,false]]) {
+      state.units.forEach(unit=>{unit.hp=0;});
+      Object.assign(unit,point(ac,ar),{hp:unit.maxHp});
+      const destination=state.map[game.key(point(bc,br).x,br)];
+      unit.mp=rules.movementCost(state,unit,destination,unit);
+      const allowed=unit.nationality!=='british'||!meuse;
+      const before={...unit},fuel=state.fuel,supply={...state.generalSupply};
+      assert.equal(game.reachable(state,unit).has(game.key(destination.x,destination.y)),allowed);
+      assert.equal(game.move(state,unit.id,destination.x,destination.y),allowed);
+      if(!allowed) {
+        assert.deepEqual(unit,before);
+        assert.equal(state.fuel,fuel);
+        assert.deepEqual(state.generalSupply,supply);
+        assert.match(state.log[0],/British.*Meuse.*17\.1/);
+      }
+    }
+  }
+});
+
+test('British route planning never crosses any tagged Meuse edge', () => {
+  const state=britishFixture(),reference=game.referenceMap;
+  const unit=state.units.find(unit=>unit.nationality==='british'&&unit.type==='armor');
+  unit.hp=unit.maxHp;unit.mp=32;
+  for(const {a,b} of reference.meuseEdges) {
+    for(const from of [a,b]) {
+      Object.assign(unit,from);
+      for(const option of game.reachable(state,unit).values()) {
+        let previous=unit;
+        for(const next of option.path) {
+          assert.equal(reference.crossesMeuse(previous,next),false);
+          previous=next;
+        }
+      }
+    }
+  }
+});
+
+test('British retreats and advances cannot cross the Meuse but can cross other rivers', () => {
+  for(const kind of ['retreat','advance']) {
+    for(const [ac,ar,bc,br,meuse] of [[1,4,2,4,true],[2,4,1,4,true],[8,2,9,2,false],[9,2,8,2,false]]) {
+      const state=britishFixture();state.orderPhase='combat';
+      const unit=state.units.find(unit=>unit.nationality==='british');
+      const enemy=state.units.find(unit=>unit.side==='german');
+      Object.assign(unit,point(ac,ar),{hp:unit.maxHp});
+      Object.assign(enemy,kind==='retreat'?point(15,0):point(bc,br),{hp:kind==='retreat'?enemy.maxHp:0});
+      const destination=state.map[game.key(point(bc,br).x,br)];
+      const attacker=kind==='retreat'?enemy:unit,defender=kind==='retreat'?unit:enemy;
+      state.phase=attacker.side;state.playerSide=attacker.side;
+      let result=rules.maneuvers.start(state,{ids:[attacker.id],defenderId:defender.id,
+        before:[attacker,defender].map(counter=>({id:counter.id,name:counter.name,side:counter.side,hp:counter.maxHp})),
+        original:{x:defender.x,y:defender.y},attackerPositions:[{id:attacker.id,x:attacker.x,y:attacker.y}],
+        odds:2,attackStrategy:'assault',defenseStrategy:'hold',artillery:0,defensiveArtillery:0,
+        events:[],retreatCount:kind==='retreat'?1:0,advanceLimit:kind==='advance'?1:0,attackerMustRetreat:false});
+      if(kind==='advance'&&meuse) {
+        assert.equal(state.pendingBattle,undefined);
+        assert.deepEqual(result.advancePaths,[]);
+        assert.equal(game.key(unit.x,unit.y),game.key(point(ac,ar).x,ar));
+        continue;
+      }
+      const choices=rules.maneuvers.choices(state);
+      const crossing=choices.find(choice=>game.key(choice.tile.x,choice.tile.y)===game.key(destination.x,destination.y));
+      assert.equal(Boolean(crossing),!meuse);
+      if(meuse) {
+        const direction=game.aidCard.directions.findIndex(([dx,dy])=>unit.x+dx===destination.x&&unit.y+dy===destination.y)+1;
+        const before=JSON.stringify(state);
+        assert.throws(()=>rules.chooseManeuver(state,direction),/blocked/);
+        assert.equal(JSON.stringify(state),before);
+      }
+      const choice=crossing||choices[0];
+      result=rules.chooseManeuver(state,choice.direction);
+      const path=kind==='retreat'?result.retreatPath:result.advancePaths[0].path;
+      const next=state.map[path[0]];
+      assert.equal(game.referenceMap.crossesMeuse(point(ac,ar),next),false);
+    }
+  }
+});
+
+test('new supplement resources use example-scale stocks and survive recovery and saves', () => {
+  const state=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+  assert.equal(state.resourceVersion,1);
+  assert.deepEqual(state.generalSupply,{german:828,american:1577});
+  assert.equal(state.fuel,1023);
+  assert.deepEqual(state.artillery,{german:8,american:5});
+  restore(state);
+  state.artillery={german:0,american:0};
+  rules.finishDay(state);
+  assert.equal(state.turn,2);
+  assert.deepEqual(state.generalSupply,{german:878,american:1637});
+  assert.deepEqual(state.artillery,{german:8,american:5});
+  assert.equal(state.fuel,1023);
+  state.defensiveArtillery=8;
+  restore(state);
+  for(const mutate of [s=>{s.resourceVersion=2;},s=>{s.generalSupply.german=-1;},
+    s=>{s.generalSupply.american=1.5;},s=>{s.fuel=1024;},s=>{s.artillery.german=9;}]) {
+    const invalid=structuredClone(state);mutate(invalid);
+    assert.throws(()=>game.deserialize(JSON.stringify(invalid)),/Invalid|revision/);
+  }
+});
+
+test('older supplement saves retain the original resource scale and daily caps', () => {
+  let state=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+  delete state.resourceVersion;
+  state.generalSupply={german:120,american:120};state.fuel=120;
+  state.artillery={german:6,american:4};
+  state=restore(state);
+  rules.finishDay(state);
+  assert.deepEqual(state.generalSupply,{german:120,american:120});
+  assert.deepEqual(state.artillery,{german:6,american:4});
+  assert.equal(state.fuel,120);
+  restore(state);
+});
+
+test('rule 5.1 movement rolls and Allied starting-zone deductions are separate from entry costs', () => {
+  for(const side of ['german','american']) {
+    for(const type of ['infantry','armor']) {
+      for(const adjacent of [false,true]) {
+        for(let roll=0;roll<5;roll++) {
+          const state=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+          state.turn=2;state.weather='Overcast';
+          state.units.forEach(unit=>{unit.hp=0;});
+          const unit=state.units.find(unit=>unit.side===side&&unit.type===type);
+          Object.assign(unit,point(6,4),{hp:unit.maxHp});
+          if(adjacent) {
+            const enemy=state.units.find(unit=>unit.side!==side);
+            Object.assign(enemy,point(7,4),{hp:enemy.maxHp});
+          }
+          const target=Math.floor((roll+0.5)/5*4294967296);
+          state.seed=seedForRoll(target);
+          if(!adjacent) state.seed=seedForRoll(state.seed);
+          rules.beginSide(state,side);
+          assert.equal(unit.supplyState,'supplied');
+          assert.equal(unit.mp,unit.mobility+roll-2-(side==='american'&&adjacent?4:0));
+          const destination=state.map[game.key(point(7,5).x,5)];
+          const cost=rules.movementCost(state,unit,destination,unit);
+          const clearState={...state,units:state.units.filter(unit=>unit.side===side)};
+          assert.equal(cost-rules.movementCost(clearState,unit,destination,unit),adjacent?8:0);
+          restore(state);
+        }
+      }
+    }
+  }
+});
+
+test('movement revision 1 retains fixed starting allowances beside enemies', () => {
+  const state=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+  state.movementVersion=1;state.turn=2;state.weather='Overcast';
+  state.units.forEach(unit=>{unit.hp=0;});
+  const unit=state.units.find(unit=>unit.side==='american'&&unit.type==='infantry');
+  const enemy=state.units.find(unit=>unit.side==='german');
+  Object.assign(unit,point(6,4),{hp:unit.maxHp});
+  Object.assign(enemy,point(7,4),{hp:enemy.maxHp});
+  rules.beginSide(state,'american');
+  assert.equal(unit.mp,24);
+  restore(state);
+});
+
 test('revised movement crosses rough river enemy zones and retains legacy save allowances', () => {
   for (let seed=1;seed<=20;seed++) {
     const state=game.createGame(seed,'manual','german',2,{playMode:'hotseat'});
-    assert.equal(state.movementVersion,1);
+    assert.equal(state.movementVersion,2);
     assert.ok(state.units.every(unit=>unit.mobility===(unit.type==='armor'?30:24)));
     assert.ok(state.units.filter(unit=>unit.side==='german').every(unit=>unit.mp===0));
     state.turn=2;state.weather='Overcast';
@@ -25,7 +213,7 @@ test('revised movement crosses rough river enemy zones and retains legacy save a
     const enemy=state.units.find(counter=>counter.side==='american');
     Object.assign(enemy,point(16,3),{hp:enemy.maxHp});
     rules.beginSide(state,'german');
-    assert.equal(unit.mp,24);
+    assert.ok(unit.mp>=22&&unit.mp<=26);
     const destination=state.map[game.key(point(15,4).x,point(15,4).y)];
     const cost=rules.movementCost(state,unit,destination,unit);
     assert.ok(cost>=15&&cost<=19);
@@ -43,7 +231,7 @@ test('revised movement crosses rough river enemy zones and retains legacy save a
     delete legacy.movementVersion;
     legacy.units.forEach(counter=>{counter.mobility=counter.type==='armor'?10:8;});
     restore(legacy);
-    const invalid=structuredClone(legacy);invalid.movementVersion=2;
+    const invalid=structuredClone(legacy);invalid.movementVersion=3;
     assert.throws(()=>game.deserialize(JSON.stringify(invalid)),/movement rules revision/);
   }
 });
@@ -64,6 +252,69 @@ function advanceFixture(limit, roll, legacy=false) {
     events:[],retreatCount:0,advanceLimit:limit,attackerMustRetreat:false};
   return {state,attacker,defender,battle};
 }
+
+test('rule 7.8 worked example: 11:1 Major versus Delaying costs 0/13 CP and retreats three hexes', () => {
+  const state=game.createGame(42,'manual','german',2,{playMode:'hotseat',ratings:{german:7,american:5}});
+  state.units.forEach(unit=>{unit.hp=0;});
+  state.phase='german';state.orderPhase='combat';state.weather='Overcast';
+  const attackers=['card-g17','card-g14'].map(id=>state.units.find(unit=>unit.id===id));
+  const defender=state.units.find(unit=>unit.id==='card-a1');
+  Object.assign(attackers[0],point(5,0),{hp:114,readiness:7,fired:false,combatCount:0});
+  Object.assign(attackers[1],point(6,1),{hp:106,readiness:7,fired:false,combatCount:0});
+  Object.assign(defender,point(6,0),{hp:34,readiness:0,defended:false});
+  for(const unit of [...attackers,defender]) state.map[game.key(unit.x,unit.y)].terrain='plain';
+  state.artillery={german:0,american:0};
+  let seed=2147483648;
+  for(let roll=0;roll<6;roll++) seed=seedForRoll(seed);
+  state.seed=seed;
+  const ids=attackers.map(unit=>unit.id);
+  assert.equal(rules.preview(state,ids,defender.id,{strategy:'major',defenseStrategy:'delay'}).odds,11);
+  let result=rules.resolveAttack(state,ids,defender.id,{strategy:'major',defenseStrategy:'delay'});
+  assert.equal(result.odds,11);
+  assert.equal(result.attackStrategy,'major');
+  assert.equal(result.defenseStrategy,'delay');
+  assert.deepEqual(result.units.filter(unit=>unit.side==='german').map(unit=>unit.loss),[0,0]);
+  assert.equal(result.units.find(unit=>unit.id===defender.id).loss,13);
+  assert.equal(state.pendingBattle.retreatCount,3);
+  while(state.pendingBattle) {
+    const task=rules.maneuvers.current(state);
+    const choice=rules.maneuvers.choices(state).find(choice=>
+      !game.neighbors(state,choice.tile).some(tile=>game.occupant(state,tile)?.side==='german'));
+    result=rules.chooseManeuver(state,task.kind==='retreat'?choice.direction:'finish');
+  }
+  assert.equal(result.retreatPath.length,3);
+  assert.equal(result.units.find(unit=>unit.id===defender.id).loss,13);
+  assert.deepEqual(state.casualties,{german:0,american:13});
+});
+
+test('combat calibration survives saves while older campaigns retain their casualty formula', () => {
+  const {state,attacker,defender}=advanceFixture(1,2147483648);
+  attacker.fired=false;attacker.combatCount=0;defender.hp=75;
+  assert.equal(state.combatVersion,1);
+  const revised=restore(state),legacy=structuredClone(state);
+  delete legacy.combatVersion;
+  const restoredLegacy=restore(legacy);
+  assert.equal(restoredLegacy.combatVersion,undefined);
+  const options={strategy:'major',defenseStrategy:'delay'};
+  const revisedResult=rules.resolveAttack(revised,[attacker.id],defender.id,options);
+  const legacyResult=rules.resolveAttack(restoredLegacy,[attacker.id],defender.id,options);
+  assert.ok(revisedResult.units.find(unit=>unit.id===defender.id).loss<legacyResult.units.find(unit=>unit.id===defender.id).loss);
+  const invalid=structuredClone(state);invalid.combatVersion=2;
+  assert.throws(()=>game.deserialize(JSON.stringify(invalid)),/combat rules revision/);
+  delete invalid.appleSupplementVersion;
+  invalid.combatVersion=1;
+  assert.throws(()=>game.deserialize(JSON.stringify(invalid)),/supplement/i);
+});
+
+test('resource-scale supply previews agree with delivery probabilities and never exceed 100 percent', () => {
+  const {state,attacker,defender}=advanceFixture(1,0);
+  attacker.fired=false;attacker.combatCount=0;defender.hp=75;
+  state.generalSupply.german=414;
+  assert.match(rules.preview(state,[attacker.id],defender.id).risk,/attacker 50%, defender 100%/);
+  state.generalSupply.german=2000;
+  assert.match(rules.preview(state,[attacker.id],defender.id).risk,/attacker 100%, defender 100%/);
+  restore(state);
+});
 
 test('supplement second combat is certain for three hexes, exactly 25% for two, and announced before advance', () => {
   for(const [limit,roll,eligible] of [[1,0,false],[2,1073741823,true],[2,1073741824,false],[3,4294967295,true]]) {

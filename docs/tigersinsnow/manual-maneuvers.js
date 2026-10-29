@@ -15,6 +15,7 @@
       return base.aidCard.directions.map(([dx,dy], i) => {
         const tile = state.map[base.key(unit.x + dx, unit.y + dy)];
         if (!tile || base.occupant(state, tile) || task.path.includes(base.key(tile.x, tile.y))) return null;
+        if (!rules.canCross(state, unit, unit, tile)) return null;
         if (task.kind === 'advance' && !task.path.length &&
           base.key(tile.x, tile.y) !== base.key(task.first.x, task.first.y)) return null;
         return { direction: i + 1, tile };
@@ -191,7 +192,7 @@
         !Array.isArray(saved.retreatPath) || saved.retreatPath.length > 6 || saved.retreatPath.some(key => !state.map[key]) ||
         !paths(saved.attackerRetreats) || !paths(saved.advancePaths) ||
         !['recon','probe','assault','major'].includes(saved.attackStrategy) ||
-        !['counter','hold','flexible','delay','withdrawal'].includes(saved.defenseStrategy) ||
+        !['counter','hold','delay','withdrawal'].includes(saved.defenseStrategy) ||
         !Number.isInteger(saved.artillery) || saved.artillery < 0 || saved.artillery > 6 ||
         !Number.isInteger(saved.defensiveArtillery) || saved.defensiveArtillery < 0 || saved.defensiveArtillery > 6) {
         throw new Error('Invalid saved battle maneuver.');

@@ -1098,6 +1098,7 @@
     }
     $('defensive-artillery-label').hidden = !card; $('defensive-artillery').hidden = !card;
     if (card) {
+      $('defensive-artillery').max = state.resourceVersion === 1 ? 8 : 6;
       $('defensive-artillery').value = state.defensiveArtillery;
       $('defensive-artillery').disabled = observing() || busy || Boolean(state.pendingBattle);
     }
@@ -1543,8 +1544,9 @@
   $('defensive-artillery').onchange = event => {
     if (!aidCard.active(state) || busy || observing() || state.pendingBattle) return;
     const value = Number(event.target.value);
-    if (!event.target.validity.valid || !Number.isInteger(value) || value < 0 || value > 6) {
-      event.target.value = state.defensiveArtillery; message('Defensive artillery must be a whole number from 0 to 6.'); return;
+    const maximum = state.resourceVersion === 1 ? 8 : 6;
+    if (!event.target.validity.valid || !Number.isInteger(value) || value < 0 || value > maximum) {
+      event.target.value = state.defensiveArtillery; message(`Defensive artillery must be a whole number from 0 to ${maximum}.`); return;
     }
     state.defensiveArtillery = value; persist();
   };

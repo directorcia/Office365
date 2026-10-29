@@ -6,9 +6,13 @@
     const LEGACY_COST = { plain: 2, road: 1, town: 2, forest: 6, ridge: 8, river: 8 };
     // Strategy names are sourced; commitment factors and hidden combat formulas remain adaptations.
     const ATTACK = { recon: 0.35, probe: 0.6, assault: 1, major: 1.5 };
-    const DEFENSE = { counter: 1.6, hold: 1.3, flexible: 1, delay: 0.7, withdrawal: 0.5 };
+    const DEFENSE = { counter: 1.6, hold: 1.3, delay: 0.7, withdrawal: 0.5 };
     const supplement = state => base.aidCard.active(state) && state.appleSupplementVersion === 1;
-    const movementAllowance = (state, type) => state.movementVersion === 1 ?
+    const resourceProfile = state => state.resourceVersion === 1 ?
+      { supply: { german: 828, american: 1577 }, fuel: 1023, artillery: { german: 8, american: 5 } } :
+      { supply: { german: 120, american: 120 }, fuel: 120, artillery: { german: 6, american: 4 } };
+    const supplyChance = (state, side) => Math.min(1, state.generalSupply[side] / resourceProfile(state).supply[side]);
+    const movementAllowance = (state, type) => [1, 2].includes(state.movementVersion) ?
       type === 'armor' ? 30 : 24 : type === 'armor' ? 10 : 8;
     const strategyWeight = { recon: 1, probe: 1, assault: 3, major: 9 };
     function alteredStrategyChance(state, side, strategy) {
@@ -35,7 +39,7 @@
       log(state, `Allied air interdiction reduced German fuel ${fuel} points / supply ${supply} points.`);
     }
     const strategyLabel = value => ({ recon: 'Reconnaissance', probe: 'Light', assault: 'Medium', major: 'Major',
-      counter: 'Counter-attack', hold: 'Hold position', flexible: 'Flexible defense (legacy)',
+      counter: 'Counter-attack', hold: 'Hold position',
       delay: 'Delaying action', withdrawal: 'Withdrawal' }[value] || value);
     const LEGACY_SCHEDULE = [
       { id: 'a8', name: '101 Airborne', side: 'american', type: 'infantry', turn: 3, col: 5, row: 8, hp: 100 },
@@ -96,7 +100,9 @@
       const counter = base.occupant(state, next);
       return counter && counter.side !== side;
     });
-    const maneuvers = createManualManeuvers(base, { lose, capture, refreshSupply, score, log, random, enemyNear, localSupply, supplement });
+    const canCross = (state, unit, from, to) => state.referenceVersion !== 2 || unit.nationality !== 'british' ||
+      !base.referenceMap.crossesMeuse(from, to);
+    const maneuvers = createManualManeuvers(base, { lose, capture, refreshSupply, score, log, random, enemyNear, localSupply, supplement, canCross });
     function refreshSupply(state) {
       for (const unit of state.units.filter(living)) {
         unit.supplyState = localSupply(state, unit);
@@ -118,7 +124,9 @@
         unit.fired = false;
         unit.readiness = Math.min(7, unit.readiness + 1);
         if (!enemyNear(state, unit, side)) unit.hp = Math.min(unit.maxHp, unit.hp + 1 + Math.floor(random(state) * 3));
-        let allowance = unit.mobility * modifier(unit.supplyState);
+        const adjustment = state.movementVersion === 2 ? Math.floor(random(state) * 5) - 2 : 0;
+        let allowance = (unit.mobility + adjustment) * modifier(unit.supplyState);
+        if (state.movementVersion === 2 && side === 'american' && unit.beganInZoc) allowance -= 4;
         if (state.turn === 1) allowance = side === 'german' ? 0 : allowance / 2;
         if (side === 'german') {
           const air = { Overcast: 0, Cloudy: 1, Scattered: 3, Clear: 5 }[state.weather];
@@ -126,7 +134,7 @@
           const reduction = supplement(state) ? Math.min(Math.max(0, Math.floor(allowance)), airRoll) : airRoll;
           allowance -= reduction;
           if (supplement(state)) state.airInterdiction.movement[unit.id] = reduction;
-          if (unit.type === 'armor' && random(state) > state.fuel / 120) {
+          if (unit.type === 'armor' && random(state) > state.fuel / resourceProfile(state).fuel) {
             const beforeFuel = allowance;
             allowance /= 2;
             if (supplement(state) && Math.floor(beforeFuel) > Math.floor(allowance)) {
@@ -146,7 +154,7 @@
       if (!['german', 'american'].includes(playerSide)) throw new Error('Choose a valid command side.');
       Object.assign(state, { version: 2, ruleset: 'manual', playerSide, orderPhase: 'movement', weather: 'Overcast',
         generalSupply: { german: 120, american: 120 }, artillery: { german: 6, american: 4 },
-        fuel: 120, exitPoints: 0, alliedBreakthrough: 0, defenseStrategy: 'flexible',
+        fuel: 120, exitPoints: 0, alliedBreakthrough: 0, defenseStrategy: 'hold',
         arrivals: [], pending: [], referenceVersion });
       const strengths = { g1: 115, g2: 115, g3: 100, g4: 100, g5: 65, g6: 50, g7: 55,
         a1: 75, a2: 55, a3: 70, a4: 120, a5: 115, a6: 75, a7: 60 };
@@ -168,9 +176,15 @@
       }
       if (referenceVersion === 2 && options.aidCard !== false) {
         Object.assign(state, base.aidCard.options(options), { aidCardVersion: 1,
-          movementVersion: 1, victoryPoints: { german: 0, american: 0 }, casualties: { german: 0, american: 0 }, defensiveArtillery: 2 });
+          movementVersion: 2, victoryPoints: { german: 0, american: 0 }, casualties: { german: 0, american: 0 }, defensiveArtillery: 2 });
         if (options.appleSupplement !== false) {
           state.appleSupplementVersion = 1;
+          state.combatVersion = 1;
+          state.resourceVersion = 1;
+          const resources = resourceProfile(state);
+          state.generalSupply = { ...resources.supply };
+          state.fuel = resources.fuel;
+          state.artillery = { ...resources.artillery };
           state.strategyPressure = { german: 0, american: 0 };
         }
         if (['computer','hotseat'].includes(options.playMode)) state.playMode = options.playMode;
@@ -214,6 +228,10 @@
       if (unit && tile && living(unit) && !state.winner && !state.pendingBattle && !state.pendingDefense &&
         state.orderPhase === 'movement' && state.phase === unit.side && base.distance(unit, tile) === 1) {
         if (base.occupant(state, tile)) return 'Destination occupied: units cannot stack.';
+        if (!canCross(state, unit, unit, tile)) return 'British formations cannot cross the Meuse (rule 17.1).';
+        if (base.aidCard.active(state) && unit.side === 'german' && tile.exit && enemyNear(state, tile, unit.side)) {
+          return 'Cannot enter an exit hex next to an enemy formation.';
+        }
         if (base.aidCard.active(state) && unit.side === 'american' && unit.type === 'infantry' &&
           enemyNear(state, tile, unit.side) &&
           (enemyNear(state, unit, unit.side) ? tile.x >= unit.x : unit.beganInZoc)) {
@@ -251,6 +269,8 @@
         if (entry.path.length && enemyNear(state, current, unit.side) && !(unit.side === 'german' && unit.type === 'armor')) continue;
         for (const tile of base.neighbors(state, current)) {
           if (base.occupant(state, tile)) continue;
+          if (!canCross(state, unit, current, tile)) continue;
+          if (base.aidCard.active(state) && unit.side === 'german' && tile.exit && enemyNear(state, tile, unit.side)) continue;
           // Original directions 4/5/6 correspond to the westward half of this hex layout.
           if (unit.side === 'american' && unit.type === 'infantry' && enemyNear(state, current, unit.side) &&
             enemyNear(state, tile, unit.side) && tile.x >= current.x) continue;
@@ -365,7 +385,7 @@
       if (!Array.isArray(ids) || !ids.length || ids.length > 6 || new Set(ids).size !== ids.length ||
         ids.some(id => !eligible.some(unit => unit.id === id))) throw new Error('Choose 1-6 eligible adjacent, non-isolated attackers in the combat phase.');
       let attackStrategy = options.strategy || 'assault';
-      let defenseStrategy = options.defenseStrategy || (defender.side === state.playerSide ? state.defenseStrategy : 'flexible');
+      let defenseStrategy = options.defenseStrategy || (defender.side === state.playerSide ? state.defenseStrategy : 'hold');
       const artillery = options.artillery === undefined ? 0 : options.artillery;
       if (!Object.hasOwn(ATTACK, attackStrategy) || !Object.hasOwn(DEFENSE, defenseStrategy) ||
         !Number.isInteger(artillery) || artillery < 0 || artillery > Math.min(ids.length, state.artillery[state.phase])) {
@@ -383,12 +403,12 @@
         attackStrategy = strategies[Math.floor(random(state) * strategies.length)]; events.push('Attacking orders altered.');
       }
       if (random(state) < 0.06 * DEFENSE[defenseStrategy]) {
-        const strategies = state.referenceVersion ? ['counter', 'hold', 'delay', 'withdrawal'] : ['hold', 'flexible', 'delay'];
+        const strategies = Object.keys(DEFENSE);
         defenseStrategy = strategies[Math.floor(random(state) * strategies.length)]; events.push('Defending orders altered.');
       }
       state.artillery[side] -= artillery; state.artillery[defenseSide] -= defensiveArtillery;
       function suppliedStrength(unit, defending) {
-        const delivered = random(state) < Math.min(1, state.generalSupply[unit.side] / 120);
+        const delivered = random(state) < supplyChance(state, unit.side);
         if (!delivered) events.push(`${unit.name}: general supply failed; strength halved.`);
         return strength(state, unit, defending) * (delivered ? 1 : 0.5);
       }
@@ -397,8 +417,10 @@
       const odds = attackTotal / Math.max(1, defenseTotal);
       const intensity = ATTACK[attackStrategy] + DEFENSE[defenseStrategy];
       const roll = random(state);
-      const defenseLoss = Math.max(1, Math.round((odds * 5 + roll * 8) * intensity));
-      const attackLoss = Math.max(0, Math.round((8 / Math.max(0.25, odds) + (1 - roll) * 4) * intensity));
+      const calibrated = state.combatVersion === 1;
+      const defenseLoss = Math.max(1, Math.round((odds * 5 + roll * 8) * intensity / (calibrated ? 10 : 1)));
+      const attackExposure = (8 / Math.max(0.25, odds) + (1 - roll) * 4) * intensity;
+      const attackLoss = Math.max(0, calibrated ? Math.floor(attackExposure / Math.max(1, odds)) : Math.round(attackExposure));
       const totalHp = attackers.reduce((sum, unit) => sum + unit.hp, 0);
       attackers.forEach(unit => {
         if (supplement(state)) unit.combatCount++;
@@ -515,7 +537,7 @@
         const artillery = Math.min(attackers.length, state.artillery[unit.side], state.generalSupply[unit.side] < 40 ? 1 : 3);
         const ids = attackers.map(attacker => attacker.id);
         const defenseStrategy = state.playMode !== 'computer' && defender.side === state.playerSide ? state.defenseStrategy :
-          state.map[base.key(defender.x, defender.y)].value ? 'hold' : defender.hp < defender.maxHp * 0.4 ? 'delay' : 'flexible';
+          state.map[base.key(defender.x, defender.y)].value ? 'hold' : defender.hp < defender.maxHp * 0.4 ? 'delay' : 'hold';
         const options = { strategy: state.generalSupply[unit.side] < 35 ? 'probe' : 'assault', artillery, defenseStrategy };
         const odds = preview(state, ids, defender.id, options).odds;
         return { defender, ids, options, odds, reason: 'combine adjacent forces to open an objective route without exhausting supply' };
@@ -529,7 +551,7 @@
       if (!ids.length || ids.length > 6 || new Set(ids).size !== ids.length ||
         ids.some(id => !eligible.some(unit => unit.id === id))) throw new Error('Choose eligible adjacent attackers.');
       const strategy = options.strategy || 'assault', defenseStrategy = options.defenseStrategy ||
-        (defender.side === state.playerSide ? state.defenseStrategy : 'flexible'), artillery = options.artillery ?? 0;
+        (defender.side === state.playerSide ? state.defenseStrategy : 'hold'), artillery = options.artillery ?? 0;
       if (!Object.hasOwn(ATTACK, strategy) || !Object.hasOwn(DEFENSE, defenseStrategy) ||
         !Number.isInteger(artillery) || artillery < 0 || artillery > Math.min(ids.length, state.artillery[state.phase])) {
         throw new Error('Invalid combat strategy or artillery allocation.');
@@ -541,7 +563,7 @@
       const odds = attackTotal / Math.max(1, defenseTotal);
       const tile = state.map[base.key(defender.x, defender.y)];
       return { odds, detail: `${attackers.map(unit => `${unit.name}: ${unit.hp} CP, readiness x${(1 + unit.readiness / 10).toFixed(1)}, ${localSupply(state, unit)} supply x${modifier(localSupply(state, unit))}, river attack x${riverAttack(state, unit, defender)}${state.referenceVersion === 2 && state.map[base.key(unit.x, unit.y)].terrain === 'westwall' && unit.side === 'german' ? ', Westwall attack x2' : ''}`).join('; ')}. Attack total ${attackTotal.toFixed(1)} (artillery +${artillery * 10}). ${defender.name}: ${defender.hp} CP, readiness x${(1 + defender.readiness / 10).toFixed(1)}, ${localSupply(state, defender)} supply x${modifier(localSupply(state, defender))}, ${tile.terrain} defense x${terrainDefense(state, tile, defender.side)}. Defense total ${defenseTotal.toFixed(1)} (artillery +${defensiveArtillery * 10}).`,
-        risk: `${odds < 1 ? 'High risk' : odds < 1.7 ? 'Contested' : 'Favorable'} nominal odds before random general-supply failures. Supply delivery chance: attacker ${Math.round(state.generalSupply[state.phase] / 120 * 100)}%, defender ${Math.round(state.generalSupply[defender.side] / 120 * 100)}%. ${strategyLabel(strategy)} / ${strategyLabel(defenseStrategy)} commitment x${(ATTACK[strategy] + DEFENSE[defenseStrategy]).toFixed(2)} affects losses and consumption, not these nominal odds. Weather ${state.weather}: Allied air losses may apply. Retreats, advances, order changes and low-strength elimination remain uncertain. This is an adapted model, not the original hidden combat table.` };
+        risk: `${odds < 1 ? 'High risk' : odds < 1.7 ? 'Contested' : 'Favorable'} nominal odds before random general-supply failures. Supply delivery chance: attacker ${Math.round(supplyChance(state, state.phase) * 100)}%, defender ${Math.round(supplyChance(state, defender.side) * 100)}%. ${strategyLabel(strategy)} / ${strategyLabel(defenseStrategy)} commitment x${(ATTACK[strategy] + DEFENSE[defenseStrategy]).toFixed(2)} affects losses and consumption, not these nominal odds. Weather ${state.weather}: Allied air losses may apply. Retreats, advances, order changes and low-strength elimination remain uncertain. This is an adapted model, not the original hidden combat table.` };
     }
     function reinforce(state) {
       state.arrivals = [];
@@ -632,9 +654,10 @@
       state.turn++;
       state.weather = state.turn < 4 ? 'Overcast' : state.turn < 8 ?
         (random(state) < 0.6 ? 'Cloudy' : 'Scattered') : (random(state) < 0.8 ? 'Clear' : 'Scattered');
-      state.generalSupply.german = Math.min(120, state.generalSupply.german + 50);
-      state.generalSupply.american = Math.min(120, state.generalSupply.american + 60);
-      state.artillery = { german: 6, american: 4 };
+      const supplyLimit = state.resourceVersion === 1 ? Number.MAX_SAFE_INTEGER : 120;
+      state.generalSupply.german = Math.min(supplyLimit, state.generalSupply.german + 50);
+      state.generalSupply.american = Math.min(supplyLimit, state.generalSupply.american + 60);
+      state.artillery = { ...resourceProfile(state).artillery };
       if (['Clear', 'Scattered'].includes(state.weather)) {
         for (const unit of state.units.filter(unit => living(unit) && unit.side === 'american')) {
           if (random(state) < 0.3 && localSupply(state, unit) !== 'supplied') {
@@ -725,11 +748,22 @@
       return result;
     }
     function deserialize(parsed) {
+      parsed = { ...parsed, defenseStrategy: parsed.defenseStrategy === 'flexible' ? 'hold' : parsed.defenseStrategy,
+        ...(parsed.pendingBattle?.defenseStrategy === 'flexible' ?
+          { pendingBattle: { ...parsed.pendingBattle, defenseStrategy: 'hold' } } : {}) };
       const integer = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
       const card = base.aidCard.active(parsed);
       if (parsed.appleSupplementVersion !== undefined && (!card || parsed.appleSupplementVersion !== 1)) {
         throw new Error('Unknown Apple supplement rules revision.');
       }
+      if (parsed.resourceVersion !== undefined && (!supplement(parsed) || parsed.resourceVersion !== 1)) {
+        throw new Error('Unknown Apple supplement resource rules revision.');
+      }
+      if (parsed.combatVersion !== undefined && (!supplement(parsed) || parsed.combatVersion !== 1)) {
+        throw new Error('Unknown Apple supplement combat rules revision.');
+      }
+      const resources = resourceProfile(parsed);
+      const supplyLimit = parsed.resourceVersion === 1 ? Number.MAX_SAFE_INTEGER : 120;
       if (supplement(parsed)) {
         if (!parsed.strategyPressure || !['german','american'].every(side => integer(parsed.strategyPressure[side], 0, 10000)) ||
           !parsed.airInterdiction || !integer(parsed.airInterdiction.turn, 1, parsed.turn) ||
@@ -743,14 +777,14 @@
       }
       const points = value => Number.isFinite(value) && value >= 0 && value <= 1000000 && Number.isInteger(value * 4);
       if (parsed.aidCardVersion !== undefined && !card) throw new Error('Unknown player-aid rules revision.');
-      if (parsed.movementVersion !== undefined && (!card || parsed.movementVersion !== 1)) {
+      if (parsed.movementVersion !== undefined && (!card || ![1, 2].includes(parsed.movementVersion))) {
         throw new Error('Unknown movement rules revision.');
       }
       if (card) {
         base.aidCard.options(parsed);
         if (parsed.referenceVersion !== 2 || !parsed.victoryPoints || !parsed.casualties || !parsed.ratings || !parsed.display ||
           !['campaign','short'].includes(parsed.scenario) ||
-          !integer(parsed.defensiveArtillery, 0, 6) ||
+          !integer(parsed.defensiveArtillery, 0, resources.artillery.german) ||
           !['german','american'].every(side => points(parsed.victoryPoints[side]) &&
             integer(parsed.casualties[side], 0, 100000)) || parsed.turn > base.aidCard.lastTurn(parsed)) {
           throw new Error('Invalid player-aid campaign data.');
@@ -763,14 +797,14 @@
         (parsed.playMode !== undefined && !['human', 'computer', ...(card ? ['hotseat'] : [])].includes(parsed.playMode)) ||
         (parsed.playMode === 'computer' && parsed.playerSide !== 'german') ||
         (!parsed.winner && parsed.phase !== parsed.playerSide && !(parsed.playMode === 'computer' && parsed.computerProgress) &&
-          !(card && (parsed.pendingBattle || parsed.pendingDefense) && parsed.aidFlow)) || !integer(parsed.fuel, 0, 120) ||
+          !(card && (parsed.pendingBattle || parsed.pendingDefense) && parsed.aidFlow)) || !integer(parsed.fuel, 0, resources.fuel) ||
         (parsed.referenceVersion !== undefined && ![1, 2].includes(parsed.referenceVersion)) ||
         (parsed.referenceVersion === 2 && !integer(parsed.initialSeed, 0, 4294967295)) ||
         !(card ? points(parsed.exitPoints) : integer(parsed.exitPoints, 0, 1000)) ||
         !integer(parsed.alliedBreakthrough, 0, card ? 1000 : 100) ||
         !Object.hasOwn(DEFENSE, parsed.defenseStrategy) || !parsed.generalSupply || !parsed.artillery ||
-        !['german', 'american'].every(side => integer(parsed.generalSupply[side], 0, 120) &&
-          integer(parsed.artillery[side], 0, side === 'german' ? 6 : 4)) ||
+        !['german', 'american'].every(side => integer(parsed.generalSupply[side], 0, supplyLimit) &&
+          integer(parsed.artillery[side], 0, resources.artillery[side])) ||
         !Array.isArray(parsed.units) || parsed.units.length < (card ? 29 : 14) || parsed.units.length > (card ? 66 : 21) ||
         !Array.isArray(parsed.log) || parsed.log.length > 60 || parsed.log.some(text => typeof text !== 'string' || text.length > 250)) {
         throw new Error('Invalid manual-mode campaign data.');
@@ -780,6 +814,8 @@
       if (card) {
         Object.assign(template, base.aidCard.options(parsed), { aidCardVersion: 1,
           victoryPoints: { ...parsed.victoryPoints }, casualties: { ...parsed.casualties }, defensiveArtillery: parsed.defensiveArtillery });
+        if (parsed.resourceVersion !== undefined) template.resourceVersion = parsed.resourceVersion;
+        if (parsed.combatVersion !== undefined) template.combatVersion = parsed.combatVersion;
         if (parsed.playMode) template.playMode = parsed.playMode;
         template.playerSide = parsed.playerSide;
         for (const tile of Object.values(template.map).filter(tile => tile.sourcePoints)) {
@@ -798,7 +834,8 @@
           (card && (unit.nationality !== expected.nationality || unit.maxHp !== base.aidCard.strength(expected, template) ||
             expected.turn > parsed.turn || (unit.beganInZoc !== undefined && typeof unit.beganInZoc !== 'boolean'))) ||
           (supplement(parsed) && !integer(unit.combatCount, 0, 2)) ||
-          unit.hp > unit.maxHp || !integer(unit.mobility, 1, parsed.movementVersion === 1 ? 30 : 24) || !integer(unit.mp, 0, unit.mobility) ||
+          unit.hp > unit.maxHp || !integer(unit.mobility, 1, parsed.movementVersion ? 30 : 24) ||
+          !integer(unit.mp, 0, unit.mobility + (parsed.movementVersion === 2 ? 2 : 0)) ||
           !integer(unit.attack, 1, 12) || !integer(unit.defense, 1, 12) || !integer(unit.readiness, 0, 7) ||
           !['fired', 'defended', 'exited', 'supplied'].every(field => typeof unit[field] === 'boolean') ||
           !['supplied', 'limited', 'isolated'].includes(unit.supplyState) ||

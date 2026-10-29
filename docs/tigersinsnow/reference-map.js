@@ -57,6 +57,13 @@
     [15,9,15,10],[15,9,14,10],[16,9,16,10],[16,9,15,10],[17,9,16,10]
   ].map(([ac, ar, bc, br]) => ({ a: position(ac, ar), b: position(bc, br) }));
   const rivers = new Set(riverEdges.map(edge => edgeKey(edge.a, edge.b)));
+  const meuseEdges = [
+    [6,0,7,1],[7,0,8,1],[7,0,7,1],[8,0,9,1],[8,0,8,1],[9,0,10,0],[9,0,10,1],[9,0,9,1],
+    [3,1,3,2],[4,1,4,2],[4,1,3,2],[5,1,5,2],[5,1,4,2],[6,1,7,1],[6,1,6,2],[6,1,5,2],
+    [2,2,3,2],[2,2,3,3],[2,2,2,3],[2,3,3,3],[2,3,2,4],[1,4,2,4],[2,4,2,5],
+    [2,5,3,5],[2,5,2,6],[1,6,2,6],[1,6,2,7],[1,7,2,7],[1,7,1,8],[2,7,1,8],[0,8,1,8]
+  ].map(([ac, ar, bc, br]) => ({ a: position(ac, ar), b: position(bc, br) }));
+  const meuse = new Set(meuseEdges.map(edge => edgeKey(edge.a, edge.b)));
   const center = tile => ({ x: 38 + tile.x * Math.sqrt(3) * 13, y: 40 + tile.y * 39 });
   const riverSegments = riverEdges.map(({ a, b }) => {
     const first = center(a), second = center(b), dx = second.x - first.x, dy = second.y - first.y;
@@ -81,8 +88,8 @@
     ]) Object.assign(map[key(position(c, r))], { name, value, sourcePoints, owner: 'american' });
     return map;
   }
-  const api = { COLS, ROWS, terrainRows, position, entries, riverEdges, riverSegments, center, createMap,
-    crossesRiver: (a, b) => rivers.has(edgeKey(a, b)), edgeKey };
+  const api = { COLS, ROWS, terrainRows, position, entries, riverEdges, meuseEdges, riverSegments, center, createMap,
+    crossesRiver: (a, b) => rivers.has(edgeKey(a, b)), crossesMeuse: (a, b) => meuse.has(edgeKey(a, b)), edgeKey };
   if (typeof module === 'object') module.exports = api;
   else root.ReferenceMap = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

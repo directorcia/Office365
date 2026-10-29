@@ -325,7 +325,7 @@
             <section id="defense-panel" aria-label="Pending defensive battle" hidden>
               <h2>DEFEND THIS BATTLE</h2><p id="defense-description"></p>
               <label for="battle-defense-strategy">Defensive strategy</label>
-              <select id="battle-defense-strategy"><option value="counter">Counter-attack</option><option value="hold">Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option><option value="flexible">Flexible defense (adaptation)</option></select>
+              <select id="battle-defense-strategy"><option value="counter">Counter-attack</option><option value="hold" selected>Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option></select>
               <label for="battle-defense-artillery">Defensive artillery</label><input id="battle-defense-artillery" type="number" min="0" max="6" step="1" value="0">
               <button id="resolve-defense">Resolve defensive battle</button><p id="defense-error" role="alert"></p>
             </section>
@@ -380,7 +380,7 @@
         <section id="manual-command" aria-label="Manual-mode command settings" hidden>
           <p id="resources"></p>
           <label for="defense-strategy">Defensive stance against computer attacks</label>
-          <select id="defense-strategy"><option value="counter">Counter-attack</option><option value="hold">Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option><option value="flexible">Flexible defense (legacy adaptation)</option></select>
+          <select id="defense-strategy"><option value="counter">Counter-attack</option><option value="hold" selected>Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option></select>
           <label id="defensive-artillery-label" for="defensive-artillery" hidden>Defensive artillery commitment against computer attacks (capped by available points)</label>
           <input id="defensive-artillery" type="number" min="0" max="6" step="1" value="2" hidden>
           <p>Set your defensive stance and artillery commitment before ending combat. CP means combat points. <a href="help.html#manual-mode" target="_blank" rel="noopener">Manual-mode rules and approximations</a></p>
