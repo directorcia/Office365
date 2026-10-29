@@ -130,7 +130,7 @@ test('new supplement resources use example-scale stocks and survive recovery and
   state.artillery={german:0,american:0};
   rules.finishDay(state);
   assert.equal(state.turn,2);
-  assert.deepEqual(state.generalSupply,{german:1627,american:888});
+  assert.deepEqual(state.generalSupply,{german:1647,american:864});
   assert.deepEqual(state.artillery,{german:8,american:5});
   assert.equal(state.fuel,1023);
   state.defensiveArtillery=8;
@@ -224,6 +224,7 @@ test('revised movement crosses rough river enemy zones and retains legacy save a
     assert.equal(game.move(state,unit.id,destination.x,destination.y),false);
     unit.mp=24;
     assert.ok(game.reachable(state,unit).has(game.key(destination.x,destination.y)));
+    state.seed=seedForRoll(Math.floor(0.9*4294967296));
     assert.ok(game.move(state,unit.id,destination.x,destination.y));
     assert.equal(unit.mp,0);
     restore(state);
@@ -467,7 +468,9 @@ test('supplement saves retain pressure and interdiction; older card and Classic 
   for(const mutate of [
     s=>{s.appleSupplementVersion=2;},s=>{s.strategyPressure.german=-1;},
     s=>{s.strategyPressure.german=0.5;},s=>{delete s.airInterdiction;},
-    s=>{s.airInterdiction.fuel=6;},s=>{s.airInterdiction.movement.unknown=1;},
+    s=>{s.airInterdiction.fuel=5*rules.provisional.interdictionFuelScale+1;},
+    s=>{s.airInterdiction.supply=5*rules.provisional.interdictionSupplyScale+1;},
+    s=>{s.airInterdiction.movement.unknown=1;},
     s=>{s.units[0].combatCount=3;},
     s=>{delete s.appleSupplementVersion;}
   ]) {
@@ -599,4 +602,211 @@ test('artillery caps follow the side that owns them', () => {
   const html=require('node:fs').readFileSync(require('node:path').join(__dirname,'index.html'),'utf8');
   assert.match(html,/id="battle-defense-artillery"[^>]*max="8"/);
   assert.match(html,/id="defensive-artillery"[^>]*max="8"/);
+});
+
+test('example-scale interdiction, refill and fuel use are multiples of the old 120-point steps', () => {
+  const {interdictionFuelScale,interdictionSupplyScale,refill,fuelMultiplier}=rules.provisional;
+  assert.equal(rules.armorFuel(game.createGame(1,'manual'),'plain'),fuelMultiplier*Math.ceil(rules.COST.plain/2));
+  assert.equal(rules.armorFuel(game.createGame(1,'manual'),'attack'),fuelMultiplier*2);
+  const legacy=game.createGame(1,'manual','german',2,{playMode:'hotseat'});
+  delete legacy.resourceVersion;
+  assert.equal(rules.armorFuel(legacy,'plain'),Math.ceil(rules.COST.plain/2));
+  assert.equal(rules.armorFuel(legacy,'attack'),2);
+  const state=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+  state.turn=8;state.weather='Clear';state.airInterdiction.turn=1;
+  state.seed=seedForRoll(Math.floor(0.99*4294967296));
+  const fuel=state.fuel,supply=state.generalSupply.german;
+  rules.beginSide(state,'german');
+  assert.equal(state.airInterdiction.fuel,Math.min(fuel,5*interdictionFuelScale));
+  assert.equal(state.airInterdiction.supply,Math.min(supply,Math.floor((state.airInterdiction.supply/interdictionSupplyScale))*interdictionSupplyScale));
+  assert.ok(state.airInterdiction.fuel>5);
+  assert.equal(state.airInterdiction.fuel%interdictionFuelScale,0);
+  assert.equal(state.airInterdiction.supply%interdictionSupplyScale,0);
+  assert.ok(state.airInterdiction.supply<=5*interdictionSupplyScale);
+  state.weather='Overcast';state.turn=9;state.seed=seedForRoll(1);
+  const before=state.seed;
+  rules.beginSide(state,'german');
+  assert.equal(state.airInterdiction.fuel,0);
+  assert.equal(state.airInterdiction.supply,0);
+  assert.notEqual(state.seed,before);
+  legacy.turn=8;legacy.weather='Clear';legacy.fuel=120;
+  legacy.generalSupply={german:120,american:120};legacy.artillery={german:6,american:4};
+  legacy.airInterdiction.turn=1;legacy.seed=seedForRoll(Math.floor(0.99*4294967296));
+  rules.beginSide(legacy,'german');
+  assert.ok(legacy.airInterdiction.fuel<=5&&legacy.airInterdiction.supply<=5);
+  const moved=game.createGame(7,'manual','german',2,{playMode:'hotseat'});
+  moved.turn=2;moved.phase='german';moved.orderPhase='movement';
+  moved.units.forEach(unit=>{unit.hp=0;});
+  const armor=moved.units.find(unit=>unit.side==='german'&&unit.type==='armor');
+  const origin=point(8,5),destination=moved.map[game.key(point(9,5).x,5)];
+  assert.equal(game.referenceMap.crossesRiver(origin,destination),false);
+  Object.assign(armor,origin,{hp:armor.maxHp,mp:30});
+  const pool=moved.fuel;
+  assert.equal(game.move(moved,armor.id,destination.x,destination.y),true);
+  assert.equal(pool-moved.fuel,rules.armorFuel(moved,destination.terrain));
+  assert.equal(refill.german,70);
+  assert.equal(refill.american,36);
+});
+
+test('rule 16.2 prints BRIDGE BLOWN and stops a German river crossing', () => {
+  function crossing(roll,options) {
+    const state=game.createGame(42,'manual','german',2,{playMode:'hotseat',...options});
+    state.turn=2;state.phase='german';state.orderPhase='movement';state.weather='Overcast';
+    state.units.forEach(unit=>{unit.hp=0;});
+    const unit=state.units.find(unit=>unit.side==='german'&&unit.type==='armor');
+    const edge=game.referenceMap.riverEdges.find(({a,b})=>state.map[game.key(a.x,a.y)]&&state.map[game.key(b.x,b.y)]);
+    Object.assign(unit,edge.a,{hp:unit.maxHp,mp:30,exited:false});
+    state.seed=seedForRoll(Math.floor(roll*4294967296));
+    const fuel=state.fuel;
+    const moved=game.move(state,unit.id,edge.b.x,edge.b.y);
+    return {state,unit,moved,fuel,to:edge.b};
+  }
+  const blown=crossing(0.05);
+  assert.equal(blown.moved,false);
+  assert.match(blown.state.log[0],/BRIDGE BLOWN/);
+  assert.equal(blown.unit.mp,0);
+  assert.equal(blown.state.fuel,blown.fuel);
+  assert.notEqual(game.key(blown.unit.x,blown.unit.y),game.key(blown.to.x,blown.to.y));
+  const crossed=crossing(0.8);
+  assert.equal(crossed.moved,true);
+  assert.equal(game.key(crossed.unit.x,crossed.unit.y),game.key(crossed.to.x,crossed.to.y));
+  assert.equal(crossed.fuel-crossed.state.fuel,rules.armorFuel(crossed.state,crossed.state.map[game.key(crossed.to.x,crossed.to.y)].terrain));
+  assert.ok(!crossed.state.log.some(line=>line.includes('BRIDGE BLOWN')));
+  const older=crossing(0.05,{appleSupplement:false});
+  assert.equal(older.moved,true);
+  assert.ok(!older.state.log.some(line=>line.includes('BRIDGE BLOWN')));
+});
+
+test('rule 5.8 fogs enemy CP for display and leaves true strength in combat', () => {
+  const state=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+  state.playMode='human';state.phase='german';state.playerSide='german';
+  const enemy=state.units.find(unit=>unit.side==='american'&&unit.hp>0);
+  const friend=state.units.find(unit=>unit.side==='german'&&unit.hp>0);
+  const seed=state.seed,trueHp=enemy.hp;
+  const shown=rules.displayedCombatPoints(state,enemy);
+  assert.equal(state.seed,seed);
+  assert.equal(enemy.hp,trueHp);
+  assert.ok(shown>=trueHp+1&&shown<=trueHp+rules.provisional.fog.human);
+  assert.equal(rules.displayedCombatPoints(state,enemy),shown);
+  assert.equal(rules.displayedCombatPoints(state,friend),friend.hp);
+  state.phase='american';
+  const coarse=rules.displayedCombatPoints(state,enemy);
+  assert.ok(coarse>=trueHp+1&&coarse<=trueHp+rules.provisional.fog.computer);
+  assert.equal(rules.enemyStrengthOffset(state,friend),0);
+  state.playMode='computer';
+  assert.equal(rules.displayedCombatPoints(state,enemy),trueHp);
+  function battle(seedValue) {
+    const fixture=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+    fixture.units.forEach(unit=>{unit.hp=0;});
+    fixture.phase='german';fixture.orderPhase='combat';fixture.weather='Overcast';
+    fixture.playMode='human';fixture.playerSide='german';
+    fixture.artillery={german:0,american:0};
+    const attacker=fixture.units.find(unit=>unit.id==='card-g1');
+    const defender=fixture.units.find(unit=>unit.id==='card-a1');
+    Object.assign(attacker,point(5,0),{hp:80,maxHp:80,readiness:0,fired:false,combatCount:0});
+    Object.assign(defender,point(6,0),{hp:80,maxHp:80,readiness:0,defended:false,combatCount:0});
+    for(const tile of [point(5,0),point(6,0)]) fixture.map[game.key(tile.x,tile.y)].terrain='plain';
+    fixture.seed=seedValue;
+    return {fixture,attacker,defender};
+  }
+  const roll=seedForRoll(2147483648);
+  const fogged=battle(roll),plain=battle(roll);
+  rules.displayedCombatPoints(fogged.fixture,fogged.defender);
+  assert.ok(rules.displayedCombatPoints(fogged.fixture,fogged.defender)>fogged.defender.hp);
+  const fogResult=rules.resolveAttack(fogged.fixture,[fogged.attacker.id],fogged.defender.id,{strategy:'assault',defenseStrategy:'hold',artillery:0});
+  const plainResult=rules.resolveAttack(plain.fixture,[plain.attacker.id],plain.defender.id,{strategy:'assault',defenseStrategy:'hold',artillery:0});
+  assert.equal(fogResult.odds,plainResult.odds);
+  assert.deepEqual(fogResult.units.map(unit=>unit.loss),plainResult.units.map(unit=>unit.loss));
+});
+
+test('rule 10.5 airdrops succeed more often in Clear weather than Scattered', () => {
+  assert.ok(rules.provisional.airdrop.Clear>rules.provisional.airdrop.Scattered);
+  function attempt(weather,roll) {
+    const state=game.createGame(1,'manual','german',2,{playMode:'hotseat'});
+    state.units.forEach(unit=>{unit.hp=0;});
+    const unit=state.units.find(unit=>unit.side==='american');
+    Object.assign(unit,point(8,5),{hp:40,maxHp:80,exited:false});
+    const deltas=[[-1,-1],[1,-1],[2,0],[1,1],[-1,1],[-2,0]];
+    state.units.filter(unit=>unit.side==='german').slice(0,6).forEach((enemy,index)=>{
+      const [dx,dy]=deltas[index];
+      Object.assign(enemy,{hp:30,maxHp:50,exited:false,x:unit.x+dx,y:unit.y+dy});
+    });
+    assert.equal(rules.localSupply(state,unit),'isolated');
+    state.turn=6;state.weather=weather;
+    state.seed=seedForRoll(Math.floor(roll*4294967296));
+    rules.attemptAirdrops(state);
+    return unit.airdropTurn;
+  }
+  const between=(rules.provisional.airdrop.Scattered+rules.provisional.airdrop.Clear)/2;
+  assert.equal(attempt('Clear',between),6);
+  assert.equal(attempt('Scattered',between),undefined);
+  assert.equal(attempt('Overcast',0.01),undefined);
+  const state=game.createGame(1,'manual','german',2,{playMode:'hotseat'});
+  state.weather='Cloudy';state.turn=6;const seed=state.seed;
+  rules.attemptAirdrops(state);
+  assert.equal(state.seed,seed);
+});
+
+test('German AI takes Bastogne and the key towns before exits and stacks good-odds attacks', () => {
+  const state=game.createGame(1,'manual','german',2,{playMode:'computer'});
+  state.turn=2;state.phase='german';state.orderPhase='movement';
+  const towns=Object.values(state.map).filter(tile=>tile.sourcePoints);
+  let towardTown=0,orders=0;
+  for(const unit of state.units.filter(unit=>unit.side==='german'&&unit.hp>0)) {
+    unit.mp=unit.mobility;
+    const order=game.planMovement(state,unit);
+    if(!order) continue;
+    orders++;
+    assert.equal(order.tile.exit,false);
+    if(towns.some(town=>game.distance(order.tile,town)<game.distance(unit,town))) towardTown++;
+  }
+  assert.ok(orders>0&&towardTown>0);
+  const early=game.createGame(3,'manual','german',2,{playMode:'computer'});
+  early.turn=2;early.phase='german';early.orderPhase='movement';
+  early.units.forEach(unit=>{unit.hp=0;});
+  const holders=early.units.filter(unit=>unit.side==='german');
+  towns.forEach((tile,index)=>Object.assign(holders[index],{hp:40,maxHp:40,exited:false,x:tile.x,y:tile.y}));
+  const rusher=holders[3];
+  Object.assign(rusher,point(16,4),{hp:100,maxHp:100,mp:30,exited:false});
+  const earlyOrder=game.planMovement(early,rusher);
+  assert.ok(!earlyOrder||earlyOrder.tile.exit===false);
+  const late=game.createGame(3,'manual','german',2,{playMode:'computer'});
+  late.turn=8;late.phase='german';late.orderPhase='movement';
+  late.units.forEach(unit=>{unit.hp=0;});
+  const lateHolders=late.units.filter(unit=>unit.side==='german');
+  Object.values(late.map).filter(tile=>tile.sourcePoints).forEach((tile,index)=>{
+    Object.assign(lateHolders[index],{hp:40,maxHp:40,exited:false,x:tile.x,y:tile.y});
+    tile.owner='german';
+  });
+  const spear=lateHolders.find(unit=>unit.hp===0&&unit.type==='armor');
+  Object.assign(spear,point(4,2),{hp:100,maxHp:100,mp:30,exited:false});
+  const exitOrder=game.planMovement(late,spear);
+  assert.ok(exitOrder&&exitOrder.tile.exit);
+
+  const fight=game.createGame(42,'manual','german',2,{playMode:'computer'});
+  fight.units.forEach(unit=>{unit.hp=0;});
+  fight.phase='german';fight.orderPhase='combat';fight.playMode='computer';
+  fight.artillery={german:8,american:0};fight.weather='Overcast';
+  const bastogne=Object.values(fight.map).find(tile=>tile.name==='BASTOGNE');
+  const adjacent=game.neighbors(fight,bastogne).filter(tile=>!game.referenceMap.crossesRiver(tile,bastogne)).slice(0,3);
+  const germans=fight.units.filter(unit=>unit.side==='german');
+  adjacent.forEach((tile,index)=>Object.assign(germans[index],{hp:100,maxHp:100,x:tile.x,y:tile.y,fired:false,combatCount:0,exited:false,readiness:6}));
+  const garrison=fight.units.find(unit=>unit.side==='american');
+  Object.assign(garrison,{hp:70,maxHp:70,x:bastogne.x,y:bastogne.y,defended:false,exited:false,readiness:6,fired:false,combatCount:0});
+  const battle=rules.nextBattle(fight,'german');
+  assert.equal(battle.defender.id,garrison.id);
+  assert.ok(battle.ids.length>=3);
+  assert.ok(battle.odds>=1.15);
+  const plain=game.createGame(42,'manual','german',2,{playMode:'computer'});
+  plain.units.forEach(unit=>{unit.hp=0;});
+  plain.phase='german';plain.orderPhase='combat';plain.playMode='computer';
+  plain.artillery={german:0,american:0};plain.weather='Overcast';
+  const attacker=plain.units.find(unit=>unit.id==='card-g1');
+  const defender=plain.units.find(unit=>unit.id==='card-a1');
+  Object.assign(attacker,point(5,0),{hp:115,maxHp:115,readiness:6,fired:false,combatCount:0});
+  Object.assign(defender,point(6,0),{hp:20,maxHp:20,readiness:0,defended:false,combatCount:0});
+  for(const tile of [point(5,0),point(6,0)]) plain.map[game.key(tile.x,tile.y)].terrain='plain';
+  const major=rules.planBattle(plain,attacker);
+  assert.equal(major.options.strategy,'major');
+  assert.ok(major.odds>=2.5);
 });
