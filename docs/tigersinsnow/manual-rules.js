@@ -9,8 +9,9 @@
     const DEFENSE = { counter: 1.6, hold: 1.3, delay: 0.7, withdrawal: 0.5 };
     const supplement = state => base.aidCard.active(state) && state.appleSupplementVersion === 1;
     const resourceProfile = state => state.resourceVersion === 1 ?
-      { supply: { german: 828, american: 1577 }, fuel: 1023, artillery: { german: 8, american: 5 } } :
+      { supply: { german: 1577, american: 828 }, fuel: 1023, artillery: { german: 8, american: 5 } } :
       { supply: { german: 120, american: 120 }, fuel: 120, artillery: { german: 6, american: 4 } };
+    const artilleryMaximum = (state, side) => resourceProfile(state).artillery[side];
     const supplyChance = (state, side) => Math.min(1, state.generalSupply[side] / resourceProfile(state).supply[side]);
     const movementAllowance = (state, type) => [1, 2].includes(state.movementVersion) ?
       type === 'armor' ? 30 : 24 : type === 'armor' ? 10 : 8;
@@ -100,9 +101,10 @@
       const counter = base.occupant(state, next);
       return counter && counter.side !== side;
     });
+    const germanHasExited = state => state.exitPoints > 0 || state.units.some(unit => unit.side === 'german' && unit.exited);
     const canCross = (state, unit, from, to) => state.referenceVersion !== 2 || unit.nationality !== 'british' ||
-      !base.referenceMap.crossesMeuse(from, to);
-    const maneuvers = createManualManeuvers(base, { lose, capture, refreshSupply, score, log, random, enemyNear, localSupply, supplement, canCross });
+      germanHasExited(state) || !base.referenceMap.crossesMeuse(from, to);
+    const maneuvers = createManualManeuvers(base, { lose, capture, refreshSupply, score, log, random, enemyNear, localSupply, supplement, canCross, artilleryMaximum });
     function refreshSupply(state) {
       for (const unit of state.units.filter(living)) {
         unit.supplyState = localSupply(state, unit);
@@ -116,6 +118,9 @@
         if (side === 'german') applyInterdiction(state);
       }
       if (base.aidCard.active(state) && state.playMode === 'hotseat') state.playerSide = side;
+      if (base.aidCard.active(state) && state.defensiveArtillery > artilleryMaximum(state, state.playerSide)) {
+        state.defensiveArtillery = artilleryMaximum(state, state.playerSide);
+      }
       refreshSupply(state);
       state.units.forEach(unit => { unit.defended = false; });
       for (const unit of state.units.filter(unit => living(unit) && unit.side === side)) {
@@ -365,7 +370,8 @@
       const visited = new Set([base.key(unit.x, unit.y)]);
       if (localSupply(state, unit) !== 'isolated') {
         while (living(unit) && path.length < count) {
-          const next = base.neighbors(state, unit).filter(tile => !base.occupant(state, tile) && !visited.has(base.key(tile.x, tile.y)))
+          const next = base.neighbors(state, unit).filter(tile => !base.occupant(state, tile) && !visited.has(base.key(tile.x, tile.y)) &&
+            canCross(state, unit, unit, tile))
             .sort((a, b) => {
               const rank = tile => Math.min(...attackers.map(attacker => base.distance(tile, attacker))) * 10 +
                 (unit.side === 'german' ? tile.col : -tile.col);
@@ -420,7 +426,7 @@
       const calibrated = state.combatVersion === 1;
       const defenseLoss = Math.max(1, Math.round((odds * 5 + roll * 8) * intensity / (calibrated ? 10 : 1)));
       const attackExposure = (8 / Math.max(0.25, odds) + (1 - roll) * 4) * intensity;
-      const attackLoss = Math.max(0, calibrated ? Math.floor(attackExposure / Math.max(1, odds)) : Math.round(attackExposure));
+      const attackLoss = Math.max(0, calibrated ? Math.floor(attackExposure / 10) : Math.round(attackExposure));
       const totalHp = attackers.reduce((sum, unit) => sum + unit.hp, 0);
       attackers.forEach(unit => {
         if (supplement(state)) unit.combatCount++;
@@ -784,7 +790,7 @@
         base.aidCard.options(parsed);
         if (parsed.referenceVersion !== 2 || !parsed.victoryPoints || !parsed.casualties || !parsed.ratings || !parsed.display ||
           !['campaign','short'].includes(parsed.scenario) ||
-          !integer(parsed.defensiveArtillery, 0, resources.artillery.german) ||
+          !integer(parsed.defensiveArtillery, 0, resources.artillery[parsed.playerSide]) ||
           !['german','american'].every(side => points(parsed.victoryPoints[side]) &&
             integer(parsed.casualties[side], 0, 100000)) || parsed.turn > base.aidCard.lastTurn(parsed)) {
           throw new Error('Invalid player-aid campaign data.');
@@ -916,7 +922,7 @@
       resolveAttack, computerTurn, endTurn, deserialize, reinforce, reinforcementSchedule, offMapReinforcements,
       finishDay, COST, SCHEDULE, preview, planBattle, terrainDefense, strategyLabel, movementCost, crossingCost,
       maneuvers, chooseManeuver, chooseDefense, finishMovement, supplement, phaseReport, movementWarning,
-      alteredStrategyChance, lose };
+      alteredStrategyChance, lose, artilleryMaximum };
   }
   if (typeof module === 'object') module.exports = createManualRules;
   else root.createManualRules = createManualRules;

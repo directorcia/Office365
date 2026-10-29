@@ -1098,7 +1098,7 @@
     }
     $('defensive-artillery-label').hidden = !card; $('defensive-artillery').hidden = !card;
     if (card) {
-      $('defensive-artillery').max = state.resourceVersion === 1 ? 8 : 6;
+      $('defensive-artillery').max = manualRules.artilleryMaximum(state, commandSide);
       $('defensive-artillery').value = state.defensiveArtillery;
       $('defensive-artillery').disabled = observing() || busy || Boolean(state.pendingBattle);
     }
@@ -1237,7 +1237,7 @@
       selected = defender.id; cursor = { x: defender.x, y: defender.y };
       $('defense-description').textContent = `${pending.ids.map(id => state.units.find(unit => unit.id === id).name).join(', ')} will attack ${defender.name}. Choose your strategy and defensive artillery for this battle.`;
       $('battle-defense-strategy').value = state.defenseStrategy;
-      $('battle-defense-artillery').max = state.artillery[state.playerSide];
+      $('battle-defense-artillery').max = Math.min(state.artillery[state.playerSide], manualRules.artilleryMaximum(state, state.playerSide));
       $('battle-defense-artillery').value = Math.min(state.defensiveArtillery,state.artillery[state.playerSide]);
     }
     const task = manualRules.maneuvers.current(state);
@@ -1544,7 +1544,7 @@
   $('defensive-artillery').onchange = event => {
     if (!aidCard.active(state) || busy || observing() || state.pendingBattle) return;
     const value = Number(event.target.value);
-    const maximum = state.resourceVersion === 1 ? 8 : 6;
+    const maximum = manualRules.artilleryMaximum(state, commandSide);
     if (!event.target.validity.valid || !Number.isInteger(value) || value < 0 || value > maximum) {
       event.target.value = state.defensiveArtillery; message(`Defensive artillery must be a whole number from 0 to ${maximum}.`); return;
     }

@@ -995,3 +995,41 @@ test('final-turn objective threshold and elimination select the correct winner',
     verifyCampaign(state);
   }
 });
+
+test('automatic retreats keep British formations off the Meuse until a German unit exits', () => {
+  const reference = game.referenceMap, point = reference.position;
+  function battle(nationality, exit) {
+    const state = game.createGame(2, 'manual', 'german', 2);
+    state.units.forEach(unit => { unit.hp = 0; });
+    const defender = state.units.find(unit => unit.side === 'american');
+    const attacker = state.units.find(unit => unit.side === 'german');
+    const friends = state.units.filter(unit => unit.side === 'american' && unit !== defender);
+    defender.nationality = nationality;
+    Object.assign(defender, point(1, 4), { hp: 90, maxHp: 90, readiness: 0, defended: false });
+    Object.assign(attacker, point(2, 3), { hp: 80, maxHp: 80, readiness: 7, fired: false });
+    [point(1, 3), point(2, 5), point(1, 5), point(0, 4)].forEach((tile, index) => {
+      Object.assign(friends[index], tile, { hp: 40, maxHp: 40 });
+    });
+    for (const tile of Object.values(state.map)) tile.terrain = 'plain';
+    state.phase = 'german'; state.orderPhase = 'combat'; state.playerSide = 'american';
+    state.generalSupply = { german: 120, american: 120 };
+    state.artillery = { german: 0, american: 0 };
+    state.weather = 'Overcast'; state.seed = 2;
+    if (exit === 'points') state.exitPoints = 1;
+    if (exit === 'flag') state.units.find(unit => unit.side === 'german' && unit !== attacker).exited = true;
+    const result = game.manual.resolveAttack(state, [attacker.id], defender.id, {
+      strategy: 'major', defenseStrategy: 'delay', artillery: 0
+    });
+    return { state, defender, result };
+  }
+  const blocked = battle('british');
+  assert.equal(blocked.result.retreatPath.length, 0);
+  assert.match(blocked.result.events.join(' '), /retreat 0\//);
+  assert.equal(game.key(blocked.defender.x, blocked.defender.y), game.key(point(1, 4).x, 4));
+  const allowed = battle('us');
+  assert.equal(reference.crossesMeuse(point(1, 4), allowed.state.map[allowed.result.retreatPath[0]]), true);
+  for (const exit of ['points', 'flag']) {
+    const lifted = battle('british', exit);
+    assert.equal(reference.crossesMeuse(point(1, 4), lifted.state.map[lifted.result.retreatPath[0]]), true);
+  }
+});

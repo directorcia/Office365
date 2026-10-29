@@ -123,14 +123,14 @@ test('British retreats and advances cannot cross the Meuse but can cross other r
 test('new supplement resources use example-scale stocks and survive recovery and saves', () => {
   const state=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
   assert.equal(state.resourceVersion,1);
-  assert.deepEqual(state.generalSupply,{german:828,american:1577});
+  assert.deepEqual(state.generalSupply,{german:1577,american:828});
   assert.equal(state.fuel,1023);
   assert.deepEqual(state.artillery,{german:8,american:5});
   restore(state);
   state.artillery={german:0,american:0};
   rules.finishDay(state);
   assert.equal(state.turn,2);
-  assert.deepEqual(state.generalSupply,{german:878,american:1637});
+  assert.deepEqual(state.generalSupply,{german:1627,american:888});
   assert.deepEqual(state.artillery,{german:8,american:5});
   assert.equal(state.fuel,1023);
   state.defensiveArtillery=8;
@@ -309,7 +309,7 @@ test('combat calibration survives saves while older campaigns retain their casua
 test('resource-scale supply previews agree with delivery probabilities and never exceed 100 percent', () => {
   const {state,attacker,defender}=advanceFixture(1,0);
   attacker.fired=false;attacker.combatCount=0;defender.hp=75;
-  state.generalSupply.german=414;
+  state.generalSupply.german=789;
   assert.match(rules.preview(state,[attacker.id],defender.id).risk,/attacker 50%, defender 100%/);
   state.generalSupply.german=2000;
   assert.match(rules.preview(state,[attacker.id],defender.id).risk,/attacker 100%, defender 100%/);
@@ -477,4 +477,126 @@ test('supplement saves retain pressure and interdiction; older card and Classic 
   const classic=game.createGame(42);
   assert.equal(classic.appleSupplementVersion,undefined);
   restore(classic);
+});
+
+test('rule 17.1 lifts the British Meuse ban once any German unit has exited', () => {
+  const state=britishFixture();
+  const unit=state.units.find(unit=>unit.nationality==='british');
+  state.units.forEach(unit=>{unit.hp=0;});
+  Object.assign(unit,point(1,4),{hp:unit.maxHp});
+  const destination=state.map[game.key(point(2,4).x,4)];
+  const key=game.key(destination.x,destination.y);
+  unit.mp=rules.movementCost(state,unit,destination,unit);
+  assert.equal(game.referenceMap.crossesMeuse(unit,destination),true);
+  assert.equal(game.reachable(state,unit).has(key),false);
+  state.exitPoints=0.25;
+  assert.equal(game.reachable(state,unit).has(key),true);
+  state.exitPoints=0;
+  assert.equal(game.reachable(state,unit).has(key),false);
+  const german=state.units.find(unit=>unit.side==='german');
+  german.exited=true;
+  assert.equal(game.reachable(state,unit).has(key),true);
+  assert.equal(game.move(state,unit.id,destination.x,destination.y),true);
+  assert.equal(game.key(unit.x,unit.y),key);
+});
+
+test('calibrated attacker losses stay one tenth of exposure across odds', () => {
+  function battle(attackerHp,defenderHp,roll) {
+    const state=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+    state.units.forEach(unit=>{unit.hp=0;});
+    state.phase='german';state.orderPhase='combat';state.weather='Overcast';
+    state.artillery={german:0,american:0};
+    const attacker=state.units.find(unit=>unit.id==='card-g1');
+    const defender=state.units.find(unit=>unit.id==='card-a1');
+    Object.assign(attacker,point(5,0),{hp:attackerHp,maxHp:attackerHp,readiness:0,fired:false,combatCount:0});
+    Object.assign(defender,point(6,0),{hp:defenderHp,maxHp:defenderHp,readiness:0,defended:false,combatCount:0});
+    for(const tile of [point(5,0),point(6,0)]) state.map[game.key(tile.x,tile.y)].terrain='plain';
+    let seed=roll;
+    for(let step=0;step<5;step++) seed=seedForRoll(seed);
+    state.seed=seed;
+    return {state,attacker,defender};
+  }
+  for(const [attackerHp,defenderHp,roll,attackLoss,defenseLoss] of [
+    [80,80,0,2,1],[80,80,2147483648,2,2],[80,80,4294967295,1,3],
+    [40,80,0,4,1],[40,80,2147483648,4,1],[40,80,4294967295,3,2],
+    [80,40,2147483648,1,3]
+  ]) {
+    const {state,attacker,defender}=battle(attackerHp,defenderHp,roll);
+    assert.equal(rules.preview(state,[attacker.id],defender.id,{strategy:'assault',defenseStrategy:'hold'}).odds,attackerHp/defenderHp);
+    const result=rules.resolveAttack(state,[attacker.id],defender.id,{strategy:'assault',defenseStrategy:'hold',artillery:0});
+    assert.equal(result.attackStrategy,'assault');
+    assert.equal(result.defenseStrategy,'hold');
+    assert.equal(result.units.find(unit=>unit.id===attacker.id).loss,attackLoss);
+    assert.equal(result.units.find(unit=>unit.id===defender.id).loss,defenseLoss);
+  }
+});
+
+test('artillery caps follow the side that owns them', () => {
+  assert.deepEqual([rules.artilleryMaximum(game.createGame(42,'manual'),'german'),rules.artilleryMaximum(game.createGame(42,'manual'),'american')],[8,5]);
+  const legacy=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+  delete legacy.resourceVersion;
+  assert.deepEqual([rules.artilleryMaximum(legacy,'german'),rules.artilleryMaximum(legacy,'american')],[6,4]);
+  const german=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+  german.defensiveArtillery=8;
+  restore(german);
+  german.defensiveArtillery=9;
+  assert.throws(()=>game.deserialize(JSON.stringify(german)),/Invalid/);
+  const allied=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+  allied.playerSide='american';allied.phase='american';allied.orderPhase='movement';
+  allied.defensiveArtillery=5;
+  restore(allied);
+  allied.defensiveArtillery=6;
+  assert.throws(()=>game.deserialize(JSON.stringify(allied)),/Invalid/);
+  legacy.playerSide='american';legacy.phase='american';legacy.orderPhase='movement';
+  legacy.generalSupply={german:120,american:120};legacy.fuel=120;legacy.artillery={german:6,american:4};
+  legacy.defensiveArtillery=4;
+  const restoredLegacy=restore(legacy);
+  restoredLegacy.defensiveArtillery=5;
+  assert.throws(()=>game.deserialize(JSON.stringify(restoredLegacy)),/Invalid/);
+  const hotseat=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+  hotseat.defensiveArtillery=8;
+  rules.beginSide(hotseat,'german');
+  assert.equal(hotseat.defensiveArtillery,8);
+  rules.beginSide(hotseat,'american');
+  assert.equal(hotseat.playerSide,'american');
+  assert.equal(hotseat.defensiveArtillery,5);
+
+  function started(attackerId,defenderId) {
+    const state=game.createGame(42,'manual','german',2,{playMode:'hotseat'});
+    state.units.forEach(unit=>{unit.hp=0;});
+    state.orderPhase='combat';
+    const attacker=state.units.find(unit=>unit.id===attackerId);
+    const defender=state.units.find(unit=>unit.id===defenderId);
+    Object.assign(attacker,point(5,0),{hp:attacker.maxHp,fired:false,combatCount:0});
+    Object.assign(defender,point(6,0),{hp:defender.maxHp,defended:false,combatCount:0});
+    state.phase=attacker.side;state.playerSide=attacker.side;
+    const result=rules.maneuvers.start(state,{ids:[attacker.id],defenderId:defender.id,
+      before:[attacker,defender].map(unit=>({id:unit.id,name:unit.name,side:unit.side,hp:unit.hp})),
+      original:{x:defender.x,y:defender.y},attackerPositions:[{id:attacker.id,x:attacker.x,y:attacker.y}],
+      odds:2,attackStrategy:'assault',defenseStrategy:'hold',artillery:0,defensiveArtillery:0,
+      events:[],retreatCount:1,advanceLimit:0,attackerMustRetreat:false});
+    assert.equal(result.pending,true);
+    return state;
+  }
+  const germanAttack=started('card-g1','card-a1');
+  germanAttack.pendingBattle.artillery=8;
+  germanAttack.pendingBattle.defensiveArtillery=5;
+  restore(germanAttack);
+  germanAttack.pendingBattle.defensiveArtillery=6;
+  assert.throws(()=>game.deserialize(JSON.stringify(germanAttack)),/maneuver/);
+  germanAttack.pendingBattle.defensiveArtillery=5;
+  germanAttack.pendingBattle.artillery=9;
+  assert.throws(()=>game.deserialize(JSON.stringify(germanAttack)),/maneuver/);
+  const alliedAttack=started('card-a1','card-g1');
+  alliedAttack.pendingBattle.artillery=5;
+  alliedAttack.pendingBattle.defensiveArtillery=8;
+  restore(alliedAttack);
+  alliedAttack.pendingBattle.artillery=6;
+  assert.throws(()=>game.deserialize(JSON.stringify(alliedAttack)),/maneuver/);
+  alliedAttack.pendingBattle.artillery=5;
+  alliedAttack.pendingBattle.defensiveArtillery=9;
+  assert.throws(()=>game.deserialize(JSON.stringify(alliedAttack)),/maneuver/);
+  const html=require('node:fs').readFileSync(require('node:path').join(__dirname,'index.html'),'utf8');
+  assert.match(html,/id="battle-defense-artillery"[^>]*max="8"/);
+  assert.match(html,/id="defensive-artillery"[^>]*max="8"/);
 });

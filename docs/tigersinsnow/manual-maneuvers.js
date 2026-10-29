@@ -193,8 +193,10 @@
         !paths(saved.attackerRetreats) || !paths(saved.advancePaths) ||
         !['recon','probe','assault','major'].includes(saved.attackStrategy) ||
         !['counter','hold','delay','withdrawal'].includes(saved.defenseStrategy) ||
-        !Number.isInteger(saved.artillery) || saved.artillery < 0 || saved.artillery > 6 ||
-        !Number.isInteger(saved.defensiveArtillery) || saved.defensiveArtillery < 0 || saved.defensiveArtillery > 6) {
+        !Number.isInteger(saved.artillery) || saved.artillery < 0 ||
+        saved.artillery > (rules.artilleryMaximum(state, state.units.find(unit => unit.id === saved.ids?.[0])?.side) ?? -1) ||
+        !Number.isInteger(saved.defensiveArtillery) || saved.defensiveArtillery < 0 ||
+        saved.defensiveArtillery > (rules.artilleryMaximum(state, state.units.find(unit => unit.id === saved.defenderId)?.side) ?? -1)) {
         throw new Error('Invalid saved battle maneuver.');
       }
       if (rules.supplement(state) && saved.stage === 'advances' &&
