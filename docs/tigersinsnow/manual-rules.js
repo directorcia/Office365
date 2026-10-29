@@ -16,6 +16,25 @@
     const movementAllowance = (state, type) => [1, 2].includes(state.movementVersion) ?
       type === 'armor' ? 30 : 24 : type === 'armor' ? 10 : 8;
     const strategyWeight = { recon: 1, probe: 1, assault: 3, major: 9 };
+    // The supplement and player-aid card publish example stocks, not consumption, interdiction,
+    // refill, bridge, fog or airdrop figures. These multipliers are provisional balancing choices
+    // so the example-scale pools (German supply 1577, Allied 828, fuel 1023) stay relevant for 12 turns.
+    const provisional = {
+      interdictionFuelScale: 10,
+      interdictionSupplyScale: 12,
+      refill: { german: 70, american: 36 },
+      fuelMultiplier: 2,
+      airdrop: { Clear: 0.55, Scattered: 0.25 },
+      bridgeChance: 0.2,
+      fog: { human: 5, computer: 15 },
+      // German fuel is treated as scarce below this remainder; the old scale used 35 of 120.
+      scarceFuel: 120
+    };
+    const scaled = state => state.resourceVersion === 1;
+    function armorFuel(state, kind) {
+      const base = kind === 'attack' ? 2 : Math.ceil(costs(state)[kind] / 2);
+      return scaled(state) ? base * provisional.fuelMultiplier : base;
+    }
     function alteredStrategyChance(state, side, strategy) {
       const baseline = (side === 'german' ? 0.04 : 0.08) * ATTACK[strategy];
       if (!supplement(state)) return baseline;
@@ -33,11 +52,35 @@
     function applyInterdiction(state) {
       if (!supplement(state) || state.airInterdiction?.turn === state.turn) return;
       const severity = { Overcast: 0, Cloudy: 1, Scattered: 3, Clear: 5 }[state.weather];
-      const loss = available => Math.min(available, severity ? Math.floor(random(state) * (severity + 1)) : 0);
-      const fuel = loss(state.fuel), supply = loss(state.generalSupply.german);
+      const draw = scale => severity ? Math.floor(random(state) * (severity + 1)) * scale : 0;
+      const fuelScale = scaled(state) ? provisional.interdictionFuelScale : 1;
+      const supplyScale = scaled(state) ? provisional.interdictionSupplyScale : 1;
+      const fuel = Math.min(state.fuel, draw(fuelScale));
+      const supply = Math.min(state.generalSupply.german, draw(supplyScale));
       state.fuel -= fuel; state.generalSupply.german -= supply;
       state.airInterdiction = { turn: state.turn, fuel, supply, movement: {} };
       log(state, `Allied air interdiction reduced German fuel ${fuel} points / supply ${supply} points.`);
+    }
+    function enemyStrengthOffset(state, unit) {
+      if (!base.aidCard.active(state) || !unit || state.playMode === 'computer' || unit.side === state.playerSide) return 0;
+      const computerPhase = state.playMode !== 'hotseat' && state.phase !== state.playerSide;
+      const span = computerPhase ? provisional.fog.computer : provisional.fog.human;
+      let hash = state.initialSeed ?? 0;
+      for (const char of `fog:${state.turn}:${state.phase}:${unit.id}`) {
+        hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
+      }
+      return 1 + hash % span;
+    }
+    const displayedCombatPoints = (state, unit) => unit.hp + enemyStrengthOffset(state, unit);
+    function attemptAirdrops(state) {
+      const chance = provisional.airdrop[state.weather];
+      if (!chance) return;
+      for (const unit of state.units.filter(unit => living(unit) && unit.side === 'american')) {
+        if (random(state) < chance && localSupply(state, unit) !== 'supplied') {
+          unit.airdropTurn = state.turn;
+          log(state, `${unit.name}: supply airdrop for this day.`);
+        }
+      }
     }
     const strategyLabel = value => ({ recon: 'Reconnaissance', probe: 'Light', assault: 'Medium', major: 'Major',
       counter: 'Counter-attack', hold: 'Hold position',
@@ -309,12 +352,24 @@
         if (warning) { log(state, warning); base.reportOperation(state, unit.side, warning); }
         return false;
       }
+      let moved = false;
       for (const tile of option.path) {
+        if (supplement(state) && unit.side === 'german' && base.referenceMap.crossesRiver(unit, tile) &&
+          random(state) < provisional.bridgeChance) {
+          const message = `${unit.name}: BRIDGE BLOWN. The river crossing is blocked.`;
+          log(state, message); base.reportOperation(state, unit.side, message);
+          unit.mp = 0;
+          break;
+        }
+        const from = { x: unit.x, y: unit.y };
+        unit.mp = Math.max(0, unit.mp - movementCost(state, from, tile, unit));
         unit.x = tile.x; unit.y = tile.y; unit.readiness = Math.max(0, unit.readiness - 2);
         capture(state, unit);
-        if (unit.side === 'german' && unit.type === 'armor') state.fuel = Math.max(0, state.fuel - Math.ceil(costs(state)[tile.terrain] / 2));
+        if (unit.side === 'german' && unit.type === 'armor') state.fuel = Math.max(0, state.fuel - armorFuel(state, tile.terrain));
+        moved = true;
+        if (enemyNear(state, unit, unit.side) && !(unit.side === 'german' && unit.type === 'armor')) break;
       }
-      unit.mp = option.remaining;
+      if (!moved) return false;
       if (enemyNear(state, unit, unit.side) && !(unit.side === 'german' && unit.type === 'armor')) unit.mp = 0;
       refreshSupply(state); score(state);
       const tile = state.map[base.key(unit.x, unit.y)];
@@ -431,7 +486,7 @@
       attackers.forEach(unit => {
         if (supplement(state)) unit.combatCount++;
         lose(state, unit, Math.round(attackLoss * unit.hp / totalHp)); unit.fired = true; unit.mp = 0;
-        if (unit.side === 'german' && unit.type === 'armor') state.fuel = Math.max(0, state.fuel - 2);
+        if (unit.side === 'german' && unit.type === 'armor') state.fuel = Math.max(0, state.fuel - armorFuel(state, 'attack'));
       });
       lose(state, defender, defenseLoss); defender.defended = true;
       const airChance = { Overcast: 0, Cloudy: 0.1, Scattered: 0.3, Clear: 0.5 }[state.weather];
@@ -524,7 +579,8 @@
       const units = state.units.filter(unit => living(unit) && unit.side === side);
       for (let index = 0; index < units.length; index++) {
         const unit = units[index];
-        const battle = planBattle(state, unit);
+        const battle = base.aidCard.active(state) && side === 'german' ? nextBattle(state, side) : planBattle(state, unit);
+        if (!battle && base.aidCard.active(state) && side === 'german') break;
         if (battle) {
           const result = resolveAttack(state, battle.ids, battle.defender.id, battle.options);
           if (result.pending) return;
@@ -535,22 +591,70 @@
         }
       }
     }
+    function battleScore(state, battle) {
+      const tile = state.map[base.key(battle.defender.x, battle.defender.y)];
+      const town = tile.name === 'BASTOGNE' ? 6 : tile.sourcePoints ? 3.5 : (tile.value || 0) * 0.2;
+      const blocksExit = tile.exit || base.neighbors(state, battle.defender).some(next => {
+        const occ = base.occupant(state, next);
+        return occ && occ.side === 'german' && state.map[base.key(next.x, next.y)].exit;
+      });
+      return battle.odds + town + (blocksExit ? 3 : 0) + Math.min(battle.ids.length, 6) * 0.05;
+    }
+    function planGermanBattle(state, unit) {
+      if (unit.hp < unit.maxHp * 0.25) return null;
+      const supplyLow = state.generalSupply.german < resourceProfile(state).supply.german * 0.22;
+      const battles = state.units.filter(defender => living(defender) && defender.side !== unit.side &&
+        eligibleAttackers(state, defender).some(attacker => attacker.id === unit.id)).map(defender => {
+        const adjacent = eligibleAttackers(state, defender).filter(attacker => attacker.hp >= attacker.maxHp * 0.25);
+        const attackers = adjacent.slice().sort((a, b) => strength(state, b) - strength(state, a)).slice(0, 6);
+        if (!attackers.some(attacker => attacker.id === unit.id)) return null;
+        const tile = state.map[base.key(defender.x, defender.y)];
+        const town = tile.name === 'BASTOGNE' || tile.sourcePoints;
+        const artillery = Math.min(attackers.length, state.artillery.german, supplyLow ? 1 : town ? state.artillery.german : 4);
+        const defenseStrategy = state.playMode !== 'computer' && defender.side === state.playerSide ? state.defenseStrategy :
+          town ? 'hold' : defender.hp < defender.maxHp * 0.4 ? 'delay' : 'hold';
+        const probe = { strategy: supplyLow ? 'probe' : 'assault', artillery, defenseStrategy };
+        const odds = preview(state, attackers.map(attacker => attacker.id), defender.id, probe).odds;
+        const strategy = !supplyLow && odds >= 2 ? 'major' : probe.strategy;
+        const options = { strategy, artillery, defenseStrategy };
+        const minOdds = tile.name === 'BASTOGNE' ? 1.15 : town ? 1.25 : 1.45;
+        if (odds < minOdds) return null;
+        const battle = { defender, ids: attackers.map(attacker => attacker.id), options, odds,
+          reason: town ? `concentrate on ${tile.name || 'the key town'} at ${odds.toFixed(1)}:1` :
+            `concentrate a ${odds.toFixed(1)}:1 attack and refuse the poor-odds fights` };
+        battle.score = battleScore(state, battle);
+        return battle;
+      }).filter(Boolean).sort((a, b) => b.score - a.score);
+      return battles[0] || null;
+    }
     function planBattle(state, unit) {
-      if (!living(unit) || unit.fired || unit.hp < unit.maxHp * 0.3) return null;
+      if (!living(unit) || unit.fired) return null;
+      if (base.aidCard.active(state) && unit.side === 'german') return planGermanBattle(state, unit);
+      if (unit.hp < unit.maxHp * 0.3) return null;
       const targets = state.units.filter(defender => living(defender) && defender.side !== unit.side &&
         eligibleAttackers(state, defender).includes(unit)).map(defender => {
         const attackers = eligibleAttackers(state, defender).filter(attacker => attacker.hp >= attacker.maxHp * 0.3);
-        const artillery = Math.min(attackers.length, state.artillery[unit.side], state.generalSupply[unit.side] < 40 ? 1 : 3);
+        const lowSupply = state.generalSupply[unit.side] < resourceProfile(state).supply[unit.side] *
+          (state.resourceVersion === 1 ? 0.25 : 40 / 120);
+        const artillery = Math.min(attackers.length, state.artillery[unit.side], lowSupply ? 1 : 3);
         const ids = attackers.map(attacker => attacker.id);
         const defenseStrategy = state.playMode !== 'computer' && defender.side === state.playerSide ? state.defenseStrategy :
           state.map[base.key(defender.x, defender.y)].value ? 'hold' : defender.hp < defender.maxHp * 0.4 ? 'delay' : 'hold';
-        const options = { strategy: state.generalSupply[unit.side] < 35 ? 'probe' : 'assault', artillery, defenseStrategy };
+        const options = { strategy: lowSupply ? 'probe' : 'assault', artillery, defenseStrategy };
         const odds = preview(state, ids, defender.id, options).odds;
         return { defender, ids, options, odds, reason: 'combine adjacent forces to open an objective route without exhausting supply' };
       }).filter(battle => battle.odds >= (unit.side === 'german' ? 1.15 : 1.35))
         .sort((a, b) => (b.odds + (state.map[base.key(b.defender.x, b.defender.y)].value || 0) * 0.2) -
           (a.odds + (state.map[base.key(a.defender.x, a.defender.y)].value || 0) * 0.2));
       return targets[0] || null;
+    }
+    function nextBattle(state, side) {
+      let best = null;
+      for (const unit of state.units.filter(unit => living(unit) && unit.side === side && !unit.fired)) {
+        const battle = planBattle(state, unit);
+        if (battle && (!best || battle.score > best.score)) best = battle;
+      }
+      return best;
     }
     function preview(state, ids, defenderId, options = {}) {
       const defender = state.units.find(unit => unit.id === defenderId), eligible = eligibleAttackers(state, defender);
@@ -568,7 +672,8 @@
       const defenseTotal = strength(state, defender, true) + defensiveArtillery * 10;
       const odds = attackTotal / Math.max(1, defenseTotal);
       const tile = state.map[base.key(defender.x, defender.y)];
-      return { odds, detail: `${attackers.map(unit => `${unit.name}: ${unit.hp} CP, readiness x${(1 + unit.readiness / 10).toFixed(1)}, ${localSupply(state, unit)} supply x${modifier(localSupply(state, unit))}, river attack x${riverAttack(state, unit, defender)}${state.referenceVersion === 2 && state.map[base.key(unit.x, unit.y)].terrain === 'westwall' && unit.side === 'german' ? ', Westwall attack x2' : ''}`).join('; ')}. Attack total ${attackTotal.toFixed(1)} (artillery +${artillery * 10}). ${defender.name}: ${defender.hp} CP, readiness x${(1 + defender.readiness / 10).toFixed(1)}, ${localSupply(state, defender)} supply x${modifier(localSupply(state, defender))}, ${tile.terrain} defense x${terrainDefense(state, tile, defender.side)}. Defense total ${defenseTotal.toFixed(1)} (artillery +${defensiveArtillery * 10}).`,
+      const shown = unit => unit.side === state.phase ? unit.hp : displayedCombatPoints(state, unit);
+      return { odds, detail: `${attackers.map(unit => `${unit.name}: ${shown(unit)} CP, readiness x${(1 + unit.readiness / 10).toFixed(1)}, ${localSupply(state, unit)} supply x${modifier(localSupply(state, unit))}, river attack x${riverAttack(state, unit, defender)}${state.referenceVersion === 2 && state.map[base.key(unit.x, unit.y)].terrain === 'westwall' && unit.side === 'german' ? ', Westwall attack x2' : ''}`).join('; ')}. Attack total ${attackTotal.toFixed(1)} (artillery +${artillery * 10}). ${defender.name}: ${shown(defender)} CP, readiness x${(1 + defender.readiness / 10).toFixed(1)}, ${localSupply(state, defender)} supply x${modifier(localSupply(state, defender))}, ${tile.terrain} defense x${terrainDefense(state, tile, defender.side)}. Defense total ${defenseTotal.toFixed(1)} (artillery +${defensiveArtillery * 10}).`,
         risk: `${odds < 1 ? 'High risk' : odds < 1.7 ? 'Contested' : 'Favorable'} nominal odds before random general-supply failures. Supply delivery chance: attacker ${Math.round(supplyChance(state, state.phase) * 100)}%, defender ${Math.round(supplyChance(state, defender.side) * 100)}%. ${strategyLabel(strategy)} / ${strategyLabel(defenseStrategy)} commitment x${(ATTACK[strategy] + DEFENSE[defenseStrategy]).toFixed(2)} affects losses and consumption, not these nominal odds. Weather ${state.weather}: Allied air losses may apply. Retreats, advances, order changes and low-strength elimination remain uncertain. This is an adapted model, not the original hidden combat table.` };
     }
     function reinforce(state) {
@@ -661,17 +766,11 @@
       state.weather = state.turn < 4 ? 'Overcast' : state.turn < 8 ?
         (random(state) < 0.6 ? 'Cloudy' : 'Scattered') : (random(state) < 0.8 ? 'Clear' : 'Scattered');
       const supplyLimit = state.resourceVersion === 1 ? Number.MAX_SAFE_INTEGER : 120;
-      state.generalSupply.german = Math.min(supplyLimit, state.generalSupply.german + 50);
-      state.generalSupply.american = Math.min(supplyLimit, state.generalSupply.american + 60);
+      const refill = scaled(state) ? provisional.refill : { german: 50, american: 60 };
+      state.generalSupply.german = Math.min(supplyLimit, state.generalSupply.german + refill.german);
+      state.generalSupply.american = Math.min(supplyLimit, state.generalSupply.american + refill.american);
       state.artillery = { ...resourceProfile(state).artillery };
-      if (['Clear', 'Scattered'].includes(state.weather)) {
-        for (const unit of state.units.filter(unit => living(unit) && unit.side === 'american')) {
-          if (random(state) < 0.3 && localSupply(state, unit) !== 'supplied') {
-            unit.airdropTurn = state.turn;
-            log(state, `${unit.name}: supply airdrop for this day.`);
-          }
-        }
-      }
+      attemptAirdrops(state);
       log(state, `${15 + state.turn} DEC / ${state.weather.toUpperCase()} / new day.`);
       state.dayStart = base.daySnapshot(state);
     }
@@ -715,7 +814,8 @@
           const order = base.planMovement(state, unit);
           if (order) move(state, unit.id, order.tile.x, order.tile.y);
         } else {
-          const battle = planBattle(state, unit);
+          const battle = base.aidCard.active(state) && flow.side === 'german' ? nextBattle(state, flow.side) : planBattle(state, unit);
+          if (!battle && base.aidCard.active(state) && flow.side === 'german') break;
           if (battle && battle.defender.side === state.playerSide && state.playMode !== 'computer') {
             state.pendingDefense = { ids: [...battle.ids], defenderId: battle.defender.id,
               strategy: battle.options.strategy, artillery: battle.options.artillery };
@@ -773,7 +873,8 @@
       if (supplement(parsed)) {
         if (!parsed.strategyPressure || !['german','american'].every(side => integer(parsed.strategyPressure[side], 0, 10000)) ||
           !parsed.airInterdiction || !integer(parsed.airInterdiction.turn, 1, parsed.turn) ||
-          !integer(parsed.airInterdiction.fuel, 0, 5) || !integer(parsed.airInterdiction.supply, 0, 5) ||
+          !integer(parsed.airInterdiction.fuel, 0, 5 * (parsed.resourceVersion === 1 ? provisional.interdictionFuelScale : 1)) ||
+          !integer(parsed.airInterdiction.supply, 0, 5 * (parsed.resourceVersion === 1 ? provisional.interdictionSupplyScale : 1)) ||
           !parsed.airInterdiction.movement || Array.isArray(parsed.airInterdiction.movement) ||
           Object.entries(parsed.airInterdiction.movement).some(([id, value]) =>
             !base.aidCard.roster.some(unit => unit.id === id && unit.side === 'german' && unit.turn <= parsed.turn) ||
@@ -920,9 +1021,10 @@
     }
     return { initialize, beginSide, localSupply, refreshSupply, reachable, move, combatOdds, eligibleAttackers,
       resolveAttack, computerTurn, endTurn, deserialize, reinforce, reinforcementSchedule, offMapReinforcements,
-      finishDay, COST, SCHEDULE, preview, planBattle, terrainDefense, strategyLabel, movementCost, crossingCost,
+      finishDay, COST, SCHEDULE, preview, planBattle, nextBattle, terrainDefense, strategyLabel, movementCost, crossingCost,
       maneuvers, chooseManeuver, chooseDefense, finishMovement, supplement, phaseReport, movementWarning,
-      alteredStrategyChance, lose, artilleryMaximum };
+      alteredStrategyChance, lose, artilleryMaximum, provisional, displayedCombatPoints, enemyStrengthOffset,
+      attemptAirdrops, armorFuel };
   }
   if (typeof module === 'object') module.exports = createManualRules;
   else root.createManualRules = createManualRules;

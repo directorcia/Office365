@@ -395,6 +395,59 @@
       if (battle) attack(state, unit.id, battle.defender.id);
     }
   }
+  function planGermanCardMove(state, unit, options, enemies, friends, objectives, current, weak) {
+    const towns = objectives.filter(tile => tile.sourcePoints);
+    const germanOn = tile => {
+      const occ = occupant(state, tile);
+      return Boolean(occ && occ.side === 'german');
+    };
+    // The unit on a captured town stays there. Bastogne is 100 VP per computer turn; leaving it gives the award back.
+    if (current.sourcePoints && germanOn(current)) return null;
+    const needs = towns.filter(tile => !germanOn(tile));
+    const exits = Object.values(state.map).filter(tile => tile.exit);
+    const nearest = tiles => tiles.slice().sort((a, b) => distance(unit, a) - distance(unit, b))[0];
+    const bastogne = towns.find(tile => tile.name === 'BASTOGNE');
+    const townTarget = needs.slice().sort((a, b) => {
+      const score = tile => distance(unit, tile) - (tile.name === 'BASTOGNE' ? 8 : 3);
+      return score(a) - score(b);
+    })[0];
+    const exitOpen = tile => tile.exit && !occupant(state, tile) && !enemiesNear(state, tile, 'german');
+    const exitTarget = nearest(exits.filter(exitOpen)) || nearest(exits);
+    // Exit VP is CP × (16 − turn) / 4. Turns 1–4 stay on the towns so an opening rush cannot farm that multiplier.
+    const allowExits = !weak && state.turn >= 5;
+    if (allowExits && current.exit && !enemiesNear(state, current, unit.side)) return null;
+    const bastogneClose = bastogne && !germanOn(bastogne) && distance(unit, bastogne) <= 3;
+    let target = townTarget || nearest(towns) || exitTarget;
+    if (weak) target = nearest(towns.filter(germanOn)) || nearest(towns) || target;
+    // Formations still beside an unheld Bastogne keep attacking it. Everyone else, from turn 5, takes an open exit.
+    else if (allowExits && exitTarget && !bastogneClose) target = exitTarget;
+    else if (townTarget) target = townTarget;
+    const scarceFuel = state.resourceVersion === 1 ? manualRules.provisional.scarceFuel : 35;
+    const rank = tile => {
+      if (!allowExits && tile.exit) return -Infinity;
+      const adjacent = enemies.filter(enemy => distance(tile, enemy) === 1).length;
+      const support = friends.filter(friend => distance(tile, friend) <= 2).length;
+      const toward = target ? -distance(tile, target) * 3 : 0;
+      const town = tile.sourcePoints && !germanOn(tile) ? tile.name === 'BASTOGNE' ? 8 : 5 : 0;
+      const exitBonus = allowExits && tile.exit && target && target.exit ? 4 : 0;
+      const travel = options.get(key(tile.x, tile.y))?.path.length || 0;
+      return toward + town + exitBonus + (current.col - tile.col) * 0.5 - adjacent * (weak ? 6 : 0.35) +
+        Math.min(3, support) * 0.4 - travel * (state.fuel < scarceFuel ? 1.1 : 0.12);
+    };
+    const ranked = [...options.keys()].map(tileKey => state.map[tileKey]).sort((a, b) => rank(b) - rank(a));
+    const destination = ranked.slice(0, 8).find(tile => {
+      if (!(rank(tile) > rank(current) + 0.2) || (!allowExits && tile.exit)) return false;
+      const candidate = { ...unit, x: tile.x, y: tile.y };
+      const projected = { ...state, units: state.units.map(counter => counter.id === unit.id ? candidate : counter) };
+      const supply = manualRules.localSupply(projected, candidate);
+      return supply !== 'isolated' || (tile.sourcePoints && !germanOn(tile));
+    });
+    if (!destination) return null;
+    const reason = weak ? 'preserve a weakened formation and seek safer ground' :
+      destination.exit ? 'continue a breakthrough toward an exit after the town offensive is underway' :
+        `drive on ${target && target.name || 'Bastogne'} and the other key towns`;
+    return { tile: destination, path: options.get(key(destination.x, destination.y)).path, reason };
+  }
   function planMovement(state, unit) {
     const options = reachable(state, unit);
     if (!options.size) return null;
@@ -402,6 +455,9 @@
     const friends = state.units.filter(friend => friend.side === unit.side && friend.hp > 0 && !friend.exited && friend.id !== unit.id);
     const objectives = Object.values(state.map).filter(tile => tile.value);
     const current = state.map[key(unit.x, unit.y)], weak = unit.hp < unit.maxHp * 0.35;
+    if (aidCard.active(state) && unit.side === 'german') {
+      return planGermanCardMove(state, unit, options, enemies, friends, objectives, current, weak);
+    }
     const westernSector = state.referenceVersion === 2 ? Math.floor(mapDimensions(state).cols / 2) : 8;
     const approaching = enemies.filter(enemy => state.map[key(enemy.x, enemy.y)].col <= westernSector ||
       objectives.some(tile => tile.owner === unit.side && distance(enemy, tile) <= 4));
@@ -504,20 +560,35 @@
         const order = planMovement(state, unit);
         if (order) {
           const from = { x: unit.x, y: unit.y };
-          if (!move(state, unit.id, order.tile.x, order.tile.y)) throw new Error('Computer movement became invalid.');
+          if (!move(state, unit.id, order.tile.x, order.tile.y)) {
+            if (state.log[0] && state.log[0].includes('BRIDGE BLOWN')) {
+              return { side, id: unit.id, text: state.log[0] };
+            }
+            throw new Error('Computer movement became invalid.');
+          }
+          const arrived = state.map[key(unit.x, unit.y)];
+          const blown = state.log[0] && state.log[0].includes('BRIDGE BLOWN');
           return { side, id: unit.id, path: [from, ...order.path],
-            text: `${unit.name} moves to column ${order.tile.col + 1}, row ${order.tile.row + 1} to ${order.reason}.` };
+            text: blown ? state.log[0] :
+              `${unit.name} moves to column ${arrived.col + 1}, row ${arrived.row + 1} to ${order.reason}.` };
         }
       } else {
-        progress.index++;
+        const germanCard = manual && aidCard.active(state) && side === 'german';
+        if (!germanCard) progress.index++;
         if (!manual) progress.stage = 'movement';
-        if (unit.hp <= 0 || unit.exited || unit.fired) continue;
-        const battle = manual ? manualRules.planBattle(state, unit) : planBattle(state, unit);
+        if (!germanCard && (unit.hp <= 0 || unit.exited || unit.fired)) continue;
+        const battle = germanCard ? manualRules.nextBattle(state, side) :
+          manual ? manualRules.planBattle(state, unit) : planBattle(state, unit);
+        if (germanCard) {
+          if (!battle) { progress.index = units.length; continue; }
+          progress.index = Math.min(units.length, progress.index + 1);
+        }
         if (battle) {
+          const lead = battle.ids ? state.units.find(counter => counter.id === battle.ids[0]) || unit : unit;
           const before = state.units.map(counter => ({ id: counter.id, hp: counter.hp, x: counter.x, y: counter.y }));
-          const from = { x: unit.x, y: unit.y }, to = { x: battle.defender.x, y: battle.defender.y };
+          const from = { x: lead.x, y: lead.y }, to = { x: battle.defender.x, y: battle.defender.y };
           if (manual) manualRules.resolveAttack(state, battle.ids, battle.defender.id, battle.options);
-          else if (!attack(state, unit.id, battle.defender.id)) throw new Error('Computer attack became invalid.');
+          else if (!attack(state, lead.id, battle.defender.id)) throw new Error('Computer attack became invalid.');
           const changes = before.filter(snapshot => {
             const now = state.units.find(counter => counter.id === snapshot.id);
             return now.hp !== snapshot.hp || now.x !== snapshot.x || now.y !== snapshot.y;
@@ -532,8 +603,8 @@
             const now = state.units.find(counter => counter.id === snapshot.id);
             return [{ x: snapshot.x, y: snapshot.y }, { x: now.x, y: now.y }];
           });
-          return { side, id: unit.id, path: [from, to], paths, battle: true,
-            text: `${unit.name}${manual && battle.ids.length > 1 ? ' and supporting formations' : ''} attacks ${battle.defender.name} to ${battle.reason}. ${changes.join('. ')}.` };
+          return { side, id: lead.id, path: [from, to], paths, battle: true,
+            text: `${lead.name}${manual && battle.ids.length > 1 ? ' and supporting formations' : ''} attacks ${battle.defender.name} to ${battle.reason}. ${changes.join('. ')}.` };
         }
       }
     }
@@ -862,6 +933,12 @@
     }
     context.restore();
   }
+  function shownCp(unit) {
+    return state.ruleset === 'manual' ? manualRules.displayedCombatPoints(state, unit) : unit.hp;
+  }
+  function shownMax(unit) {
+    return state.ruleset === 'manual' ? unit.maxHp + manualRules.enemyStrengthOffset(state, unit) : unit.maxHp;
+  }
   function draw() {
     const width = state.referenceVersion === 2 ? 920 : 740, height = state.referenceVersion === 2 ? 475 : 512;
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
@@ -964,7 +1041,7 @@
       context.fillStyle = palette.forceWhite;
       context.font = 'bold 11px Consolas, monospace';
       context.fillText(unitPresentation(counter).symbol, point.x + 8, point.y - 4);
-      context.font = '10px Consolas, monospace'; context.fillText(`${counter.hp}/${counter.mp}`, point.x, point.y + 7);
+      context.font = '10px Consolas, monospace'; context.fillText(`${shownCp(counter)}/${counter.mp}`, point.x, point.y + 7);
       if (counter.id === selected) { context.strokeStyle = palette.highlight; context.lineWidth = 2; hex(counter, 1); context.stroke(); }
       if (!counter.supplied) { context.fillStyle = palette.highlight; context.fillText('!', point.x + 20, point.y); }
       if (!observing() && mode === 'attack' && validTargets(state, unit).includes(counter)) {
@@ -1106,7 +1183,7 @@
     const unit = state.units.find(candidate => candidate.id === selected);
     $('unit-name').textContent = unit ? unit.name : 'No unit selected';
     $('unit-kind').textContent = unit ? `${unit.nationality === 'british' ? 'BRITISH / ALLIED' : unit.side.toUpperCase()} / ${unitPresentation(unit).label.toUpperCase()}` : 'GERMAN COMMAND';
-    $('strength').textContent = unit ? `${unit.hp} / ${unit.maxHp}` : '-';
+    $('strength').textContent = unit ? `${shownCp(unit)} / ${shownMax(unit)}` : '-';
     $('movement').textContent = unit ? String(unit.mp) : '-';
     $('supply').textContent = unit ? manual ? manualRules.localSupply(state, unit).toUpperCase() : unit.supplied ? 'CONNECTED' : 'ISOLATED' : '-';
     $('supply').dataset.status = unit ? unit.supplied ? 'connected' : 'isolated' : '';
@@ -1134,7 +1211,7 @@
       const button = document.createElement('button');
       button.className = 'roster-unit'; button.setAttribute('aria-pressed', String(counter.id === selected));
       button.textContent = `${counter.nationality === 'british' ? 'BRITISH ' : ''}[${unitPresentation(counter).symbol}] ${counter.name}`;
-      const stats = document.createElement('span'); stats.textContent = `${counter.hp} / ${counter.mp}`; button.append(stats);
+      const stats = document.createElement('span'); stats.textContent = `${shownCp(counter)} / ${counter.mp}`; button.append(stats);
       button.disabled = busy;
       button.onclick = () => {
         selected = counter.id; cursor = { x: counter.x, y: counter.y };
@@ -1303,12 +1380,16 @@
       const option = reachable(state, unit).get(key(tile.x, tile.y));
       const from = unit ? { x: unit.x, y: unit.y } : null;
       if (move(state, selected, tile.x, tile.y)) {
+        const blown = state.log[0] && state.log[0].includes('BRIDGE BLOWN');
+        const arrived = state.map[key(unit.x, unit.y)];
         setActionVisual({ side: unit.side, path: [from, ...option.path] });
-        $('action-story').textContent = `${unit.name} moved along the highlighted route to column ${tile.col + 1}, row ${tile.row + 1}. ${unit.mp} movement points remain.`;
-        moveHistory.push(previous); message('Movement complete.'); persist();
+        $('action-story').textContent = blown ? state.log[0] :
+          `${unit.name} moved along the highlighted route to column ${arrived.col + 1}, row ${arrived.row + 1}. ${unit.mp} movement points remain.`;
+        moveHistory.push(previous); message(blown ? state.log[0] : 'Movement complete.'); persist();
       } else {
         if (manualRules.supplement(state)) persist();
-        message(state.ruleset === 'manual' && manualRules.movementWarning(state, unit, tile) ||
+        const blown = state.log[0] && state.log[0].includes('BRIDGE BLOWN') ? state.log[0] : '';
+        message(blown || (state.ruleset === 'manual' && manualRules.movementWarning(state, unit, tile)) ||
           orderReason(state, unit, 'move') || 'Destination blocked: choose an empty dotted hex within the movement budget. Enemy zones and terrain restrict the route.');
       }
     } else message('No enemy target in this hex.');
@@ -1342,7 +1423,7 @@
     const tile = state.map[key(unit.x, unit.y)];
     const details = [
       `${unit.nationality === 'british' ? 'British / Allied' : unit.side === 'american' ? 'US' : 'German'} ${unitPresentation(unit).label}`,
-      `${manual ? 'Combat points' : 'Strength'}: ${unit.hp} / ${unit.maxHp}`,
+      `${manual ? 'Combat points' : 'Strength'}: ${shownCp(unit)} / ${shownMax(unit)}`,
       `Movement: ${unit.mp} / ${unit.mobility} MP`,
       `Supply: ${manual ? manualRules.localSupply(state, unit) : unit.supplied ? 'connected' : 'isolated'}`,
       `Combat: ${unit.fired ? 'already attacked' : 'not yet attacked'}`,
@@ -1450,7 +1531,7 @@
     const eligible = manual ? manualRules.eligibleAttackers(state, defender) : validTargets(state, unit).includes(defender) ? [unit] : [];
     if (!eligible.length) { message(orderReason(state, unit, 'attack') || 'No eligible attackers: the enemy must be adjacent and not already defended in this manual combat phase.'); return; }
     plannedDefender = defender.id;
-    $('plan-target').textContent = `Attack ${defender.name} / ${defender.hp} ${manual ? 'CP' : 'strength'}`;
+    $('plan-target').textContent = `Attack ${defender.name} / ${shownCp(defender)} ${manual ? 'CP' : 'strength'}`;
     $('manual-plan-options').hidden = !manual;
     $('hotseat-defense-options').hidden = state.playMode !== 'hotseat';
     if (state.playMode === 'hotseat') {
