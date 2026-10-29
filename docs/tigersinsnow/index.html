@@ -326,7 +326,7 @@
               <h2>DEFEND THIS BATTLE</h2><p id="defense-description"></p>
               <label for="battle-defense-strategy">Defensive strategy</label>
               <select id="battle-defense-strategy"><option value="counter">Counter-attack</option><option value="hold" selected>Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option></select>
-              <label for="battle-defense-artillery">Defensive artillery</label><input id="battle-defense-artillery" type="number" min="0" max="6" step="1" value="0">
+              <label for="battle-defense-artillery">Defensive artillery</label><input id="battle-defense-artillery" type="number" min="0" max="8" step="1" value="0">
               <button id="resolve-defense">Resolve defensive battle</button><p id="defense-error" role="alert"></p>
             </section>
             <canvas id="battlefield" width="740" height="512" tabindex="0" aria-label="Hex battlefield. German counters have a white-bordered black cross on medium grey; US counters have a white star on dark green; British Allied counters use B. Equals marks mechanized units; X marks infantry. Hover over a counter for unit details. Select friendly units and destinations. Arrow keys move the cursor; Enter activates a hex. Player-aid campaigns also support directions 1–6, F to finish a formation's movement or maneuver, and E to end a phase."></canvas>
@@ -382,7 +382,7 @@
           <label for="defense-strategy">Defensive stance against computer attacks</label>
           <select id="defense-strategy"><option value="counter">Counter-attack</option><option value="hold" selected>Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option></select>
           <label id="defensive-artillery-label" for="defensive-artillery" hidden>Defensive artillery commitment against computer attacks (capped by available points)</label>
-          <input id="defensive-artillery" type="number" min="0" max="6" step="1" value="2" hidden>
+          <input id="defensive-artillery" type="number" min="0" max="8" step="1" value="2" hidden>
           <p>Set your defensive stance and artillery commitment before ending combat. CP means combat points. <a href="help.html#manual-mode" target="_blank" rel="noopener">Manual-mode rules and approximations</a></p>
         </section>
         <section class="sidebar-section objectives-section"><div class="objective-heading"><h2>OBJECTIVES</h2><span id="score"></span></div><ul id="objectives"></ul></section>
@@ -439,7 +439,7 @@
     <label for="plan-artillery">Artillery points (10 CP each; at most one per attacker)</label><input id="plan-artillery" type="number" min="0" max="6" value="0" step="1">
     <fieldset id="hotseat-defense-options" hidden><legend>Defending player's choice</legend>
       <label for="plan-defense-strategy">Defense strategy</label><select id="plan-defense-strategy"><option value="counter">Counter-attack</option><option value="hold" selected>Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option></select>
-      <label for="plan-defense-artillery">Defensive artillery</label><input id="plan-defense-artillery" type="number" min="0" max="6" value="0" step="1">
+      <label for="plan-defense-artillery">Defensive artillery</label><input id="plan-defense-artillery" type="number" min="0" max="8" value="0" step="1">
     </fieldset>
     </div>
     <section id="plan-preview" aria-label="Battle odds and risk" aria-live="polite"></section>
