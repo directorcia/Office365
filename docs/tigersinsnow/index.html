@@ -86,6 +86,18 @@
     nav a:hover { background: var(--cp-surface-soft); }
     nav a:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 3px; }
     main { --page-gutter: 28px; margin: auto; padding: 20px var(--page-gutter) 28px; }
+    #who-wins { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 24px; align-items: center; margin: 0 0 10px; padding: 10px 14px; border: 1px solid var(--cp-border-strong); border-radius: 12px; background: var(--cp-surface); }
+    #who-wins-headline { margin: 0; font-size: 28px; font-weight: 800; line-height: 1.1; white-space: nowrap; }
+    #who-wins-meta { margin: 4px 0 0; font-size: 14px; line-height: 1.35; color: var(--cp-text-muted); }
+    #who-wins[data-ahead="german"] #who-wins-headline { color: var(--cp-danger); }
+    #who-wins[data-ahead="allied"] #who-wins-headline, #who-wins[data-ahead="american"] #who-wins-headline { color: var(--cp-link); }
+    .who-scale { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; font-size: 16px; font-weight: 700; }
+    #who-allied { color: var(--cp-link); }
+    #who-german { color: var(--cp-danger); text-align: right; }
+    .who-bar { position: relative; height: 28px; border-radius: 999px; background: linear-gradient(90deg, var(--cp-link) 0%, #7dd3fc 42%, #fecdd3 58%, var(--cp-danger) 100%); }
+    .who-marker, .who-goal { position: absolute; top: -5px; height: 38px; border-radius: 2px; transform: translateX(-50%); }
+    .who-marker { width: 5px; background: var(--cp-text); }
+    .who-goal { width: 3px; background: var(--cp-warning); }
     .status { display: flex; flex-wrap: wrap; gap: 20px; padding: 0 0 16px; align-items: center; font: 12px Consolas, monospace; }
     #phase { margin-left: auto; color: var(--cp-accent); font-weight: bold; }
     .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
@@ -267,6 +279,13 @@
     #reinforcement-schedule-list li[data-side="american"] { border-left-color: var(--cp-link); }
     #reinforcement-schedule-list li[data-side="german"] { border-left-color: var(--cp-danger); }
     #reinforcement-schedule-list li[data-status="Delayed"] { border-left-color: var(--cp-warning); }
+    #advisor { margin-top: 4px; border: 1px solid var(--cp-border); border-radius: 8px; background: var(--cp-surface); overflow: auto; }
+    #advisor[hidden] { display: none; }
+    #advisor > summary { cursor: pointer; padding: 4px 8px; font-size: 13px; font-weight: 700; }
+    #advisor-list { list-style: none; margin: 0; padding: 0 4px 4px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    #advisor-list button { width: 100%; display: flex; align-items: flex-start; gap: 6px; text-align: left; min-height: 28px; padding: 2px 6px; font-size: 13px; line-height: 1.3; background: transparent; border: 0; color: inherit; }
+    #advisor-list button:hover, #advisor-list button:focus-visible { background: var(--cp-accent-soft); }
+    #advisor-list .ico { width: 16px; height: 16px; margin-top: 2px; }
     select, input[type="number"] { font: inherit; color: var(--cp-text); background: var(--cp-surface); border: 1px solid var(--cp-border-strong); border-radius: 4px; padding: 8px; max-width: 100%; }
     #manual-command { border-top: 1px solid var(--cp-border); margin-top: 16px; padding-top: 12px; font: 12px/1.6 Consolas, monospace; }
     #manual-command label, #combat-plan label, #restart-dialog label { display: block; margin: 12px 0; }
@@ -349,40 +368,54 @@
     .drawer > summary { cursor: pointer; padding: 6px 2px; font-size: 14px; font-weight: 700; }
     .drawer > summary:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
     @media (min-width: 1000px) {
-      html, body { height: 100%; overflow: hidden; }
-      body { display: flex; flex-direction: column; }
+      html, body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
       .support-notice { padding: 2px 12px; font-size: 13px; }
       .masthead { padding: 4px 12px; }
       .masthead h1 { font-size: 18px; }
       .subtitle { display: none; }
       .insignia { padding: 4px 6px; font-size: 16px; }
       nav a, .masthead button, .orders button { min-height: 32px; padding: 4px 8px; }
-      main { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 6px 10px 8px; overflow: hidden; }
+      main { display: block; height: auto; overflow: visible; padding: 8px 0 24px; }
+      #who-wins, .status, .orders, #spectator-controls, .army-compare, #notice, aside.command-bar, #advisor { margin-left: 12px; margin-right: 12px; }
+      #who-wins { margin-bottom: 8px; }
       .status { padding: 0 0 4px; gap: 12px; font-size: 13px; }
-      .orders { margin: 0 0 4px; }
+      .orders { margin-top: 0; margin-bottom: 4px; }
       #next-step { display: block; padding: 6px 8px; }
       #next-step h2 { margin: 0 0 2px; font-size: 12px; }
       aside.command-bar #order-guidance { white-space: normal; overflow: visible; text-overflow: unset; display: block; line-height: 1.35; }
-      .layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 8px; overflow: hidden; align-items: stretch; }
-      .layout > section[aria-label="Battlefield"] { grid-column: 1; grid-row: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-      aside.command-bar { grid-column: 2; grid-row: 1; }
+      .layout { display: flex; flex-direction: column; gap: 8px; overflow: visible; }
+      .layout > section[aria-label="Battlefield"] { order: 1; width: 100%; min-width: 0; }
+      aside.command-bar { order: 2; width: auto; }
+      #advisor { order: 3; }
       .command-bar .campaign-scoreboard { display: block; margin: 8px 0; padding: 8px; }
       .map-header { display: none; }
-      .battlefield-reports { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 4px; }
-      .army-compare { grid-column: 1; grid-row: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-      .map-scroll { grid-column: 1; grid-row: 2; min-height: 0; margin: 0; display: flex; flex-direction: column; overflow: hidden; }
+      .battlefield-reports { display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 100%; }
+      .battlefield-reports > .army-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: start; position: relative; z-index: 1; }
+      .battlefield-reports > .map-scroll { width: 100%; align-self: stretch; margin: 0; display: flex; flex-direction: column; overflow: visible; position: relative; z-index: 0; }
+      .army-strip { display: flex; flex-wrap: wrap; align-items: center; column-gap: 10px; row-gap: 4px; }
+      .army-strip h2 { flex: 0 0 auto; margin: 0; white-space: nowrap; line-height: 1.2; background: var(--cp-surface); position: relative; z-index: 1; }
       .army-report { margin: 0; padding: 4px 8px; }
       .army-report h2 { font-size: 13px; }
+      .army-report .army-meters { flex: 1 1 160px; min-width: 0; margin: 0; gap: 4px 8px; }
+      .army-report .army-meters .ico { width: 16px; height: 16px; }
+      .army-report .chip { font-size: 13px; padding: 1px 6px; }
+      .army-report .army-meters .meter { width: 72px; }
+      .army-report .drawer > summary { padding: 2px 0; font-size: 13px; }
+      .legend { position: relative; padding: 2px 12px; gap: 2px 6px; flex-wrap: wrap; }
+      .legend-item { position: relative; min-height: 24px; padding: 0 4px; }
       .army-report .mission { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
-      .legend { padding: 2px 0; gap: 2px 6px; }
-      .legend-item { min-height: 24px; padding: 0 4px; }
-      #battlefield { flex: 1; min-height: 0; width: 100%; height: 100%; object-fit: contain; }
-      #notice { margin: 2px 0 0; min-height: 0; max-height: 1.4em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
+      #battlefield { display: block; width: 100%; height: auto; max-width: none; }
+      #notice { margin: 2px 12px 0; min-height: 0; font-size: 13px; }
       #action-story { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); padding: 0; border: 0; }
       .campaign-history, .campaign-scoreboard { max-height: none; }
       #reinforcement-arrivals { display: none; }
-      aside.command-bar { margin: 0; padding: 8px; gap: 6px; min-height: 0; overflow: auto; }
-      .command-cards { display: flex; flex-direction: column; gap: 6px; }
+      #reinforcement-schedule { margin: 4px 12px 0; }
+      #reinforcement-schedule > summary { padding: 4px 8px; }
+      #advisor { max-height: none; }
+      aside.command-bar { margin-top: 0; padding: 8px; gap: 6px; overflow: visible; }
+      .command-cards { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.9fr) minmax(0, 1.15fr); gap: 8px; align-items: start; }
+      .command-drawers { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+      .command-drawers > details { flex: 1 1 220px; min-width: 0; }
       .unit-card, .resource-card, .score-card { padding: 8px; }
       .panel-kicker { margin-bottom: 2px; font-size: 12px; }
       aside.command-bar #unit-name { font-size: 18px; }
@@ -407,7 +440,10 @@
       .subtitle { display: none; }
       .legend, main, .layout, .map-scroll { max-width: 100%; }
       .legend { flex-wrap: wrap; }
-      #battlefield { display: block; width: 100%; height: 58vh; object-fit: contain; }
+      #battlefield { display: block; width: 100%; height: auto; }
+      #who-wins { grid-template-columns: 1fr; }
+      #who-wins-headline { font-size: 22px; white-space: normal; }
+      #advisor { max-height: none; }
       aside.command-bar { position: static; max-height: none; overflow: visible; margin-top: 8px; }
     }
   </style>
@@ -419,6 +455,16 @@
     <nav aria-label="Campaign controls"><a href="help.html" target="_blank" rel="noopener" title="Open the player guide and historical background in a new tab">Help &amp; History</a><button id="rules">Rules</button><button id="order-of-battle-button" aria-haspopup="dialog" aria-controls="order-of-battle-dialog">Order of Battle</button><button id="phase-report-button" hidden>Report / R</button><button id="export">Export Save</button><button id="import">Import Save</button><button id="new-game">New Campaign</button></nav>
   </header>
   <main>
+    <section id="who-wins" aria-live="polite" aria-atomic="true" aria-label="Who is winning">
+      <div class="who-copy">
+        <p id="who-wins-headline">Even</p>
+        <p id="who-wins-meta"></p>
+      </div>
+      <div class="who-meter">
+        <div class="who-scale"><span id="who-allied"></span><span id="who-german"></span></div>
+        <div id="who-bar" class="who-bar" role="img"><span id="who-marker" class="who-marker"></span><span id="who-goal" class="who-goal" title="German victory starts here"></span></div>
+      </div>
+    </section>
     <div class="status"><span id="date"></span><span id="turn"></span><span id="weather"></span><span id="ruleset-status"></span><span id="seed-status"></span><span id="phase" role="status"></span></div>
     <div class="orders" role="group" aria-label="Unit orders"><button id="move" aria-pressed="true">Move</button><button id="attack" aria-pressed="false">Attack</button><button id="undo-move" disabled aria-label="Undo Move" title="Undo the last move (before combat or ending the turn)">&#8630; Undo</button><button id="end-turn">End Turn</button></div>
     <section id="spectator-controls" aria-label="Computer versus computer playback" hidden>
@@ -525,6 +571,7 @@
             <ul id="objectives"></ul>
           </section>
         </div>
+        <div class="command-drawers">
         <details class="drawer"><summary>Campaign detail</summary>
       <section class="campaign-scoreboard" aria-label="Overall campaign score">
         <h2>CAMPAIGN BALANCE / BOTH ARMIES</h2>
@@ -564,7 +611,12 @@
             <p>Not used on your own attack. Each computer attack still asks again on the map. <a href="help.html#manual-mode" target="_blank" rel="noopener">How defense and artillery work</a></p>
           </div>
         </details>
+        </div>
       </aside>
+      <details id="advisor" class="advisor" open hidden>
+        <summary>Advisor / <span id="advisor-count">0</span></summary>
+        <ol id="advisor-list" aria-label="Suggestions for the human player"></ol>
+      </details>
     </div>
   </main>
   <input id="save-file" type="file" accept=".json,application/json" hidden>
