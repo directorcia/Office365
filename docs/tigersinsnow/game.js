@@ -845,11 +845,12 @@
   function displayedScores(state) {
     const standing = campaignStanding(state);
     const earned = earnedScores(state);
-    const bonus = standing.target;
+    const bonus = earned.card ? (state.scenario === 'short' ? 324 : 699) : Math.max(0, standing.target - 1);
     const alliedDisplayed = earned.allied + bonus;
     const margin = earned.german - alliedDisplayed;
-    const displayLeader = margin > 0 ? 'german' : margin < 0 ? 'allied' : 'german';
-    return { ...earned, bonus, alliedDisplayed, germanDisplayed: earned.german, margin, displayLeader, tie: Math.abs(margin) < 0.001 };
+    const tie = Math.abs(margin) < 0.001;
+    const displayLeader = margin > 0 ? 'german' : 'allied';
+    return { ...earned, bonus, alliedDisplayed, germanDisplayed: earned.german, margin, displayLeader, tie };
   }
   function victoryLevelTable(scenario = 'campaign') {
     const column = scenario === 'short' ? 3 : 2;
@@ -930,14 +931,13 @@
     const leadText = formatPoints(Math.abs(board.margin));
     const requirement = `Most points wins. The ${alliedName} start with a ${formatPoints(board.bonus)}-point defender bonus in victory points (VP).`;
     let headline;
-    if (board.tie) headline = `${alliedName} ${alliedText} vs Germany ${germanText}: scores level, so Germany wins`;
+    if (board.tie) headline = `${alliedName} ${alliedText} vs Germany ${germanText}: scores level, ${alliedName} still winning`;
     else if (board.displayLeader === 'german') headline = `Germany ${germanText} vs ${alliedName} ${alliedText}: Germany winning by ${leadText}`;
     else headline = `${alliedName} ${alliedText} vs Germany ${germanText}: ${alliedName} winning by ${leadText}`;
-    if (state.winner === 'german' && board.tie) headline = `German victory: ${alliedName} ${alliedText} vs Germany ${germanText}, a tie is a German win`;
-    else if (state.winner === 'german' && board.displayLeader === 'german') headline = `German victory: Germany ${germanText} vs ${alliedName} ${alliedText}, Germany won by ${leadText}`;
+    if (state.winner === 'german' && board.displayLeader === 'german') headline = `German victory: Germany ${germanText} vs ${alliedName} ${alliedText}, Germany won by ${leadText}`;
     else if (state.winner === 'american' && board.displayLeader === 'allied') headline = `${card ? 'Allied' : 'American'} victory: ${alliedName} ${alliedText} vs Germany ${germanText}, ${alliedName} won by ${leadText}`;
     else if (state.winner) headline = `${state.winner === 'german' ? 'German' : card ? 'Allied' : 'American'} victory because the other army was wiped out. On points: ${headline}`;
-    const advisorTip = board.tie ? 'Scores are level: that tie is a German win.' :
+    const advisorTip = board.tie ? `Scores are level: the ${alliedName} are still winning.` :
       board.displayLeader === 'german' ? `Germany leads the board by ${leadText}.` :
       `${alliedName} lead the board by ${leadText}, including the defender bonus.`;
     const share = board.germanDisplayed + board.alliedDisplayed;
@@ -1032,7 +1032,6 @@
     $('who-allied').textContent = outlook.alliedLabel;
     $('who-allied').title = outlook.bonusNote;
     $('who-german').textContent = outlook.germanLabel;
-    $('who-goal-label').textContent = 'Equal scores: German win';
     $('who-fill').style.width = `${outlook.fill}%`;
     $('who-goal').style.left = '50%';
     $('who-bar').setAttribute('aria-label', `${outlook.headline}. ${outlook.bonusNote}.`);
@@ -1045,8 +1044,8 @@
     body.replaceChildren();
     const lead = document.createElement('p');
     lead.textContent = outlook.card ?
-      `Most points wins. The Allies start with a ${formatPoints(outlook.bonus)}-point defender bonus in victory points (VP), because Germany is attacking and must break through. Add that bonus to the victory points the Allies have earned. The higher total is winning. If the totals are equal, Germany wins: that is exactly a ${formatPoints(outlook.bonus)}-point lead.` :
-      'Most points wins. America starts with an 8-point defender bonus. Germany’s number is the objective points it holds. The higher number is winning. If the numbers are equal, Germany wins: that is exactly 8 points. Wiping out the other army still ends a classic campaign immediately.';
+      `Most points wins. The Allies are shown with ${formatPoints(outlook.bonus)} victory points (VP) already, because Germany is attacking and must break through. Add that to the victory points the Allies have earned. The higher total is the side that is winning. Germany is ahead on the board only when its earned lead is above ${formatPoints(outlook.bonus)}.` :
+      'Most points wins. America is shown with 7 points already. Germany’s number is the objective points it holds. The higher number is winning, so Germany is ahead from 8 points. Wiping out the other army still ends a classic campaign immediately.';
     const earned = document.createElement('p');
     if (outlook.card) {
       const towns = Object.values(state.map).filter(tile => tile.sourcePoints).map(tile => `${tile.name.charAt(0)}${tile.name.slice(1).toLowerCase()} ${tile.sourcePoints}`);
@@ -1596,7 +1595,7 @@
     }
     $('held-note').textContent = card ?
       'These figures are the towns each army occupies right now (Bastogne 50, Marche and Rochefort 25). They are not the whole score. The bar adds a defender bonus to the Allied total so the higher number is winning.' :
-      'These figures are the objective points each army holds right now. On the bar, America has an 8-point defender bonus, and the higher number is winning.';
+      'These figures are the objective points each army holds right now. On the bar, America starts with 7 points, and the higher number is winning.';
     const standing = campaignStanding(state);
     const outlook = victoryOutlook(state);
     $('score').textContent = outlook.tie ? 'Tie' : outlook.displayLeader === 'german' ? `Germany +${formatPoints(Math.abs(outlook.germanDisplayed - outlook.alliedDisplayed))}` : `${outlook.card ? 'Allies' : 'America'} +${formatPoints(Math.abs(outlook.alliedDisplayed - outlook.germanDisplayed))}`;
@@ -2261,11 +2260,11 @@
     }
   };
   function campaignWinLine() {
-    const target = $('campaign-scenario').value === 'short' ? 325 : 700;
+    const target = $('campaign-scenario').value === 'short' ? 324 : 699;
     const line = $('campaign-win-line');
     const strong = document.createElement('strong');
-    strong.textContent = `Most points wins. The Allies start with a ${target}-point defender bonus.`;
-    line.replaceChildren(strong, document.createTextNode(' Add it to the victory points (VP) the Allies earn. The higher total wins. A tie is a German win. Classic saves use an 8-point bonus.'));
+    strong.textContent = `Most points wins. The Allies start with ${target} victory points already.`;
+    line.replaceChildren(strong, document.createTextNode(' Add it to the victory points (VP) the Allies earn. The higher total wins. Classic saves use an 8-point bonus.'));
   }
   $('campaign-scenario').addEventListener('change', campaignWinLine);
   $('victory-help').onclick = () => { renderWhoWins(); $('victory-explainer').showModal(); };
