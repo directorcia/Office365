@@ -788,6 +788,7 @@
     }
     if (manual && combatPhase && state.playMode !== 'hotseat') add({ id: 'defense', icon: 'gauge', priority: 36,
       text: 'Choose a defense before ending combat. The computer attacks next.' });
+    add({ id: 'threshold', icon: 'star', priority: 92, text: victoryOutlook(state).advisorTip });
     items.sort((a, b) => b.priority - a.priority);
     const picked = [];
     const seen = new Set();
@@ -818,35 +819,67 @@
     const fraction = Math.abs(quarters % 4);
     return `${whole}${['', '.25', '.5', '.75'][fraction]}`;
   }
+  function progressLayout(lead, target) {
+    const span = Math.max(Number(target) * 1.2, Number(lead), 1);
+    const pct = value => Math.max(0, Math.min(100, Number(value) / span * 100));
+    return { fill: pct(Math.max(0, lead)), line: pct(target) };
+  }
   function victoryOutlook(state) {
     const standing = campaignStanding(state);
     const card = aidCard.active(state);
     const last = card ? aidCard.lastTurn(state) : 12;
     const turnsLeft = state.winner || state.phase === 'finished' ? 0 : Math.max(0, last - state.turn + 1);
     const turnsLabel = turnsLeft === 0 ? 'Final check' : `${turnsLeft} turn${turnsLeft === 1 ? '' : 's'} left`;
+    const target = standing.target;
+    const targetText = formatPoints(target);
+    let german, allied, net;
     if (card) {
-      const german = state.victoryPoints?.german || 0;
-      const allied = state.victoryPoints?.american || 0;
-      const net = german - allied;
-      const ahead = net > 0 ? 'german' : net < 0 ? 'allied' : 'even';
-      const headline = state.winner ? `${state.winner === 'german' ? 'German' : 'Allied'} victory` :
-        ahead === 'german' ? `German winning by ${formatPoints(net)} VP` :
-        ahead === 'allied' ? `Allies winning by ${formatPoints(-net)} VP` : 'Even';
-      return { headline, net, german, allied, level: standing.level, leader: standing.leader, ahead,
-        target: standing.target, turnsLeft, turnsLabel, card: true, winner: state.winner || null,
-        levelLabel: `${standing.leader === 'german' ? 'German' : 'Allied'} ${standing.level}`,
-        germanLabel: `Germany ${formatPoints(german)} VP`, alliedLabel: `Allies ${formatPoints(allied)} VP` };
+      german = state.victoryPoints?.german || 0;
+      allied = state.victoryPoints?.american || 0;
+      net = german - allied;
+    } else {
+      net = Number(state.score) || 0;
+      german = net;
+      allied = Object.values(state.map || {}).reduce((sum, tile) => sum + (tile.owner === 'american' ? tile.value || 0 : 0), 0);
     }
-    const score = Number(state.score) || 0;
-    const alliedHeld = Object.values(state.map || {}).reduce((sum, tile) => sum + (tile.owner === 'american' ? tile.value || 0 : 0), 0);
-    const ahead = state.winner ? state.winner : score >= standing.target ? 'german' : 'allied';
-    const headline = state.winner ? `${state.winner === 'german' ? 'German' : 'Allied'} victory` :
-      score > standing.target ? `German winning by ${formatPoints(score - standing.target)} points` :
-      score < standing.target ? `Allies ahead by ${formatPoints(standing.target - score)} points` : 'German at the victory line';
-    return { headline, net: score, german: score, allied: alliedHeld, level: score >= standing.target ? 'Target reached' : 'Below target',
-      leader: standing.leader, ahead: state.winner ? state.winner : ahead, target: standing.target, turnsLeft, turnsLabel, card: false,
-      winner: state.winner || null, levelLabel: score >= standing.target ? `Target ${standing.target} reached` : `Needs ${standing.target}`,
-      germanLabel: `Germany ${formatPoints(score)} / ${standing.target}`, alliedLabel: `Allies hold ${formatPoints(alliedHeld)}` };
+    const onTrack = net >= target;
+    const ahead = state.winner === 'german' || (!state.winner && onTrack) ? 'german' : 'allied';
+    const gap = target - net;
+    const gapText = formatPoints(Math.abs(gap));
+    const overText = formatPoints(Math.max(0, net - target));
+    const shown = formatPoints(Math.abs(net));
+    const requirement = card ? `Germany needs a ${targetText} VP lead to win` : `Germany needs ${targetText} objective points to win`;
+    const lineLabel = card ? `German win line ${targetText}` : `German win line ${targetText} points`;
+    let headline;
+    if (state.winner === 'american') {
+      headline = card ? `Allied victory: Germany fell ${gapText} VP short of the ${targetText} needed` :
+        `American victory: Germany fell ${gapText} points short of the ${targetText} needed`;
+    } else if (state.winner === 'german') {
+      headline = Math.abs(net - target) < 0.001 ?
+        `German victory: Germany finished on the ${targetText} ${card ? 'VP' : 'point'} line` :
+        `German victory: Germany finished ${formatPoints(net - target)} ${card ? 'VP' : 'points'} over the ${targetText} needed`;
+    } else if (Math.abs(net) < 0.001) {
+      headline = card ? `Germany needs ${targetText} VP lead; currently 0` : `Germany needs ${targetText} objective points; currently 0`;
+    } else if (!onTrack) {
+      const position = card ? (net > 0 ? `Germany leads by ${shown} VP` : `Germany trails by ${shown} VP`) :
+        `Germany holds ${shown} objective points`;
+      const holder = card ? 'Allies holding' : 'America holding';
+      headline = `${position}, needs ${targetText} to win: ${holder} (${gapText} short)`;
+    } else if (net - target < 0.001) {
+      headline = `Germany on track to win (reached the ${targetText} ${card ? 'VP' : 'point'} line)`;
+    } else headline = `Germany on track to win (+${overText} over ${targetText})`;
+    const advisorTip = onTrack ?
+      `Germany is ${overText} ${card ? 'VP' : 'points'} over the ${targetText} win line.` :
+      `Germany needs ${gapText} more ${card ? 'VP lead' : 'objective points'} to win.`;
+    const geometry = progressLayout(net, target);
+    const resultName = state.winner === 'german' ? 'GERMAN' : card ? 'ALLIED' : 'AMERICAN';
+    return { headline, requirement, advisorTip, lineLabel, net, german, allied, level: standing.level || (onTrack ? 'Target reached' : 'Below target'),
+      leader: standing.leader, ahead, onTrack, target, turnsLeft, turnsLabel, card, winner: state.winner || null,
+      levelLabel: card ? `${standing.leader === 'german' ? 'German' : 'Allied'} ${standing.level}` : (onTrack ? `Target ${targetText} reached` : `Needs ${targetText}`),
+      germanLabel: card ? `Germany ${formatPoints(german)} VP` : `Germany ${formatPoints(german)} / ${targetText}`,
+      alliedLabel: card ? `Allies ${formatPoints(allied)} VP` : `America holds ${formatPoints(allied)}`,
+      fill: geometry.fill, line: geometry.line,
+      resultLabel: state.winner ? `${resultName} VICTORY` : null };
   }
   const api = { createGame, unitPresentation, neighbors, riverCourses, referenceMap, aidCard, mapDimensions, occupant, distance, reachable, move, attack, combatOdds,
     isSupplied, beginSide, endTurn, computerTurn, simulateDay, simulateAction, deserialize, arrivalsThisTurn, campaignStanding, describeDispatch, armySummary, reportOperation, TERRAIN, key,
@@ -913,33 +946,27 @@
     }));
     box.setAttribute('aria-label', `${filled} of ${total} movement points remaining`);
   }
-  function tugPercent(score, target) {
-    const span = Math.max(Number(target) * 2, Math.abs(Number(score)) + Number(target), 8);
-    const min = -span * 0.35, max = span;
-    return value => Math.max(2, Math.min(98, (Number(value) - min) / (max - min) * 100));
-  }
   function renderWhoWins() {
     const outlook = victoryOutlook(state);
     const banner = $('who-wins');
-    banner.dataset.ahead = outlook.winner ? outlook.winner : outlook.ahead;
-    banner.setAttribute('aria-label', `${outlook.headline}. ${outlook.alliedLabel}. ${outlook.germanLabel}. Victory level ${outlook.levelLabel}. ${outlook.turnsLabel}.`);
+    banner.dataset.ahead = outlook.ahead;
+    banner.setAttribute('aria-label', `${outlook.requirement}. ${outlook.headline}. ${outlook.alliedLabel}. ${outlook.germanLabel}. ${outlook.lineLabel}. Victory level ${outlook.levelLabel}. ${outlook.turnsLabel}.`);
+    $('who-wins-requirement').textContent = outlook.requirement;
     $('who-wins-headline').textContent = outlook.headline;
-    $('who-wins-meta').textContent = `Victory level: ${outlook.levelLabel} · ${outlook.card ? `German victory at ${outlook.target}` : `Victory line ${outlook.target}`} · ${outlook.turnsLabel}`;
+    $('who-wins-meta').textContent = `${outlook.alliedLabel} · ${outlook.germanLabel} · Victory level: ${outlook.levelLabel} · ${outlook.turnsLabel}`;
     $('who-allied').textContent = outlook.alliedLabel;
     $('who-german').textContent = outlook.germanLabel;
-    const pos = tugPercent(outlook.net, outlook.target);
-    $('who-marker').style.left = `${pos(outlook.net)}%`;
-    $('who-goal').style.left = `${pos(outlook.target)}%`;
-    $('who-bar').setAttribute('aria-label', `${outlook.headline}. Marker at ${outlook.germanLabel} against ${outlook.alliedLabel}. German victory begins at ${outlook.target}.`);
+    $('who-goal-label').textContent = outlook.lineLabel;
+    $('who-fill').style.width = `${outlook.fill}%`;
+    $('who-goal').style.left = `${outlook.line}%`;
+    $('who-bar').setAttribute('aria-label', `${outlook.lineLabel}. Progress ${Math.round(outlook.fill)} percent of the scale. ${outlook.headline}`);
   }
   function setTug(score, target) {
-    const span = Math.max(Number(target) * 2, Math.abs(Number(score)) + Number(target), 8);
-    const min = -span * 0.35, max = span;
-    const pos = value => `${Math.max(2, Math.min(98, (value - min) / (max - min) * 100))}%`;
-    $('tug-marker').style.left = pos(Number(score));
-    $('tug-target').style.left = pos(Number(target));
-    $('tug-goal-label').textContent = String(target);
-    $('tug').setAttribute('aria-label', `Net score ${score}. German victory begins at ${target}, marked on the bar.`);
+    const layout = progressLayout(Number(score), Number(target));
+    $('tug-marker').style.left = `${layout.fill}%`;
+    $('tug-target').style.left = `${layout.line}%`;
+    $('tug-goal-label').textContent = `Win line ${target}`;
+    $('tug').setAttribute('aria-label', `Net score ${score}. German victory begins at ${target}. Below that line the other side is holding.`);
   }
   function renderAdvisor() {
     const advice = suggestions(state);
@@ -1452,7 +1479,7 @@
     $('victory-rule-title').textContent = card ? 'PLAYER-AID VICTORY / GERMAN VP − ALLIED VP' : 'EXISTING VICTORY RULE / GERMAN SCORE';
     $('campaign-score-progress').max = standing.target;
     $('campaign-score-progress').value = Math.max(0, Math.min(standing.target, standing.points));
-    $('phase').textContent = state.winner ? `${state.winner.toUpperCase()} VICTORY` : busy ? 'PROCESSING PHASE' :
+    $('phase').textContent = state.winner ? victoryOutlook(state).resultLabel : busy ? 'PROCESSING PHASE' :
       observing() ? `COMPUTER VS COMPUTER / ${autoplay ? 'PLAYING' : 'PAUSED'}` :
         `${commandSide.toUpperCase()} ${manual ? state.orderPhase.toUpperCase() : 'ORDERS'}`;
     $('spectator-controls').hidden = !observing();
@@ -2098,7 +2125,15 @@
       autoplayTimer = setTimeout(() => runSimulationDay(), Number($('simulation-speed').value));
     }
   };
-  $('new-game').onclick = () => { pauseSimulation(); render(); $('restart-error').textContent = ''; $('restart-dialog').showModal(); };
+  function campaignWinLine() {
+    const target = $('campaign-scenario').value === 'short' ? 325 : 700;
+    const line = $('campaign-win-line');
+    const strong = document.createElement('strong');
+    strong.textContent = `Germany needs a ${target} VP lead to win.`;
+    line.replaceChildren(strong, document.createTextNode(' The lead is German VP minus Allied VP. A smaller lead is an Allied victory, even if Germany has scored more VP. Classic saves use an 8-point objective line.'));
+  }
+  $('campaign-scenario').addEventListener('change', campaignWinLine);
+  $('new-game').onclick = () => { pauseSimulation(); render(); $('restart-error').textContent = ''; campaignWinLine(); $('restart-dialog').showModal(); };
   document.querySelectorAll('[data-command-side]').forEach(button => button.onclick = () => {
     pauseSimulation();
     let seed;
