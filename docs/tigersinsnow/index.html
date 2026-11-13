@@ -465,11 +465,11 @@
   </header>
   <main>
     <section id="who-wins" aria-live="polite" aria-atomic="true" aria-label="Who is winning">
-      <p id="who-wins-requirement">Most points wins. The Allies start with a 700-point defender bonus in victory points (VP).</p>
+      <p id="who-wins-requirement">Most points wins. The Allies start with 699 victory points (VP).</p>
       <p id="who-wins-headline">Allies 700 vs Germany 0: Allies winning by 700</p>
       <p id="who-wins-meta"></p>
-      <div class="who-scale"><span id="who-allied">Allies 700</span><span id="who-goal-label">Equal scores: German win</span><span id="who-german">Germany 0</span></div>
-      <div id="who-bar" class="who-bar" role="img"><span id="who-fill" class="who-fill"></span><span id="who-goal" class="who-goal" title="Equal scores are a German win"></span></div>
+      <div class="who-scale"><span id="who-allied">Allies 700</span><span id="who-german">Germany 0</span></div>
+      <div id="who-bar" class="who-bar" role="img"><span id="who-fill" class="who-fill"></span><span id="who-goal" class="who-goal" aria-hidden="true"></span></div>
       <button type="button" id="victory-help">How victory works</button>
       <details id="vp-breakdown"><summary>Where the points come from</summary><div id="vp-breakdown-body"></div></details>
     </section>
@@ -652,7 +652,7 @@
   <dialog id="victory-explainer" aria-labelledby="victory-explainer-title"><h2 id="victory-explainer-title">How victory works</h2><div id="victory-explainer-body"></div><div class="actions"><button data-close="victory-explainer">Close</button></div></dialog>
   <dialog id="rules-dialog" aria-labelledby="rules-title"><h2 id="rules-title">Campaign Rules</h2>
     <p>New campaigns use the Manual-based rules: separate movement and combat phases, combined attacks, artillery, strategy, supply, fuel and readiness. Germany cannot move on turn 1. New player-aid campaigns use provisional 24 MP infantry / 30 MP mechanized allowances; existing saves retain their allowances. The rules are an adaptation; see the <a href="help.html#manual-mode" target="_blank" rel="noopener">Manual-based guide</a> for details and documented approximations.</p>
-    <p><strong>Most points wins.</strong> The Allies start with a <strong>700-point defender bonus</strong> in victory points (VP) because Germany is attacking and must break through (325 in the short scenario). Add the bonus to the points the Allies have earned. The higher total is winning. Equal totals are a German win, because that is exactly the breakthrough lead. Classic campaigns use an <strong>8-point</strong> defender bonus the same way. Each destroyed enemy combat point is worth 1. German units also score Bastogne 50, Marche 25 and Rochefort 25 at the end of a day, plus marked edges (south or west 3, north 10) and exits. Those German place awards double while the computer plays Germany. Allied units score 20 on a marked eastern edge.</p>
+    <p><strong>Most points wins.</strong> The Allies are shown with <strong>699 victory points (VP)</strong> already in a full campaign, and <strong>324</strong> in the short scenario, because Germany is attacking and must break through. Add that to the points the Allies earn. The higher total is winning. Germany is ahead only when its earned lead is above that number. Classic campaigns show America with <strong>7</strong> points the same way, so Germany is ahead from 8 objective points. Each destroyed enemy combat point is worth 1. German units also score Bastogne 50, Marche 25 and Rochefort 25 at the end of a day, plus marked edges (south or west 3, north 10) and exits. Those German place awards double while the computer plays Germany. Allied units score 20 on a marked eastern edge.</p>
     <p>Command either side across the twelve daily turns from 16–27 December. Follow the victory assessment on the campaign screen for the current objective and scoring. The computer controls the opposing side unless you choose Two players / Hotseat.</p>
     <p>Use the controls beside the map to issue movement and combat orders. New campaigns autosave in the browser; Export Save and Import Save transfer campaigns. Existing saves retain their saved rules.</p>
     <p>This is an original scenario, not the original game's exact map or combat tables.</p>
@@ -687,7 +687,7 @@
     <div class="actions"><button data-close="combat-plan">Cancel</button><button id="resolve-attack">Resolve Attack</button></div>
   </dialog>
   <dialog id="restart-dialog" aria-labelledby="restart-title"><h2 id="restart-title">Start a New Campaign?</h2><p>Your current autosave will be replaced. New campaigns use the Manual-based rules. Choose your command side; the computer controls the opposing side.</p>
-    <p id="campaign-win-line"><strong>Most points wins.</strong> The Allies start with a 700-point defender bonus because Germany is attacking. Add it to the victory points (VP) the Allies earn. The higher total wins. A tie is a German win. The short scenario uses 325. Classic saves use an 8-point bonus.</p>
+    <p id="campaign-win-line"><strong>Most points wins.</strong> The Allies start with 699 victory points (VP) already because Germany is attacking. Add that to the points the Allies earn. The higher total wins. The short scenario uses 324. Classic saves show America starting with 7.</p>
     <fieldset id="aid-campaign-options"><legend>Player's aid card options</legend>
       <label for="campaign-scenario">Scenario</label><select id="campaign-scenario"><option value="campaign">Full campaign / 16–27 December</option><option value="short">Bastogne–St. Vith / 16–22 December</option></select>
       <label for="german-rating">German strength rating / 1–9</label><input id="german-rating" type="number" min="1" max="9" step="1" value="5">
