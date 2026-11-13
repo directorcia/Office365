@@ -417,6 +417,7 @@
       if (base.aidCard.active(state)) {
         const recipient = otherSide(unit.side), loss = before - unit.hp;
         state.casualties[unit.side] += loss; state.victoryPoints[recipient] += loss;
+        base.noteVictory(state, recipient, loss, 'enemy combat points destroyed');
         score(state);
       }
     }
@@ -773,6 +774,7 @@
       attemptAirdrops(state);
       log(state, `${15 + state.turn} DEC / ${state.weather.toUpperCase()} / new day.`);
       state.dayStart = base.daySnapshot(state);
+      base.resetVpToday(state);
     }
     function endTurn(state, side) {
       if (state.winner || state.pendingBattle || state.pendingDefense || state.aidFlow || state.phase !== side) return false;

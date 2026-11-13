@@ -96,10 +96,17 @@
     #who-allied { color: var(--cp-link); }
     #who-goal-label { color: var(--cp-text); text-align: center; }
     #who-german { color: var(--cp-danger); text-align: right; }
-    .who-bar { position: relative; height: 22px; border-radius: 999px; background: var(--cp-border); overflow: hidden; }
-    .who-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: inherit; background: var(--cp-link); }
-    #who-wins[data-ahead="german"] .who-fill { background: var(--cp-danger); }
+    .who-bar { position: relative; height: 22px; border-radius: 999px; background: var(--cp-danger); overflow: hidden; }
+    .who-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--cp-link); }
     .who-goal { position: absolute; top: 0; bottom: 0; width: 3px; background: var(--cp-text); transform: translateX(-50%); }
+    #victory-help { margin: 6px 0 0; background: none; border: 0; padding: 0; min-height: 0; color: var(--cp-link); font-weight: 700; text-decoration: underline; }
+    #vp-breakdown { margin-top: 8px; }
+    #vp-breakdown summary { cursor: pointer; font-weight: 700; }
+    #vp-breakdown h3 { margin: 8px 0 4px; font-size: 15px; }
+    #vp-breakdown ul { margin: 0 0 8px; padding-left: 18px; }
+    #victory-explainer table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    #victory-explainer th, #victory-explainer td { padding: 6px 8px; border-bottom: 1px solid var(--cp-border); text-align: left; }
+    #victory-explainer tr[data-current="true"] { background: var(--cp-accent-soft); font-weight: 700; }
     .status { display: flex; flex-wrap: wrap; gap: 20px; padding: 0 0 16px; align-items: center; font: 12px Consolas, monospace; }
     #phase { margin-left: auto; color: var(--cp-accent); font-weight: bold; }
     .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
@@ -458,11 +465,13 @@
   </header>
   <main>
     <section id="who-wins" aria-live="polite" aria-atomic="true" aria-label="Who is winning">
-      <p id="who-wins-requirement">Germany needs a 700 VP lead to win</p>
-      <p id="who-wins-headline">Germany needs 700 VP lead; currently 0</p>
+      <p id="who-wins-requirement">Most points wins. The Allies start with a 700-point defender bonus in victory points (VP).</p>
+      <p id="who-wins-headline">Allies 700 vs Germany 0: Allies winning by 700</p>
       <p id="who-wins-meta"></p>
-      <div class="who-scale"><span id="who-allied">Allies 0 VP</span><span id="who-goal-label">German win line 700</span><span id="who-german">Germany 0 VP</span></div>
-      <div id="who-bar" class="who-bar" role="img" aria-label="German win line 700"><span id="who-fill" class="who-fill"></span><span id="who-goal" class="who-goal"></span></div>
+      <div class="who-scale"><span id="who-allied">Allies 700</span><span id="who-goal-label">Equal scores: German win</span><span id="who-german">Germany 0</span></div>
+      <div id="who-bar" class="who-bar" role="img"><span id="who-fill" class="who-fill"></span><span id="who-goal" class="who-goal" title="Equal scores are a German win"></span></div>
+      <button type="button" id="victory-help">How victory works</button>
+      <details id="vp-breakdown"><summary>Where the points come from</summary><div id="vp-breakdown-body"></div></details>
     </section>
     <div class="status"><span id="date"></span><span id="turn"></span><span id="weather"></span><span id="ruleset-status"></span><span id="seed-status"></span><span id="phase" role="status"></span></div>
     <div class="orders" role="group" aria-label="Unit orders"><button id="move" aria-pressed="true">Move</button><button id="attack" aria-pressed="false">Attack</button><button id="undo-move" disabled aria-label="Undo Move" title="Undo the last move (before combat or ending the turn)">&#8630; Undo</button><button id="end-turn">End Turn</button></div>
@@ -640,9 +649,10 @@
     <p>Press any key to return to orders. R opens this report during movement or combat.</p>
     <div class="actions"><button data-close="phase-report-dialog">Continue</button></div>
   </dialog>
+  <dialog id="victory-explainer" aria-labelledby="victory-explainer-title"><h2 id="victory-explainer-title">How victory works</h2><div id="victory-explainer-body"></div><div class="actions"><button data-close="victory-explainer">Close</button></div></dialog>
   <dialog id="rules-dialog" aria-labelledby="rules-title"><h2 id="rules-title">Campaign Rules</h2>
     <p>New campaigns use the Manual-based rules: separate movement and combat phases, combined attacks, artillery, strategy, supply, fuel and readiness. Germany cannot move on turn 1. New player-aid campaigns use provisional 24 MP infantry / 30 MP mechanized allowances; existing saves retain their allowances. The rules are an adaptation; see the <a href="help.html#manual-mode" target="_blank" rel="noopener">Manual-based guide</a> for details and documented approximations.</p>
-    <p><strong>Germany needs a 700 VP lead to win</strong> the full campaign, or <strong>325</strong> in Bastogne–St. Vith. The lead is German VP minus Allied VP. Below that line the Allies win, even when Germany has more raw VP. Classic campaigns use the same test on an <strong>8-point objective line</strong>.</p>
+    <p><strong>Most points wins.</strong> The Allies start with a <strong>700-point defender bonus</strong> in victory points (VP) because Germany is attacking and must break through (325 in the short scenario). Add the bonus to the points the Allies have earned. The higher total is winning. Equal totals are a German win, because that is exactly the breakthrough lead. Classic campaigns use an <strong>8-point</strong> defender bonus the same way. Each destroyed enemy combat point is worth 1. German units also score Bastogne 50, Marche 25 and Rochefort 25 at the end of a day, plus marked edges (south or west 3, north 10) and exits. Those German place awards double while the computer plays Germany. Allied units score 20 on a marked eastern edge.</p>
     <p>Command either side across the twelve daily turns from 16–27 December. Follow the victory assessment on the campaign screen for the current objective and scoring. The computer controls the opposing side unless you choose Two players / Hotseat.</p>
     <p>Use the controls beside the map to issue movement and combat orders. New campaigns autosave in the browser; Export Save and Import Save transfer campaigns. Existing saves retain their saved rules.</p>
     <p>This is an original scenario, not the original game's exact map or combat tables.</p>
@@ -677,7 +687,7 @@
     <div class="actions"><button data-close="combat-plan">Cancel</button><button id="resolve-attack">Resolve Attack</button></div>
   </dialog>
   <dialog id="restart-dialog" aria-labelledby="restart-title"><h2 id="restart-title">Start a New Campaign?</h2><p>Your current autosave will be replaced. New campaigns use the Manual-based rules. Choose your command side; the computer controls the opposing side.</p>
-    <p id="campaign-win-line"><strong>Germany needs a 700 VP lead to win.</strong> The lead is German VP minus Allied VP. A smaller lead is an Allied victory, even if Germany has scored more VP. Bastogne–St. Vith uses 325. Classic saves use an 8-point objective line.</p>
+    <p id="campaign-win-line"><strong>Most points wins.</strong> The Allies start with a 700-point defender bonus because Germany is attacking. Add it to the victory points (VP) the Allies earn. The higher total wins. A tie is a German win. The short scenario uses 325. Classic saves use an 8-point bonus.</p>
     <fieldset id="aid-campaign-options"><legend>Player's aid card options</legend>
       <label for="campaign-scenario">Scenario</label><select id="campaign-scenario"><option value="campaign">Full campaign / 16–27 December</option><option value="short">Bastogne–St. Vith / 16–22 December</option></select>
       <label for="german-rating">German strength rating / 1–9</label><input id="german-rating" type="number" min="1" max="9" step="1" value="5">
