@@ -1,7 +1,7 @@
 {
   "project": "Ardennes: Winter Offensive",
   "updated": "2026-11-13",
-  "status": "Info panels use inline SVG icons, meters, movement pips, supply chips, town cards and a victory balance bar. Text hints stay as short captions. Save format unchanged.",
+  "status": "Desktop play fits in the window: map on the left, a compact icon rail on the right, explanations in tooltips, and history plus campaign detail closed until opened. Save format unchanged.",
   "request": "Offline browser game inspired by Tigers in the Snow on the TRS-80, with similar retro graphics and turn-based gameplay.",
   "scope": "Original implementation and scenario, not a reproduction of copyrighted code, artwork, manual, or exact map.",
   "decisions": [

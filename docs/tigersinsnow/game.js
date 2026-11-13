@@ -1234,10 +1234,10 @@
     $('american-roster').setAttribute('aria-label', card ? 'Allied formations' : 'US formations');
     document.querySelector('.army-report[data-side="american"] h2').textContent = card ? 'ALLIED / WEST' : 'AMERICAN / WEST';
     document.querySelector('.score-army[data-side="american"] h2').textContent = card ? 'ALLIED / WEST' : 'AMERICAN / WEST';
-    document.querySelector('.army-report[data-side="german"] h2 + p').textContent = card ?
+    document.querySelector('.army-report[data-side="german"] .mission').textContent = card ?
       'Mission: score casualties, marked edge presence, occupied towns and timely exits. Reach a German victory level at the final check.' :
       'Mission: concentrate westward, keep supply open and capture at least eight points. Adapted Manual rules also reward exits.';
-    document.querySelector('.army-report[data-side="american"] h2 + p').textContent = card ?
+    document.querySelector('.army-report[data-side="american"] .mission').textContent = card ?
       'Mission: inflict German casualties, deny town and exit awards, and gain points at marked eastern positions.' :
       'Mission: hold the western objectives, delay the offensive and deny Germany eight points at the final check.';
     const heldCaption = card ? 'occupied town award' : 'held-objective points';
@@ -1359,7 +1359,7 @@
     const opening = state.turn === 1 && state.phase === 'german' && state.orderPhase === 'combat';
     const nextName = targets[0] ? targets[0].name : '';
     const also = targets.slice(1).map(target => target.name);
-    $('order-guidance').textContent = observing() ? 'Spectator mode. Use Play, Next Action, or Next Day. You can inspect either army, and you cannot give orders.' :
+    const guidance = observing() ? 'Spectator mode. Use Play, Next Action, or Next Day. You can inspect either army, and you cannot give orders.' :
       state.winner ? 'The campaign is over. The victory score below is final. Start a new campaign to play again.' :
       state.pendingDefense ? 'The computer is attacking one of your formations. Use the Defend this battle panel on the map, then resolve it.' :
       state.pendingBattle ? 'Choose where the outlined formation retreats or advances. Directions are 1 to 6. F stops. Stopping a required retreat costs extra strength.' :
@@ -1368,6 +1368,12 @@
       manual && state.orderPhase === 'combat' && targets.length ? `Attack with ${unit.name}, outlined in yellow. Click ${nextName}, marked NEXT on the map, to preview the battle.${also.length ? ` ${also.join(' and ')} ${also.length === 1 ? 'is' : 'are'} also beside you.` : ''} Nothing fires until you choose Resolve Attack.` :
       manual && state.orderPhase === 'combat' ? `${unit ? unit.name : 'This formation'} has no enemy beside it. Select another of your formations, or end combat.` :
       moveReason || `Move ${unit ? unit.name : 'the selected formation'}. Dotted hexes are legal destinations. Click one. With the map focused, keys 1 to 6 step one hex.`;
+    const shortStep = opening && nextName ? `Attack ${nextName}. Germany cannot move today.` :
+      nextName && manual && state.orderPhase === 'combat' ? `Attack ${nextName}, marked NEXT.` :
+      state.orderPhase === 'movement' && unit ? `Move ${unit.name}. Click a dotted hex.` :
+      guidance.split('. ')[0] + '.';
+    $('order-guidance').textContent = shortStep;
+    $('next-step').title = guidance;
     $('move').setAttribute('aria-pressed', String(mode === 'move'));
     $('attack').setAttribute('aria-pressed', String(mode === 'attack'));
     $('undo-move').disabled = observing() || busy || Boolean(state.winner) || moveHistory.length === 0;
@@ -1420,7 +1426,8 @@
     Object.values(state.map).filter(tile => tile.value).forEach(tile => {
       const row = document.createElement('li');
       row.dataset.side = tile.owner;
-      row.className = 'town-card';
+      row.className = 'town-card tip';
+      row.tabIndex = 0;
       const flag = iconSpan('flag');
       const name = document.createElement('strong');
       name.textContent = tile.name;
@@ -1978,5 +1985,10 @@
   };
   new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   paintStaticIcons();
+  document.addEventListener('click', event => {
+    const tip = event.target.closest('.tip');
+    document.querySelectorAll('.tip.open').forEach(open => { if (open !== tip) open.classList.remove('open'); });
+    if (tip && event.target.closest('a, button, select, input') === null) tip.classList.toggle('open');
+  });
   render();
 })(typeof globalThis !== 'undefined' ? globalThis : this);
