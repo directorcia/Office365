@@ -360,9 +360,9 @@
       main { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 6px 10px 8px; overflow: hidden; }
       .status { padding: 0 0 4px; gap: 12px; font-size: 13px; }
       .orders { margin: 0 0 4px; }
-      #next-step { display: flex; align-items: center; gap: 8px; padding: 4px 8px; }
-      #next-step h2 { margin: 0; font-size: 12px; white-space: nowrap; }
-      #order-guidance { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #next-step { display: block; padding: 6px 8px; }
+      #next-step h2 { margin: 0 0 2px; font-size: 12px; }
+      aside.command-bar #order-guidance { white-space: normal; overflow: visible; text-overflow: unset; display: block; line-height: 1.35; }
       .layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 8px; overflow: hidden; align-items: stretch; }
       .layout > section[aria-label="Battlefield"] { grid-column: 1; grid-row: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
       aside.command-bar { grid-column: 2; grid-row: 1; }

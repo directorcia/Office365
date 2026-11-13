@@ -1368,9 +1368,10 @@
       manual && state.orderPhase === 'combat' && targets.length ? `Attack with ${unit.name}, outlined in yellow. Click ${nextName}, marked NEXT on the map, to preview the battle.${also.length ? ` ${also.join(' and ')} ${also.length === 1 ? 'is' : 'are'} also beside you.` : ''} Nothing fires until you choose Resolve Attack.` :
       manual && state.orderPhase === 'combat' ? `${unit ? unit.name : 'This formation'} has no enemy beside it. Select another of your formations, or end combat.` :
       moveReason || `Move ${unit ? unit.name : 'the selected formation'}. Dotted hexes are legal destinations. Click one. With the map focused, keys 1 to 6 step one hex.`;
-    const shortStep = opening && nextName ? `Attack ${nextName}. Germany cannot move today.` :
-      nextName && manual && state.orderPhase === 'combat' ? `Attack ${nextName}, marked NEXT.` :
-      state.orderPhase === 'movement' && unit ? `Move ${unit.name}. Click a dotted hex.` :
+    const who = unit ? unit.name : 'the selected formation';
+    const shortStep = nextName && (opening || (manual && state.orderPhase === 'combat')) ?
+      `Attack ${nextName} (NEXT on map) with ${who}.${opening ? ' No German move today.' : ''}` :
+      state.orderPhase === 'movement' && unit ? `Move ${who}. Click a dotted hex.` :
       guidance.split('. ')[0] + '.';
     $('order-guidance').textContent = shortStep;
     $('next-step').title = guidance;
