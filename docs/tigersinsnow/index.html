@@ -146,17 +146,37 @@
     #dispatches strong { font-weight: 600; }
     #dispatches p { margin: 4px 0 0; color: var(--cp-text-muted); }
     @media (max-width: 600px) { #dispatches li { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
-    aside.command-bar { order: -1; display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1.2fr) minmax(240px, 320px); gap: 8px 20px; align-items: start; margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--cp-border-strong); border-radius: 10px; background: var(--cp-surface); }
-    aside.command-bar .sidebar-section { border-left: 0; padding-left: 0; }
-    aside.command-bar h2 { margin-bottom: 4px; }
-    aside.command-bar dl { padding: 6px 0 0; gap: 2px 12px; }
-    aside.command-bar #order-guidance { margin: 0; }
-    aside.command-bar #manual-command { margin-top: 8px; padding-top: 8px; }
-    aside.command-bar #manual-command label { margin: 6px 0; }
-    aside.command-bar .objectives-section { grid-column: 1 / -1; }
-    aside.command-bar #objectives { display: flex; flex-wrap: wrap; gap: 2px 16px; margin: 4px 0 0; line-height: 1.35; }
-    aside.command-bar #objectives li { margin: 0; }
+    aside.command-bar { order: -1; display: flex; flex-direction: column; gap: 12px; margin: 0 0 16px; padding: 14px; border: 1px solid var(--cp-border-strong); border-radius: 12px; background: var(--cp-surface); font-family: "Segoe UI", Aptos, Calibri, sans-serif; color: var(--cp-text); }
     aside.command-bar[hidden] { display: none; }
+    aside.command-bar h2, aside.command-bar p, aside.command-bar dl, aside.command-bar li, aside.command-bar label, aside.command-bar summary, aside.command-bar #unit-name, aside.command-bar #unit-kind, aside.command-bar #score { font-family: "Segoe UI", Aptos, Calibri, sans-serif; }
+    #next-step { margin: 0; padding: 12px 14px; border: 1px solid var(--cp-accent); border-radius: 10px; background: var(--cp-accent-soft); }
+    #next-step h2 { margin: 0 0 4px; font-size: 14px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--cp-accent); }
+    aside.command-bar #order-guidance { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; font-size: 16px; line-height: 1.45; }
+    .command-cards { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(0, 1.15fr); gap: 12px; align-items: stretch; }
+    .unit-card, .resource-card, .score-card { min-width: 0; padding: 12px 14px; border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-bg-elevated); }
+    .panel-kicker { margin: 0 0 6px; font-size: 14px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--cp-text-muted); }
+    aside.command-bar #unit-name { margin: 0; font-size: 22px; font-weight: 700; line-height: 1.2; }
+    aside.command-bar #unit-kind { margin: 4px 0 0; font-size: 15px; color: var(--cp-text-muted); }
+    aside.command-bar dl { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 12px 0 0; padding: 0; font-size: 16px; }
+    aside.command-bar dt { font-size: 14px; font-weight: 700; color: var(--cp-text-muted); }
+    aside.command-bar dd { margin: 0; font-size: 18px; font-weight: 700; }
+    .stat-hint, .resource-list .stat-hint { display: block; margin-top: 2px; font-size: 15px; font-weight: 400; line-height: 1.35; color: var(--cp-text-muted); }
+    .resource-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+    .resource-list li { display: grid; gap: 2px; }
+    .resource-label { font-size: 14px; font-weight: 700; color: var(--cp-text-muted); }
+    .resource-list strong { font-size: 22px; font-weight: 700; line-height: 1.1; }
+    .score-figure { margin: 0; font-size: 28px; font-weight: 700; line-height: 1.1; }
+    aside.command-bar #score { font-size: inherit; font-weight: inherit; color: var(--cp-text); }
+    aside.command-bar #score-explain { margin: 6px 0 10px; font-size: 15px; line-height: 1.4; color: var(--cp-text); }
+    aside.command-bar #objectives { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 15px; line-height: 1.35; }
+    aside.command-bar #objectives li { margin: 0; padding-top: 8px; border-top: 1px solid var(--cp-border); }
+    #computer-defense { border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-bg-elevated); }
+    #computer-defense summary { cursor: pointer; padding: 12px 14px; font-size: 16px; font-weight: 700; }
+    #computer-defense summary:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: -3px; }
+    #computer-defense .defense-body { padding: 0 14px 14px; }
+    #computer-defense label { display: block; margin: 10px 0 4px; font-size: 15px; }
+    #computer-defense p { margin: 10px 0 0; font-size: 15px; line-height: 1.4; color: var(--cp-text-muted); }
+    @media (max-width: 900px) { .command-cards { grid-template-columns: 1fr; } }
     .section-label { color: var(--cp-text-muted); font: 10px Consolas, monospace; margin: 0 0 12px; }
     #unit-name { font: bold 20px Consolas, monospace; margin: 0 0 6px; overflow-wrap: anywhere; }
     #unit-kind { font: 10px Consolas, monospace; color: var(--cp-text-muted); }
@@ -249,7 +269,7 @@
     .battle-outcome { margin: 20px 0 0; padding: 12px; background: var(--cp-surface-soft); font: 12px/1.5 Consolas, monospace; text-align: center; }
     @media (max-width: 800px) {
       .layout { grid-template-columns: minmax(0, 1fr); }
-      aside.command-bar { grid-template-columns: 1fr 1fr; }
+      .command-cards { grid-template-columns: 1fr; }
       .sidebar-section { margin-top: 0; } .objectives-section { grid-column: 1 / -1; }
       #objectives { display: flex; flex-wrap: wrap; gap: 4px 20px; }
       .masthead { align-items: flex-start; } h1 { font-size: 23px; }
@@ -258,7 +278,7 @@
       .masthead { flex-direction: column; padding: 16px; } .insignia { display: none; }
       h1 { font-size: 24px; } nav { width: 100%; } nav button { flex: 1; padding: 8px; font-size: 12px; }
       main { --page-gutter: 16px; padding: 16px; } .status { gap: 10px 16px; } #phase { margin-left: 0; flex-basis: 100%; }
-      aside.command-bar { grid-template-columns: 1fr; } .objectives-section { grid-column: auto; }
+      .objectives-section { grid-column: auto; }
       .sidebar-section { border-left: 0; border-top: 1px solid var(--cp-border); padding: 16px 0 0; }
       footer { padding: 16px; line-height: 1.6; }
     }
@@ -387,19 +407,47 @@
         </div>
       </section>
       <aside class="command-bar" aria-label="Player command">
-        <section><h2 id="unit-name"></h2><div id="unit-kind"></div>
-          <dl><dt>STRENGTH</dt><dd id="strength"></dd><dt>MOVEMENT</dt><dd id="movement"></dd><dt>SUPPLY</dt><dd id="supply"></dd><dt>COMBAT</dt><dd id="combat"></dd></dl>
+        <section id="next-step" aria-labelledby="next-step-title">
+          <h2 id="next-step-title">What to do next</h2>
+          <p id="order-guidance" aria-live="polite"></p>
         </section>
-        <p id="order-guidance" aria-live="polite"></p>
-        <section id="manual-command" aria-label="Manual-mode command settings" hidden>
-          <p id="resources"></p>
-          <label for="defense-strategy">Defense vs computer</label>
-          <select id="defense-strategy"><option value="counter">Counter-attack</option><option value="hold" selected>Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option></select>
-          <label id="defensive-artillery-label" for="defensive-artillery" hidden>Artillery vs computer</label>
-          <input id="defensive-artillery" type="number" min="0" max="8" step="1" value="2" hidden>
-          <p><a href="help.html#manual-mode" target="_blank" rel="noopener">How defense and artillery work</a></p>
-        </section>
-        <section class="sidebar-section objectives-section"><div class="objective-heading"><h2>OBJECTIVES</h2><span id="score"></span></div><ul id="objectives"></ul></section>
+        <div class="command-cards">
+          <section class="unit-card" aria-label="Selected formation">
+            <p class="panel-kicker">Selected formation</p>
+            <h2 id="unit-name"></h2>
+            <p id="unit-kind"></p>
+            <dl>
+              <div><dt>Combat points</dt><dd id="strength"></dd><p id="strength-hint" class="stat-hint"></p></div>
+              <div><dt>Movement</dt><dd id="movement"></dd><p id="movement-hint" class="stat-hint"></p></div>
+              <div><dt>Local supply</dt><dd id="supply"></dd><p id="supply-hint" class="stat-hint"></p></div>
+              <div><dt>Readiness</dt><dd id="combat"></dd><p id="readiness-hint" class="stat-hint"></p></div>
+            </dl>
+          </section>
+          <section id="manual-command" class="resource-card" aria-label="Army resources today" hidden>
+            <p class="panel-kicker">Your army today</p>
+            <ul class="resource-list">
+              <li><span id="supply-label" class="resource-label" title="The shared stock this army spends in battle. At zero, its formations fight at half strength.">Supply</span><strong id="supply-pool"></strong><span class="stat-hint">Spent in battle. At zero, this army fights at half strength.</span></li>
+              <li><span class="resource-label" title="Each point adds 10 combat points to one battle. Unused points are replaced at the start of the next day.">Artillery</span><strong id="artillery-pool"></strong><span class="stat-hint">Each point adds 10 combat points to one battle. It refills tomorrow.</span></li>
+              <li><span class="resource-label" title="Only German tanks spend fuel, when they move or attack. The pool is never refilled. Low fuel halves their movement.">German fuel</span><strong id="fuel-pool"></strong><span class="stat-hint">German tanks spend this to move and attack. It never refills. Low fuel halves their movement.</span></li>
+            </ul>
+          </section>
+          <section class="score-card objectives-section" aria-label="Victory score and towns">
+            <p class="panel-kicker">Victory score</p>
+            <p class="score-figure"><strong id="score"></strong></p>
+            <p id="score-explain"></p>
+            <ul id="objectives"></ul>
+          </section>
+        </div>
+        <details id="computer-defense">
+          <summary>When the computer attacks you</summary>
+          <div class="defense-body">
+            <label for="defense-strategy">Default stance</label>
+            <select id="defense-strategy"><option value="counter">Counter-attack</option><option value="hold" selected>Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option></select>
+            <label id="defensive-artillery-label" for="defensive-artillery" hidden>Artillery points to spend on that defense</label>
+            <input id="defensive-artillery" type="number" min="0" max="8" step="1" value="2" hidden>
+            <p>Not used on your own attack. Each computer attack still asks again on the map. <a href="help.html#manual-mode" target="_blank" rel="noopener">How defense and artillery work</a></p>
+          </div>
+        </details>
       </aside>
     </div>
   </main>

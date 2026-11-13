@@ -989,6 +989,8 @@
     context.fillStyle = paper; context.fillRect(0, 0, canvas.width, canvas.height);
     context.font = '12px Consolas, monospace'; context.textAlign = 'center'; context.textBaseline = 'middle';
     const unit = state.units.find(candidate => candidate.id === selected);
+    const attackTargets = !observing() && mode === 'attack' ? validTargets(state, unit) : [];
+    const focusTarget = attackTargets[0] || null;
     const options = mode === 'move' && !observing() ? reachable(state, unit) : new Map();
     for (const tile of Object.values(state.map)) {
       const point = center(tile);
@@ -1056,8 +1058,20 @@
       context.font = '10px Consolas, monospace'; context.fillText(`${shownCp(counter)}/${counter.mp}`, point.x, point.y + 7);
       if (counter.id === selected) { context.strokeStyle = palette.highlight; context.lineWidth = 2; hex(counter, 1); context.stroke(); }
       if (!counter.supplied) { context.fillStyle = palette.highlight; context.fillText('!', point.x + 20, point.y); }
-      if (!observing() && mode === 'attack' && validTargets(state, unit).includes(counter)) {
-        context.strokeStyle = palette.german; context.lineWidth = 2; context.strokeRect(point.x - 20, point.y - 16, 40, 32);
+      if (attackTargets.includes(counter)) {
+        const primary = focusTarget && counter.id === focusTarget.id;
+        context.strokeStyle = primary ? palette.highlight : palette.german;
+        context.lineWidth = primary ? 4 : 2;
+        context.strokeRect(point.x - 20, point.y - 16, 40, 32);
+        if (primary) {
+          context.font = 'bold 11px Consolas, monospace';
+          const badge = 'NEXT';
+          const badgeWidth = context.measureText(badge).width + 8;
+          context.fillStyle = paper;
+          context.fillRect(point.x - badgeWidth / 2, point.y - 34, badgeWidth, 14);
+          context.fillStyle = palette.highlight;
+          context.fillText(badge, point.x, point.y - 27);
+        }
       }
     }
     for (const tile of Object.values(state.map).filter(candidate => candidate.value)) {
@@ -1131,7 +1145,7 @@
     $('turn').textContent = `TURN ${state.turn} / ${aidCard.lastTurn(state)}`;
     $('weather').textContent = state.weather.toUpperCase();
     $('seed-status').textContent = state.initialSeed === undefined ? 'LEGACY / SEED UNKNOWN' : `SEED ${state.initialSeed}`;
-    $('score').textContent = aidCard.active(state) ? `${state.score} NET VP` : `${state.score} / 8`;
+    $('score').textContent = '';
     const manual = state.ruleset === 'manual';
     const card = aidCard.active(state);
     const alliedRoster = document.querySelector('.order-of-battle[data-side="american"]');
@@ -1160,6 +1174,10 @@
       'These figures are the towns each army occupies right now (Bastogne 50, Marche and Rochefort 25). They are not the victory score. Victory is cumulative German VP minus Allied VP, shown below. Germany is on course once that net score reaches 700 (325 in the short scenario).' :
       'These figures are the objective points each army holds right now. Germany needs 8 at the final check, and only if a German formation is still in play.';
     const standing = campaignStanding(state);
+    $('score').textContent = card ? String(standing.points) : `${state.score} / 8`;
+    $('score-explain').textContent = card ?
+      `German victory points minus Allied victory points. Germany is on course at ${standing.target} or more${state.scenario === 'short' ? ' in this short scenario' : ''}. A positive score favors Germany. A negative score favors the Allies.` :
+      'Objective points Germany holds right now. Germany needs 8 at the final check, and a German formation still in play.';
     $('campaign-points').textContent = `${standing.points} / ${standing.target}`;
     $('campaign-leader').textContent = standing.status;
     $('campaign-leader').dataset.side = standing.leader;
@@ -1188,8 +1206,14 @@
     $('ruleset-status').textContent = card ? `MANUAL / PLAYER-AID / G${state.ratings.german} A${state.ratings.american}` :
       manual ? 'MANUAL-BASED ADAPTATION' : 'CLASSIC RULES';
     $('manual-command').hidden = !manual;
+    const playerAttacking = manual && !observing() && state.playMode !== 'hotseat' &&
+      state.orderPhase === 'combat' && state.phase === commandSide && !state.pendingDefense;
+    $('computer-defense').hidden = !manual || observing() || state.playMode === 'hotseat' || playerAttacking;
     if (manual) {
-      $('resources').textContent = `Supply ${state.generalSupply[commandSide]} / Artillery ${state.artillery[commandSide]} / German fuel ${state.fuel}`;
+      $('supply-label').textContent = commandSide === 'german' ? 'German supply' : 'Allied supply';
+      $('supply-pool').textContent = String(state.generalSupply[commandSide]);
+      $('artillery-pool').textContent = String(state.artillery[commandSide]);
+      $('fuel-pool').textContent = String(state.fuel);
       $('defense-strategy').value = state.defenseStrategy;
       $('defense-strategy').disabled = observing() || busy;
     }
@@ -1204,10 +1228,26 @@
     $('unit-name').textContent = unit ? unit.name : 'No unit selected';
     $('unit-kind').textContent = unit ? `${unit.nationality === 'british' ? 'BRITISH / ALLIED' : unit.side.toUpperCase()} / ${unitPresentation(unit).label.toUpperCase()}` : 'GERMAN COMMAND';
     $('strength').textContent = unit ? `${shownCp(unit)} / ${shownMax(unit)}` : '-';
+    $('strength-hint').textContent = unit ? 'Fighting power now, out of full strength. Losses make the next battle weaker.' : '';
+    const openingMoveBan = Boolean(unit && state.turn === 1 && unit.side === 'german' && state.phase === 'german');
     $('movement').textContent = unit ? String(unit.mp) : '-';
-    $('supply').textContent = unit ? manual ? manualRules.localSupply(state, unit).toUpperCase() : unit.supplied ? 'CONNECTED' : 'ISOLATED' : '-';
+    $('movement-hint').textContent = !unit ? '' :
+      openingMoveBan ? 'Opening day, 16 December: Germany cannot move. This formation can only attack.' :
+      manual && state.orderPhase === 'combat' ? 'Movement is closed. It opens again with the next day.' :
+      unit.mp === 0 ? 'No movement points left for this phase.' :
+      `${unit.mp} movement points left out of ${unit.mobility}.`;
+    const supplyWord = unit ? manual ? manualRules.localSupply(state, unit) : unit.supplied ? 'supplied' : 'isolated' : '';
+    $('supply').textContent = supplyWord ? supplyWord.charAt(0).toUpperCase() + supplyWord.slice(1) : '-';
     $('supply').dataset.status = unit ? unit.supplied ? 'connected' : 'isolated' : '';
-    $('combat').textContent = unit ? `${unit.fired ? 'Spent' : 'Ready'}${manual ? ` ${unit.readiness}/7` : ''}` : '-';
+    $('supply-hint').textContent = !unit ? '' :
+      supplyWord === 'supplied' ? 'Full combat effect. Friends or an open side keep the supply line.' :
+      supplyWord === 'limited' ? 'Fights and moves at about three quarters. One friendly unit is nearby, but the position is tight.' :
+      'Cannot attack, and fights at half effect. Open a gap or bring a friendly unit alongside.';
+    $('combat').textContent = unit ? manual ? `${unit.readiness} / 7` : unit.fired ? 'Spent' : 'Ready' : '-';
+    $('readiness-hint').textContent = !unit ? '' :
+      !manual ? (unit.fired ? 'This formation has already attacked today.' : 'This formation has not attacked today.') :
+      unit.fired ? `Already attacked today. Readiness ${unit.readiness} of 7 still adds ${unit.readiness * 10}% in a later fight.` :
+      `Each point adds 10% in combat. ${unit.readiness} of 7 adds ${unit.readiness * 10}%. Moving spends readiness.`;
     for (const command of ['move', 'attack', 'end-turn']) {
       $(command).disabled = observing() || busy || Boolean(state.winner) || Boolean(state.pendingBattle || state.pendingDefense) || (command !== 'end-turn' && (!unit || unit.hp <= 0 || unit.exited)) ||
         (manual && command !== 'end-turn' && (command === 'move' ? state.orderPhase !== 'movement' : state.orderPhase !== 'combat'));
@@ -1219,18 +1259,18 @@
     }
     const moveReason = orderReason(state, unit, 'move'), attackReason = orderReason(state, unit, 'attack');
     const targets = validTargets(state, unit);
-    const actor = commandSide === 'german' ? 'Germany' : card ? 'Allies' : 'America';
     const opening = state.turn === 1 && state.phase === 'german' && state.orderPhase === 'combat';
-    $('order-guidance').textContent = observing() ? 'Spectator mode. Play, Next Action and Next Day run the computers. Select any formation to inspect it.' :
-      state.winner ? 'The campaign is over. Review the victory line below, or start a new campaign.' :
-      state.pendingDefense ? 'The computer is attacking one of your formations. Choose the defense in the panel on the map, then resolve it.' :
-      state.pendingBattle ? 'A retreat or advance is waiting. Use directions 1–6, or F to stop. Stopping a retreat early costs extra strength.' :
-      `${opening ? 'Opening day: Germany cannot move. ' : `${actor}, ${manual ? state.orderPhase : 'orders'}. `}${unit ? unit.name + '. ' : ''}` +
-      (manual && state.orderPhase === 'combat' ?
-        (attackReason ? `Attack: ${attackReason}` :
-          targets.length ? `Attack is open. Click ${targets.map(target => target.name).join(' or ')} for a battle preview before anything is fired.` :
-          'This formation has no adjacent enemy. Select another counter, or end combat.') :
-        (moveReason ? `Move: ${moveReason}` : 'Move is open. Click a dotted hex. Enter spends the cursor hex.'));
+    const nextName = targets[0] ? targets[0].name : '';
+    const also = targets.slice(1).map(target => target.name);
+    $('order-guidance').textContent = observing() ? 'Spectator mode. Use Play, Next Action, or Next Day. You can inspect either army, and you cannot give orders.' :
+      state.winner ? 'The campaign is over. The victory score below is final. Start a new campaign to play again.' :
+      state.pendingDefense ? 'The computer is attacking one of your formations. Use the Defend this battle panel on the map, then resolve it.' :
+      state.pendingBattle ? 'Choose where the outlined formation retreats or advances. Directions are 1 to 6. F stops. Stopping a required retreat costs extra strength.' :
+      opening && targets.length ? `Germany cannot move today. Attack with ${unit.name}, outlined in yellow. Click ${nextName}, marked NEXT on the map, to preview the battle.${also.length ? ` ${also.join(' and ')} ${also.length === 1 ? 'is' : 'are'} also beside you.` : ''} Nothing fires until you choose Resolve Attack.` :
+      manual && state.orderPhase === 'combat' && attackReason ? attackReason :
+      manual && state.orderPhase === 'combat' && targets.length ? `Attack with ${unit.name}, outlined in yellow. Click ${nextName}, marked NEXT on the map, to preview the battle.${also.length ? ` ${also.join(' and ')} ${also.length === 1 ? 'is' : 'are'} also beside you.` : ''} Nothing fires until you choose Resolve Attack.` :
+      manual && state.orderPhase === 'combat' ? `${unit ? unit.name : 'This formation'} has no enemy beside it. Select another of your formations, or end combat.` :
+      moveReason || `Move ${unit ? unit.name : 'the selected formation'}. Dotted hexes are legal destinations. Click one. With the map focused, keys 1 to 6 step one hex.`;
     $('move').setAttribute('aria-pressed', String(mode === 'move'));
     $('attack').setAttribute('aria-pressed', String(mode === 'attack'));
     $('undo-move').disabled = observing() || busy || Boolean(state.winner) || moveHistory.length === 0;
@@ -1279,10 +1319,10 @@
     Object.values(state.map).filter(tile => tile.value).forEach(tile => {
       const row = document.createElement('li');
       row.dataset.side = tile.owner;
-      const holder = tile.owner === 'german' ? 'GER' : card ? 'ALLIED' : 'USA';
+      const holder = tile.owner === 'german' ? 'Germany holds it now' : card ? 'The Allies hold it now' : 'America holds it now';
       row.textContent = card && tile.sourcePoints ?
-        `${tile.name} / ${holder} / ${tile.sourcePoints} VP while occupied` :
-        `${tile.name} / ${holder} / ${tile.value} PT`;
+        `${tile.name}. ${holder}. Germany scores ${tile.sourcePoints} victory points each day a German unit is standing here. An empty town scores nothing.` :
+        `${tile.name}. ${holder}. Worth ${tile.value} points while that side controls it.`;
       $('objectives').append(row);
     });
     $('dispatches').replaceChildren();

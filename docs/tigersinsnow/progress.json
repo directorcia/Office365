@@ -1,7 +1,7 @@
 {
   "project": "Ardennes: Winter Offensive",
   "updated": "2026-11-13",
-  "status": "Play fixes: opening selection, labeled legend, visible command bar, seed and rules on the status line, map edge labels, bridge-stop arrows, and German AI that holds the key towns before taking exits. Save format unchanged.",
+  "status": "The command panel leads with What to do next, then the selected formation, labelled supply/artillery/fuel, and a plain victory score. Computer-defense settings stay hidden while you are attacking. The recommended target is marked NEXT on the map. Save format unchanged.",
   "request": "Offline browser game inspired by Tigers in the Snow on the TRS-80, with similar retro graphics and turn-based gameplay.",
   "scope": "Original implementation and scenario, not a reproduction of copyrighted code, artwork, manual, or exact map.",
   "decisions": [
