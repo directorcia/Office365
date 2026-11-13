@@ -827,35 +827,25 @@
       provisional: !state.winner };
   }
   function formatPoints(value) {
-    const quarters = Math.round(Number(value) * 4);
-    const whole = Math.trunc(quarters / 4);
-    const fraction = Math.abs(quarters % 4);
-    return `${whole}${['', '.25', '.5', '.75'][fraction]}`;
+    const whole = Math.round(Number(value));
+    return String(Number.isFinite(whole) ? whole : 0);
   }
   function earnedScores(state) {
     const card = aidCard.active(state);
     if (card) return { german: state.victoryPoints?.german || 0, allied: state.victoryPoints?.american || 0, card: true };
     return { german: Number(state.score) || 0, allied: 0, card: false };
   }
-  function displayedScores(state) {
-    const standing = campaignStanding(state);
-    const earned = earnedScores(state);
-    const bonus = earned.card ? (state.scenario === 'short' ? 324 : 699) : Math.max(0, standing.target - 1);
-    const alliedDisplayed = earned.allied + bonus;
-    const margin = earned.german - alliedDisplayed;
-    const tie = Math.abs(margin) < 0.001;
-    const displayLeader = margin > 0 ? 'german' : 'allied';
-    return { ...earned, bonus, alliedDisplayed, germanDisplayed: earned.german, margin, displayLeader, tie };
+  function leadSpan(side, above, through, bonus) {
+    if (side !== 'german') return { min: bonus - through, max: above === null ? Infinity : bonus - above - 1 };
+    const low = above - bonus + 1;
+    const high = Number.isFinite(through) ? through - bonus : Infinity;
+    return { min: Number.isFinite(high) ? -high : -Infinity, max: -low };
   }
-  function boardMargin(side, above, through, bonus, alliedName) {
-    if (side !== 'german') {
-      const atCeiling = bonus - through;
-      if (above === null) return `${alliedName} ahead by ${formatPoints(atCeiling)} or more`;
-      return `${alliedName} ahead by ${formatPoints(atCeiling)} up to, but not including, ${formatPoints(bonus - above)}`;
-    }
-    const justOver = above - bonus;
-    if (!Number.isFinite(through)) return `Germany ahead by more than ${formatPoints(justOver)}`;
-    return `Germany ahead by more than ${formatPoints(justOver)}, up to ${formatPoints(through - bonus)}`;
+  function leadLabel(side, span, name) {
+    if (side !== 'german') return Number.isFinite(span.max) ? `${name} ${span.min}–${span.max}` : `${name} ${span.min}+`;
+    const low = -span.max;
+    const high = Number.isFinite(span.min) ? -span.min : Infinity;
+    return Number.isFinite(high) ? `Germany ${low}–${high}` : `Germany ${low}+`;
   }
   function victoryLevelTable(scenario = 'campaign') {
     const column = scenario === 'short' ? 3 : 2;
@@ -863,17 +853,74 @@
     const alliedName = scenario === 'classic' ? 'America' : 'Allies';
     if (scenario === 'classic') {
       return [
-        { side: 'american', level: 'winning', above: null, through: 7, margin: 'America ahead by 0 or more, including a tie' },
-        { side: 'german', level: 'winning', above: 7, through: Infinity, margin: 'Germany ahead by more than 0' }
-      ];
+        { side: 'american', level: 'winning', above: null, through: 7, bonus, min: 0, max: Infinity },
+        { side: 'german', level: 'winning', above: 7, through: Infinity, bonus, min: -Infinity, max: -1 }
+      ].map(row => ({ ...row, margin: leadLabel(row.side, row, alliedName) }));
     }
     let above = null;
     return aidCard.levels.map(row => {
       const through = row[column];
-      const entry = { side: row[0], level: row[1], above, through, bonus, margin: boardMargin(row[0], above, through, bonus, alliedName) };
+      const span = leadSpan(row[0], above, through, bonus);
+      const entry = { side: row[0], level: row[1], above, through, bonus, min: span.min, max: span.max, margin: leadLabel(row[0], span, alliedName) };
       above = through;
       return entry;
     });
+  }
+  function wholePair(exactAllied, exactGerman, lead, floorAllied) {
+    const options = [
+      { german: Math.max(0, Math.round(exactGerman)) },
+      { allied: Math.max(floorAllied, Math.round(exactAllied)) }
+    ];
+    options[0].allied = options[0].german + lead;
+    options[1].german = options[1].allied - lead;
+    const valid = options.filter(pair => pair.allied >= floorAllied && pair.german >= 0 && pair.allied - pair.german === lead);
+    if (!valid.length) {
+      const allied = Math.max(floorAllied, lead);
+      return { allied, german: allied - lead };
+    }
+    valid.sort((a, b) => (Math.abs(a.allied - exactAllied) + Math.abs(a.german - exactGerman)) -
+      (Math.abs(b.allied - exactAllied) + Math.abs(b.german - exactGerman)));
+    return valid[0];
+  }
+  function displayedScores(state) {
+    const standing = campaignStanding(state);
+    const earned = earnedScores(state);
+    const scenario = earned.card ? (state.scenario === 'short' ? 'short' : 'campaign') : 'classic';
+    const bonus = earned.card ? (scenario === 'short' ? 324 : 699) : Math.max(0, standing.target - 1);
+    const exactAllied = earned.allied + bonus;
+    const exactGerman = earned.german;
+    const table = victoryLevelTable(scenario);
+    const row = earned.card
+      ? table.find(entry => entry.side === standing.leader && entry.level === standing.level)
+      : table.find(entry => (entry.side === 'german') === ((Number(state.score) || 0) >= standing.target));
+    let lead = Math.round(exactAllied - exactGerman);
+    if (row) {
+      if (lead < row.min) lead = row.min;
+      if (lead > row.max) lead = row.max;
+    }
+    const shown = wholePair(exactAllied, exactGerman, lead, bonus);
+    return { ...earned, bonus, alliedDisplayed: shown.allied, germanDisplayed: shown.german,
+      margin: shown.german - shown.allied, displayLeader: lead < 0 ? 'german' : 'allied', tie: lead === 0, lead };
+  }
+  function apportion(amounts, target) {
+    const goal = Math.max(0, Math.round(target));
+    if (!amounts.length) return [];
+    const out = amounts.map(value => Math.floor(Math.max(0, value)));
+    let drift = goal - out.reduce((sum, value) => sum + value, 0);
+    const order = amounts.map((value, index) => ({ index, frac: Math.max(0, value) - Math.floor(Math.max(0, value)) }))
+      .sort((a, b) => b.frac - a.frac);
+    let step = 0;
+    while (drift > 0) {
+      out[order[step % order.length].index]++;
+      drift--;
+      step++;
+    }
+    while (drift < 0 && step < out.length * 20) {
+      const index = order[step % order.length].index;
+      if (out[index] > 0) { out[index]--; drift++; }
+      step++;
+    }
+    return out;
   }
   function resetVpToday(state) {
     if (state.vpToday && (state.vpToday.german.length || state.vpToday.american.length)) state.vpLastDay = state.vpToday;
@@ -906,14 +953,22 @@
       if (side === 'american') lines.push({ label: `Defender bonus`, amount: shown.bonus, bonus: true });
       return lines;
     };
-    const germanLines = linesFor('german');
-    const alliedLines = linesFor('american');
+    const roundSide = (lines, total) => {
+      const bonusLine = lines.find(line => line.bonus);
+      const rest = lines.filter(line => !line.bonus);
+      const amounts = apportion(rest.map(line => line.amount), total - (bonusLine ? bonusLine.amount : 0));
+      const rounded = rest.map((line, index) => ({ ...line, amount: amounts[index] }));
+      if (bonusLine) rounded.push({ ...bonusLine });
+      return rounded;
+    };
+    const germanLines = roundSide(linesFor('german'), shown.germanDisplayed);
+    const alliedLines = roundSide(linesFor('american'), shown.alliedDisplayed);
     const sum = lines => lines.reduce((total, line) => total + line.amount, 0);
     const dayText = book => {
       if (!book || (!book.german.length && !book.american.length)) return '';
       const phrase = side => {
         const items = book[side];
-        const total = items.reduce((count, item) => count + item.amount, 0);
+        const total = Math.round(items.reduce((count, item) => count + item.amount, 0));
         if (!total) return '';
         const reasons = [...new Set(items.map(item => item.reason))].join(', ');
         return `${side === 'german' ? 'Germany' : 'Allies'} ${formatPoints(total)} (${reasons})`;
@@ -928,7 +983,7 @@
       allied: { total: shown.alliedDisplayed, lines: alliedLines, earned: shown.allied, bonus: shown.bonus },
       sumsMatch: Math.abs(sum(germanLines) - shown.germanDisplayed) < 1e-6 && Math.abs(sum(alliedLines) - shown.alliedDisplayed) < 1e-6,
       today: today || (last ? `Last day: ${last}` : 'No victory points scored yet today.'),
-      bonusNote: card ? `${formatPoints(shown.allied)} earned + ${formatPoints(shown.bonus)} defender bonus` : `0 earned + ${formatPoints(shown.bonus)} defender bonus`
+      bonusNote: card ? `${formatPoints(shown.alliedDisplayed - shown.bonus)} earned + ${formatPoints(shown.bonus)} defender bonus` : `0 earned + ${formatPoints(shown.bonus)} defender bonus`
     };
   }
   function victoryOutlook(state) {
@@ -1059,7 +1114,7 @@
     body.replaceChildren();
     const lead = document.createElement('p');
     lead.textContent = outlook.card ?
-      `Most points wins. The Allies are shown with ${formatPoints(outlook.bonus)} victory points (VP) already, because Germany is attacking and must break through. Add that to the victory points the Allies have earned. The higher total is the side that is winning. Germany is ahead on the board only when its earned lead is above ${formatPoints(outlook.bonus)}.` :
+      `Most points wins. The Allies start with ${formatPoints(outlook.bonus)} victory points (VP), because Germany is attacking. Add what they earn. The higher whole-number total is winning.` :
       'Most points wins. America is shown with 7 points already. Germany’s number is the objective points it holds. The higher number is winning, so Germany is ahead from 8 points. Wiping out the other army still ends a classic campaign immediately.';
     const earned = document.createElement('p');
     if (outlook.card) {
@@ -1070,10 +1125,10 @@
     body.append(lead, earned);
     if (outlook.levelRows.length) {
       const caption = document.createElement('p');
-      caption.textContent = 'The level is how far ahead the leader is on the board. The highlighted row is the level right now.';
+      caption.textContent = 'Whole-number lead on the board. Highlighted row is now.';
       const table = document.createElement('table');
       const head = document.createElement('tr');
-      for (const label of ['Level', 'Winning margin on the board']) {
+      for (const label of ['Level', 'Lead']) {
         const cell = document.createElement('th'); cell.textContent = label; head.append(cell);
       }
       table.append(head);
