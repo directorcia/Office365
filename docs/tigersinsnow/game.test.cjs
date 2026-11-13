@@ -1034,82 +1034,88 @@ test('automatic retreats keep British formations off the Meuse until a German un
   }
 });
 
-test('victory outlook measures Germany against the win line', () => {
+test('displayed score keeps the same winner as the victory rule', () => {
   const opening = engine.createGame(4, 'manual', 'german');
   const before = JSON.stringify(opening);
-  const tied = engine.victoryOutlook(opening);
+  const start = engine.victoryOutlook(opening);
   assert.equal(JSON.stringify(opening), before);
-  assert.equal(tied.headline, 'Germany needs 700 VP lead; currently 0');
-  assert.equal(tied.requirement, 'Germany needs a 700 VP lead to win');
-  assert.equal(tied.advisorTip, 'Germany needs 700 more VP lead to win.');
-  assert.equal(tied.lineLabel, 'German win line 700');
-  assert.equal(tied.ahead, 'allied');
-  assert.equal(tied.onTrack, false);
-  assert.ok(tied.fill < tied.line);
-  assert.equal(tied.german, 0);
-  assert.equal(tied.allied, 0);
-  assert.equal(tied.net, 0);
-  assert.equal(tied.target, 700);
-  assert.equal(tied.level, 'Strategic');
-  assert.equal(tied.leader, 'american');
-  assert.equal(tied.turnsLeft, 12);
+  assert.equal(start.headline, 'Allies 700 vs Germany 0: Allies winning by 700');
+  assert.equal(start.alliedDisplayed, 700);
+  assert.equal(start.germanDisplayed, 0);
+  assert.equal(start.bonus, 700);
+  assert.equal(start.displayLeader, 'allied');
+  assert.equal(start.leader, 'american');
+  assert.equal(start.level, 'Strategic');
+  assert.equal(engine.victoryBreakdown(opening).sumsMatch, true);
   opening.victoryPoints = { german: 1166, american: 547 };
-  const shortOfLine = engine.victoryOutlook(opening);
-  assert.equal(shortOfLine.net, 619);
-  assert.equal(shortOfLine.headline, 'Germany leads by 619 VP, needs 700 to win: Allies holding (81 short)');
-  assert.equal(shortOfLine.advisorTip, 'Germany needs 81 more VP lead to win.');
-  assert.equal(shortOfLine.ahead, 'allied');
-  assert.equal(shortOfLine.onTrack, false);
-  assert.ok(shortOfLine.fill < shortOfLine.line);
-  assert.equal(shortOfLine.level, 'Marginal');
-  assert.equal(shortOfLine.leader, 'american');
+  opening.casualties = { german: 100, american: 200 };
+  opening.exitPoints = 50;
+  const board = engine.victoryOutlook(opening);
+  assert.equal(board.headline, 'Allies 1247 vs Germany 1166: Allies winning by 81');
+  assert.equal(board.alliedDisplayed, 1247);
+  assert.equal(board.germanDisplayed, 1166);
+  assert.equal(board.displayLeader, 'allied');
+  assert.equal(board.leader, 'american');
+  assert.equal(board.level, 'Marginal');
+  const parts = engine.victoryBreakdown(opening);
+  assert.equal(parts.sumsMatch, true);
+  assert.equal(parts.allied.total, 1247);
+  assert.equal(parts.allied.lines.find(line => line.bonus).amount, 700);
+  assert.equal(parts.allied.lines.reduce((sum, line) => sum + line.amount, 0), parts.allied.total);
+  assert.equal(parts.german.lines.reduce((sum, line) => sum + line.amount, 0), parts.german.total);
   opening.winner = 'american';
-  const alliedWin = engine.victoryOutlook(opening);
-  assert.equal(alliedWin.headline, 'Allied victory: Germany fell 81 VP short of the 700 needed');
-  assert.equal(alliedWin.resultLabel, 'ALLIED VICTORY');
-  assert.equal(alliedWin.ahead, 'allied');
+  assert.equal(engine.victoryOutlook(opening).resultLabel, 'ALLIED VICTORY');
   opening.winner = null;
-  opening.victoryPoints = { german: 900, american: 100 };
-  const over = engine.victoryOutlook(opening);
-  assert.equal(over.headline, 'Germany on track to win (+100 over 700)');
-  assert.equal(over.advisorTip, 'Germany is 100 VP over the 700 win line.');
-  assert.equal(over.ahead, 'german');
-  assert.equal(over.onTrack, true);
-  assert.ok(over.fill > over.line);
-  assert.equal(over.level, 'Marginal');
-  assert.equal(over.leader, 'german');
-  opening.winner = 'german';
-  assert.equal(engine.victoryOutlook(opening).resultLabel, 'GERMAN VICTORY');
-  const short = engine.createGame(4, 'manual', 'german', 2, { scenario: 'short' });
-  assert.equal(engine.victoryOutlook(short).target, 325);
-  assert.equal(engine.victoryOutlook(short).requirement, 'Germany needs a 325 VP lead to win');
-  assert.equal(engine.victoryOutlook(short).turnsLeft, 7);
+  opening.victoryPoints = { german: 800, american: 100 };
+  const levelTie = engine.victoryOutlook(opening);
+  assert.equal(levelTie.tie, true);
+  assert.equal(levelTie.displayLeader, 'german');
+  assert.equal(levelTie.leader, 'german');
+  assert.match(levelTie.headline, /scores level, so Germany wins/);
+  opening.victoryPoints = { german: 1000, american: 100 };
+  const ahead = engine.victoryOutlook(opening);
+  assert.equal(ahead.displayLeader, 'german');
+  assert.equal(ahead.leader, 'german');
+  assert.equal(ahead.headline, 'Germany 1000 vs Allies 800: Germany winning by 200');
+  for (const scenario of ['campaign', 'short']) {
+    const bonus = scenario === 'short' ? 325 : 700;
+    const state = engine.createGame(1, 'manual', 'german', 2, { scenario });
+    const table = engine.victoryLevelTable(scenario);
+    assert.deepEqual(table.map(row => row.through), engine.aidCard.levels.map(row => row[scenario === 'short' ? 3 : 2]));
+    assert.deepEqual(table.map(row => [row.side, row.level]), engine.aidCard.levels.map(row => [row[0], row[1]]));
+    for (let net = -100; net <= bonus + 500; net += 25) {
+      state.winner = null;
+      state.victoryPoints = { german: Math.max(net, 0), american: Math.max(-net, 0) };
+      const outlook = engine.victoryOutlook(state);
+      const rule = engine.campaignStanding(state).leader === 'german' ? 'german' : 'allied';
+      const higher = outlook.alliedDisplayed === outlook.germanDisplayed ? 'german' :
+        outlook.alliedDisplayed > outlook.germanDisplayed ? 'allied' : 'german';
+      assert.equal(outlook.displayLeader, rule);
+      assert.equal(higher, rule);
+      assert.equal(engine.victoryBreakdown(state).sumsMatch, true);
+    }
+  }
   const classic = game.createGame(4, 'classic');
   const saved = JSON.stringify(classic);
-  classic.score = 3;
-  const behind = engine.victoryOutlook(classic);
-  assert.equal(behind.card, false);
-  assert.equal(behind.target, 8);
-  assert.equal(behind.requirement, 'Germany needs 8 objective points to win');
-  assert.equal(behind.headline, 'Germany holds 3 objective points, needs 8 to win: America holding (5 short)');
-  assert.equal(behind.advisorTip, 'Germany needs 5 more objective points to win.');
-  assert.equal(behind.ahead, 'allied');
+  classic.winner = null;
+  for (let score = 0; score <= 12; score++) {
+    classic.score = score;
+    const outlook = engine.victoryOutlook(classic);
+    const rule = engine.campaignStanding(classic).leader === 'german' ? 'german' : 'allied';
+    assert.equal(outlook.displayLeader, rule);
+    assert.equal(engine.victoryBreakdown(classic).sumsMatch, true);
+  }
   classic.score = 8;
-  assert.equal(engine.victoryOutlook(classic).headline, 'Germany on track to win (reached the 8 point line)');
+  assert.match(engine.victoryOutlook(classic).headline, /scores level, so Germany wins/);
   classic.winner = 'german';
-  assert.equal(engine.victoryOutlook(classic).headline, 'German victory: Germany finished on the 8 point line');
   assert.equal(engine.victoryOutlook(classic).resultLabel, 'GERMAN VICTORY');
-  assert.equal(engine.victoryOutlook(classic).turnsLeft, 0);
-  classic.winner = 'american';
-  classic.score = 3;
-  assert.equal(engine.victoryOutlook(classic).headline, 'American victory: Germany fell 5 points short of the 8 needed');
-  assert.equal(engine.victoryOutlook(classic).resultLabel, 'AMERICAN VICTORY');
   const restored = game.deserialize(saved);
   assert.equal(engine.victoryOutlook(restored).card, false);
   assert.equal(JSON.stringify(restored), saved);
   const advice = engine.suggestions(engine.createGame(4, 'manual', 'german'));
-  assert.ok(advice.some(item => item.id === 'threshold' && item.text === 'Germany needs 700 more VP lead to win.'));
+  assert.ok(advice.some(item => item.id === 'threshold' && /defender bonus|board/.test(item.text)));
   assert.ok(advice.length >= 3 && advice.length <= 5);
+  assert.ok(advice.every(item => item.text.length < 120));
 });
 
 test('advisor suggestions stay between three and five and never change the game', () => {
