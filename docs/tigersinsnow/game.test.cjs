@@ -1074,7 +1074,17 @@ test('displayed score keeps the same winner as the victory rule', () => {
     assert.equal(engine.campaignStanding(opening).leader, 'german');
     assert.equal(germanLead.displayLeader, 'german');
     assert.ok(germanLead.germanDisplayed > germanLead.alliedDisplayed);
+    assert.equal(germanLead.germanDisplayed - germanLead.alliedDisplayed, Math.max(1, Math.round(lead - 699)));
+    assert.equal(germanLead.levelRows.find(row => row.current).margin, 'Germany 1–250');
+    assert.ok(Number.isInteger(germanLead.alliedDisplayed) && Number.isInteger(germanLead.germanDisplayed));
   }
+  opening.victoryPoints = { german: 50.25, american: 0 };
+  const justUnder = engine.victoryOutlook(opening);
+  assert.equal(justUnder.level, 'Operational');
+  assert.equal(justUnder.alliedDisplayed - justUnder.germanDisplayed, 648);
+  assert.equal(justUnder.levelRows.find(row => row.current).margin, 'Allies 400–648');
+  opening.victoryPoints = { german: 0.25, american: 0 };
+  assert.equal(engine.victoryOutlook(opening).levelRows.find(row => row.current).margin, 'Allies 649+');
   assert.equal(board.displayLeader, 'allied');
   assert.equal(board.leader, 'american');
   assert.equal(board.level, 'Marginal');
@@ -1099,42 +1109,42 @@ test('displayed score keeps the same winner as the victory rule', () => {
     const table = engine.victoryLevelTable(scenario);
     assert.deepEqual(table.map(row => row.through), engine.aidCard.levels.map(row => row[scenario === 'short' ? 3 : 2]));
     assert.deepEqual(table.map(row => [row.side, row.level]), engine.aidCard.levels.map(row => [row[0], row[1]]));
-    const bonusShown = scenario === 'short' ? 324 : 699;
     assert.deepEqual(table.map(row => row.margin), scenario === 'short' ? [
-      'Allies ahead by 274 or more',
-      'Allies ahead by 150 up to, but not including, 274',
-      'Allies ahead by 0 up to, but not including, 150',
-      'Germany ahead by more than 0, up to 100',
-      'Germany ahead by more than 100, up to 375',
-      'Germany ahead by more than 375'
+      'Allies 274+',
+      'Allies 150–273',
+      'Allies 0–149',
+      'Germany 1–100',
+      'Germany 101–375',
+      'Germany 376+'
     ] : [
-      'Allies ahead by 649 or more',
-      'Allies ahead by 400 up to, but not including, 649',
-      'Allies ahead by 0 up to, but not including, 400',
-      'Germany ahead by more than 0, up to 250',
-      'Germany ahead by more than 250, up to 500',
-      'Germany ahead by more than 500'
+      'Allies 649+',
+      'Allies 400–648',
+      'Allies 0–399',
+      'Germany 1–250',
+      'Germany 251–500',
+      'Germany 501+'
     ]);
-    for (const lead of [-0.25, 0, 0.25, 50, 50.25, 299, 299.25, 324, 324.25, 325, 699, 699.25, 700, 949, 949.25, 1199, 1199.25, 1200]) {
-      if (scenario === 'short' && lead > 800) continue;
+    const leads = [-0.5, -0.25, 0];
+    for (const edge of [0, 50, 174, 299, 324, 325, 424, 699, 700, 949, 1199, 1200]) {
+      for (const fraction of [0, 0.25, 0.5, 0.75]) leads.push(edge + fraction);
+    }
+    for (const lead of leads) {
       state.winner = null;
       state.victoryPoints = { german: Math.max(lead, 0), american: Math.max(-lead, 0) };
       const outlook = engine.victoryOutlook(state);
       const standing = engine.campaignStanding(state);
       const current = outlook.levelRows.filter(row => row.current);
-      assert.equal(current.length, 1);
+      assert.equal(current.length, 1, `${scenario} ${lead}`);
       assert.equal(current[0].side, standing.leader);
       assert.equal(current[0].level, standing.level);
       const boardLead = outlook.alliedDisplayed - outlook.germanDisplayed;
-      const germanLead = -boardLead;
-      if (current[0].side !== 'german') {
-        const low = bonusShown - current[0].through;
-        assert.ok(boardLead + 1e-6 >= low);
-        if (current[0].above !== null) assert.ok(boardLead < bonusShown - current[0].above - 1e-9);
-      } else {
-        assert.ok(germanLead > current[0].above - bonusShown + 1e-9);
-        if (Number.isFinite(current[0].through)) assert.ok(germanLead <= current[0].through - bonusShown + 1e-6);
-      }
+      assert.equal(boardLead, Math.round(boardLead));
+      assert.ok(boardLead >= current[0].min && boardLead <= current[0].max, `${scenario} ${lead} showed ${boardLead} outside ${current[0].margin}`);
+      assert.equal(outlook.displayLeader, standing.leader === 'german' ? 'german' : 'allied');
+      const parts = engine.victoryBreakdown(state);
+      assert.equal(parts.sumsMatch, true);
+      assert.ok([...parts.german.lines, ...parts.allied.lines].every(line => Number.isInteger(line.amount)));
+      assert.doesNotMatch(outlook.headline, /\d\.\d/);
     }
     for (let net = -100; net <= bonus + 500; net += 25) {
       state.winner = null;
@@ -1151,8 +1161,8 @@ test('displayed score keeps the same winner as the victory rule', () => {
   const saved = JSON.stringify(classic);
   classic.winner = null;
   assert.deepEqual(engine.victoryLevelTable('classic').map(row => row.margin), [
-    'America ahead by 0 or more, including a tie',
-    'Germany ahead by more than 0'
+    'America 0+',
+    'Germany 1+'
   ]);
   for (let score = 0; score <= 12; score++) {
     classic.score = score;
