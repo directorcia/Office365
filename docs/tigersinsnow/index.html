@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="icon" href="data:,">
   <title>Ardennes / Winter Offensive</title>
   <script>
     (() => {
@@ -114,8 +115,9 @@
       .army-report ol { max-height: 280px; }
     }
     #battlefield { width: 100%; height: auto; display: block; image-rendering: pixelated; touch-action: manipulation; }
-    .legend { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; padding: 8px 0; font: 11px Consolas, monospace; color: var(--cp-text-muted); border-bottom: 1px solid var(--cp-border); }
-    .legend-item { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; padding: 2px 5px; border: 1px solid transparent; border-radius: 4px; cursor: default; }
+    .legend { display: flex; justify-content: center; gap: 6px 14px; flex-wrap: wrap; padding: 8px 0; font: 16px "Segoe UI", Aptos, Calibri, sans-serif; color: var(--cp-text); border-bottom: 1px solid var(--cp-border); }
+    .legend-item { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 30px; height: auto; min-height: 30px; padding: 2px 6px; border: 1px solid transparent; border-radius: 4px; cursor: default; }
+    .legend-caption { font-weight: 600; }
     .legend-item:hover, .legend-item:focus-visible { position: relative; z-index: 2; border-color: var(--cp-border-strong); background: var(--cp-surface); outline: none; }
     .legend b { color: var(--cp-text); font-size: 14px; }
     .legend-symbol { width: 20px; height: 20px; vertical-align: middle; }
@@ -144,8 +146,17 @@
     #dispatches strong { font-weight: 600; }
     #dispatches p { margin: 4px 0 0; color: var(--cp-text-muted); }
     @media (max-width: 600px) { #dispatches li { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
-    aside { border-top: 1px solid var(--cp-border); padding-top: 20px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
-    aside[hidden] { display: none; }
+    aside.command-bar { order: -1; display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1.2fr) minmax(240px, 320px); gap: 8px 20px; align-items: start; margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--cp-border-strong); border-radius: 10px; background: var(--cp-surface); }
+    aside.command-bar .sidebar-section { border-left: 0; padding-left: 0; }
+    aside.command-bar h2 { margin-bottom: 4px; }
+    aside.command-bar dl { padding: 6px 0 0; gap: 2px 12px; }
+    aside.command-bar #order-guidance { margin: 0; }
+    aside.command-bar #manual-command { margin-top: 8px; padding-top: 8px; }
+    aside.command-bar #manual-command label { margin: 6px 0; }
+    aside.command-bar .objectives-section { grid-column: 1 / -1; }
+    aside.command-bar #objectives { display: flex; flex-wrap: wrap; gap: 2px 16px; margin: 4px 0 0; line-height: 1.35; }
+    aside.command-bar #objectives li { margin: 0; }
+    aside.command-bar[hidden] { display: none; }
     .section-label { color: var(--cp-text-muted); font: 10px Consolas, monospace; margin: 0 0 12px; }
     #unit-name { font: bold 20px Consolas, monospace; margin: 0 0 6px; overflow-wrap: anywhere; }
     #unit-kind { font: 10px Consolas, monospace; color: var(--cp-text-muted); }
@@ -238,7 +249,7 @@
     .battle-outcome { margin: 20px 0 0; padding: 12px; background: var(--cp-surface-soft); font: 12px/1.5 Consolas, monospace; text-align: center; }
     @media (max-width: 800px) {
       .layout { grid-template-columns: minmax(0, 1fr); }
-      aside { border-left: 0; border-top: 1px solid var(--cp-border); padding: 20px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+      aside.command-bar { grid-template-columns: 1fr 1fr; }
       .sidebar-section { margin-top: 0; } .objectives-section { grid-column: 1 / -1; }
       #objectives { display: flex; flex-wrap: wrap; gap: 4px 20px; }
       .masthead { align-items: flex-start; } h1 { font-size: 23px; }
@@ -247,9 +258,9 @@
       .masthead { flex-direction: column; padding: 16px; } .insignia { display: none; }
       h1 { font-size: 24px; } nav { width: 100%; } nav button { flex: 1; padding: 8px; font-size: 12px; }
       main { --page-gutter: 16px; padding: 16px; } .status { gap: 10px 16px; } #phase { margin-left: 0; flex-basis: 100%; }
-      aside { grid-template-columns: 1fr; } .objectives-section { grid-column: auto; }
+      aside.command-bar { grid-template-columns: 1fr; } .objectives-section { grid-column: auto; }
       .sidebar-section { border-left: 0; border-top: 1px solid var(--cp-border); padding: 16px 0 0; }
-      .coordinates { display: none; } footer { padding: 16px; line-height: 1.6; }
+      footer { padding: 16px; line-height: 1.6; }
     }
     .subtitle, .status, h2, .coordinates, #unit-tooltip, #legend-tooltip, #unit-tooltip h3,
     .army-report p, .army-report li, .legend, .legend b, #history-count, .history-intro,
@@ -278,7 +289,7 @@
     <nav aria-label="Campaign controls"><a href="help.html" target="_blank" rel="noopener" title="Open the player guide and historical background in a new tab">Help &amp; History</a><button id="rules">Rules</button><button id="order-of-battle-button" aria-haspopup="dialog" aria-controls="order-of-battle-dialog">Order of Battle</button><button id="phase-report-button" hidden>Report / R</button><button id="export">Export Save</button><button id="import">Import Save</button><button id="new-game">New Campaign</button></nav>
   </header>
   <main>
-    <div class="status"><span id="date"></span><span id="turn"></span><span id="weather"></span><span id="ruleset-status" hidden></span><span id="seed-status" hidden></span><span id="phase" role="status"></span></div>
+    <div class="status"><span id="date"></span><span id="turn"></span><span id="weather"></span><span id="ruleset-status"></span><span id="seed-status"></span><span id="phase" role="status"></span></div>
     <div class="orders" role="group" aria-label="Unit orders"><button id="move" aria-pressed="true">Move</button><button id="attack" aria-pressed="false">Attack</button><button id="undo-move" disabled aria-label="Undo Move" title="Undo the last move (before combat or ending the turn)">&#8630; Undo</button><button id="end-turn">End Turn</button></div>
     <section id="spectator-controls" aria-label="Computer versus computer playback" hidden>
       <button id="simulation-play">Play</button> <button id="simulation-action">Next Action</button> <button id="simulation-step">Next Day</button>
@@ -287,35 +298,38 @@
     </section>
     <div class="layout">
       <section aria-label="Battlefield">
-        <div class="map-header" hidden><span class="coordinates" hidden></span></div>
+        <div class="map-header"><span class="coordinates"></span></div>
         <div class="battlefield-reports">
           <div class="army-column">
             <section class="army-report" data-side="american" aria-label="American situation and reports"><h2>AMERICAN / WEST</h2><p><strong>Mission:</strong> Hold the western objectives, delay the offensive and counterattack exposed formations. Deny Germany eight points at the final check.</p><p id="american-army-summary"></p><p id="american-objectives"></p><ol id="american-reports" aria-label="Recent American operations"></ol></section>
           </div>
           <div class="map-scroll">
             <div class="legend" aria-label="Map legend">
-              <span class="legend-item" data-side="german" role="img" aria-label="Germany" title="Germany" tabindex="0"><span class="nationality" data-side="german" aria-hidden="true"></span></span>
-              <span class="legend-item" data-side="american" role="img" aria-label="US forces" title="US forces" tabindex="0"><span class="nationality" data-side="american" aria-hidden="true"></span></span>
-              <span id="british-legend" class="legend-item" role="img" aria-label="British / Allied" title="British / Allied" tabindex="0" hidden><b>B</b></span>
-              <span id="scoring-legend" class="legend-item" role="img" aria-label="Marked per-turn scoring position" title="Marked per-turn scoring position" tabindex="0" hidden><b>VP</b></span>
-              <span id="unit-legend" class="legend-item" role="img" aria-label="= Armour / X Infantry / P Airborne or paratroopers / M Mechanised infantry or cavalry" tabindex="0"><b>= X P M</b></span>
-              <span class="legend-item" data-map="legacy" data-terrain="forest" role="img" aria-label="Forest" title="Forest" tabindex="0"><b>*</b></span>
-              <span class="legend-item" data-map="legacy" data-terrain="ridge" role="img" aria-label="Ridge" title="Ridge" tabindex="0"><b>^</b></span>
-              <span class="legend-item" data-map="legacy" data-terrain="river" role="img" aria-label="Major / minor river" title="Major / minor river" tabindex="0"><span class="river-key river-key-major" aria-hidden="true"></span><span class="river-key river-key-minor" aria-hidden="true"></span></span>
-              <span class="legend-item" data-map="legacy" data-terrain="road" role="img" aria-label="Road" title="Road" tabindex="0"><b>:</b></span>
-              <span class="legend-item" data-map="legacy" data-terrain="town" role="img" aria-label="Town" title="Town" tabindex="0"><b>#</b></span>
-              <span class="legend-item" data-map="reference" role="img" aria-label="Clear terrain" title="Clear terrain" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="plain" width="26" height="26" aria-hidden="true"></canvas></span>
-              <span class="legend-item" data-map="reference" role="img" aria-label="Forest" title="Forest" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="forest" width="26" height="26" aria-hidden="true"></canvas></span>
-              <span class="legend-item" data-map="reference" role="img" aria-label="Rough terrain" title="Rough terrain" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="ridge" width="26" height="26" aria-hidden="true"></canvas></span>
-              <span class="legend-item" data-map="reference" role="img" aria-label="Town" title="Town" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="town" width="26" height="26" aria-hidden="true"></canvas></span>
-              <span class="legend-item" data-map="reference" role="img" aria-label="Westwall" title="Westwall" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="westwall" width="26" height="26" aria-hidden="true"></canvas></span>
-              <span class="legend-item" data-map="reference" role="img" aria-label="River edge" title="River edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="river" width="26" height="26" aria-hidden="true"></canvas></span>
-              <span class="legend-item" data-map="reference" role="img" aria-label="Exit / entry" title="Exit / entry" tabindex="0" hidden><b>E</b><b>1</b></span>
-              <span class="legend-item" data-map="reference" role="img" aria-label="North alternate reinforcement edge; outline colors identify alternate edges" title="North alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="north" width="26" height="26" aria-hidden="true"></canvas></span>
-              <span class="legend-item" data-map="reference" role="img" aria-label="West alternate reinforcement edge" title="West alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="west" width="26" height="26" aria-hidden="true"></canvas></span>
-              <span class="legend-item" data-map="reference" role="img" aria-label="South alternate reinforcement edge" title="South alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="south" width="26" height="26" aria-hidden="true"></canvas></span>
-              <span class="legend-item" data-map="reference" role="img" aria-label="German alternate reinforcement edge" title="German alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="german" width="26" height="26" aria-hidden="true"></canvas></span>
-              <span class="legend-item" data-terrain="isolated" role="img" aria-label="Isolated" title="Isolated" tabindex="0"><b>!</b></span>
+              <span class="legend-item" data-side="german" role="img" aria-label="German formation" tabindex="0"><span class="nationality" data-side="german" aria-hidden="true"></span><span class="legend-caption">German</span></span>
+              <span class="legend-item" data-side="american" role="img" aria-label="US formation" tabindex="0"><span class="nationality" data-side="american" aria-hidden="true"></span><span class="legend-caption">US</span></span>
+              <span id="british-legend" class="legend-item" role="img" aria-label="British formation, marked B" tabindex="0" hidden><b>B</b><span class="legend-caption">British</span></span>
+              <span id="scoring-legend" class="legend-item" role="img" aria-label="Hex that scores victory points at the end of the day" tabindex="0" hidden><b>VP</b><span class="legend-caption">Scoring hex</span></span>
+              <span class="legend-item" role="img" aria-label="Equals sign means armour" tabindex="0"><b>=</b><span class="legend-caption">Armour</span></span>
+              <span class="legend-item" role="img" aria-label="X means infantry" tabindex="0"><b>X</b><span class="legend-caption">Infantry</span></span>
+              <span class="legend-item" role="img" aria-label="P means airborne or paratroopers" tabindex="0"><b>P</b><span class="legend-caption">Airborne</span></span>
+              <span class="legend-item" role="img" aria-label="M means mechanised infantry or cavalry" tabindex="0"><b>M</b><span class="legend-caption">Mechanised</span></span>
+              <span class="legend-item" data-map="legacy" data-terrain="forest" role="img" aria-label="Forest" tabindex="0"><b>*</b><span class="legend-caption">Forest</span></span>
+              <span class="legend-item" data-map="legacy" data-terrain="ridge" role="img" aria-label="Ridge" tabindex="0"><b>^</b><span class="legend-caption">Ridge</span></span>
+              <span class="legend-item" data-map="legacy" data-terrain="river" role="img" aria-label="Major and minor river" tabindex="0"><span class="river-key river-key-major" aria-hidden="true"></span><span class="river-key river-key-minor" aria-hidden="true"></span><span class="legend-caption">River</span></span>
+              <span class="legend-item" data-map="legacy" data-terrain="road" role="img" aria-label="Road" tabindex="0"><b>:</b><span class="legend-caption">Road</span></span>
+              <span class="legend-item" data-map="legacy" data-terrain="town" role="img" aria-label="Town" tabindex="0"><b>#</b><span class="legend-caption">Town</span></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="Clear terrain" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="plain" width="26" height="26" aria-hidden="true"></canvas><span class="legend-caption">Clear</span></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="Forest" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="forest" width="26" height="26" aria-hidden="true"></canvas><span class="legend-caption">Forest</span></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="Rough terrain" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="ridge" width="26" height="26" aria-hidden="true"></canvas><span class="legend-caption">Rough</span></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="Town" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="town" width="26" height="26" aria-hidden="true"></canvas><span class="legend-caption">Town</span></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="Westwall" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="westwall" width="26" height="26" aria-hidden="true"></canvas><span class="legend-caption">Westwall</span></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="River edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="river" width="26" height="26" aria-hidden="true"></canvas><span class="legend-caption">River</span></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="E marks an exit. A number marks a reinforcement entry." tabindex="0" hidden><b>E</b><b>1</b><span class="legend-caption">Exit / entry</span></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="North alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="north" width="26" height="26" aria-hidden="true"></canvas><span class="legend-caption">North edge</span></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="West alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="west" width="26" height="26" aria-hidden="true"></canvas><span class="legend-caption">West edge</span></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="South alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="south" width="26" height="26" aria-hidden="true"></canvas><span class="legend-caption">South edge</span></span>
+              <span class="legend-item" data-map="reference" role="img" aria-label="German alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="german" width="26" height="26" aria-hidden="true"></canvas><span class="legend-caption">German edge</span></span>
+              <span class="legend-item" data-terrain="isolated" role="img" aria-label="Isolated formation, shown with an exclamation mark" tabindex="0"><b>!</b><span class="legend-caption">Isolated</span></span>
             </div>
             <section id="maneuver-panel" aria-label="Pending battle maneuver" hidden>
               <h2>RETREAT / ADVANCE</h2><p id="maneuver-description" aria-live="polite"></p>
@@ -341,7 +355,7 @@
           </div>
         </div>
         <div id="notice" role="status" aria-live="polite"></div>
-        <div id="action-story" hidden></div>
+        <div id="action-story" aria-live="polite"></div>
         <section id="reinforcement-arrivals" aria-label="Reinforcements arriving this turn" aria-live="polite" hidden>
           <h2>REINFORCEMENTS / NEW ON THE MAP</h2>
           <div id="arrival-list"></div>
@@ -356,15 +370,15 @@
         <h2>CAMPAIGN BALANCE / BOTH ARMIES</h2>
         <div class="score-comparison">
           <section class="score-army" data-side="american" aria-label="American points and army condition">
-            <h2>AMERICAN / WEST</h2><p><strong id="american-held-points" class="held-points"></strong> held-objective points</p>
+            <h2>AMERICAN / WEST</h2><p><strong id="american-held-points" class="held-points"></strong> <span id="american-held-caption">held-objective points</span></p>
             <dl><dt>Active formations</dt><dd id="american-score-formations"></dd><dt id="american-strength-label">Strength remaining</dt><dd id="american-score-strength"></dd><dt>Isolated formations</dt><dd id="american-score-isolated"></dd></dl>
           </section>
           <section class="score-army" data-side="german" aria-label="German points and army condition">
-            <h2>GERMAN / EAST</h2><p><strong id="german-held-points" class="held-points"></strong> held-objective points</p>
+            <h2>GERMAN / EAST</h2><p><strong id="german-held-points" class="held-points"></strong> <span id="german-held-caption">held-objective points</span></p>
             <dl><dt>Active formations</dt><dd id="german-score-formations"></dd><dt id="german-strength-label">Strength remaining</dt><dd id="german-score-strength"></dd><dt>Isolated formations</dt><dd id="german-score-isolated"></dd></dl>
           </section>
         </div>
-        <p>Both totals measure currently held objectives, not cumulative points or a competing-score victory rule.</p>
+        <p id="held-note">These figures are the objective points each army holds right now. The victory rule below is separate.</p>
         <section id="day-summary" aria-label="Last completed day"><h2>LAST COMPLETED DAY</h2><p id="american-day-summary"></p><p id="german-day-summary"></p></section>
         <div class="victory-assessment">
           <div class="campaign-score-heading"><h2 id="victory-rule-title">EXISTING VICTORY RULE / GERMAN SCORE</h2><strong id="campaign-points"></strong><span id="campaign-leader" role="status"></span></div>
@@ -372,18 +386,18 @@
           <p id="campaign-score-detail"></p><p id="campaign-score-basis"></p>
         </div>
       </section>
-      <aside aria-label="Player command" hidden aria-hidden="true">
-        <section hidden aria-hidden="true"><h2 id="unit-name"></h2><div id="unit-kind"></div>
+      <aside class="command-bar" aria-label="Player command">
+        <section><h2 id="unit-name"></h2><div id="unit-kind"></div>
           <dl><dt>STRENGTH</dt><dd id="strength"></dd><dt>MOVEMENT</dt><dd id="movement"></dd><dt>SUPPLY</dt><dd id="supply"></dd><dt>COMBAT</dt><dd id="combat"></dd></dl>
         </section>
         <p id="order-guidance" aria-live="polite"></p>
         <section id="manual-command" aria-label="Manual-mode command settings" hidden>
           <p id="resources"></p>
-          <label for="defense-strategy">Defensive stance against computer attacks</label>
+          <label for="defense-strategy">Defense vs computer</label>
           <select id="defense-strategy"><option value="counter">Counter-attack</option><option value="hold" selected>Hold position</option><option value="delay">Delaying action</option><option value="withdrawal">Withdrawal</option></select>
-          <label id="defensive-artillery-label" for="defensive-artillery" hidden>Defensive artillery commitment against computer attacks (capped by available points)</label>
+          <label id="defensive-artillery-label" for="defensive-artillery" hidden>Artillery vs computer</label>
           <input id="defensive-artillery" type="number" min="0" max="8" step="1" value="2" hidden>
-          <p>Set your defensive stance and artillery commitment before ending combat. CP means combat points. <a href="help.html#manual-mode" target="_blank" rel="noopener">Manual-mode rules and approximations</a></p>
+          <p><a href="help.html#manual-mode" target="_blank" rel="noopener">How defense and artillery work</a></p>
         </section>
         <section class="sidebar-section objectives-section"><div class="objective-heading"><h2>OBJECTIVES</h2><span id="score"></span></div><ul id="objectives"></ul></section>
       </aside>
