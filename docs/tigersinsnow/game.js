@@ -715,6 +715,92 @@
     return { kind: /supply|airdrop/i.test(entry) ? 'Supply' : /retreat|advance/i.test(entry) ? 'Maneuver' :
       /entry blocked|arrival/i.test(entry) ? 'Reinforcement' : 'Update', title: entry, detail: '' };
   }
+  function advisorSide(state) {
+    if (!state || state.winner || state.phase === 'finished' || state.playMode === 'computer') return null;
+    if (state.playMode === 'hotseat') return state.phase;
+    if (state.playerSide) return state.phase === state.playerSide ? state.phase : null;
+    return state.phase;
+  }
+  function suggestions(state) {
+    const side = advisorSide(state);
+    if (!side) return [];
+    const alive = unit => unit && unit.hp > 0 && !unit.exited;
+    const mine = state.units.filter(unit => alive(unit) && unit.side === side);
+    const foes = state.units.filter(unit => alive(unit) && unit.side !== side);
+    const manual = state.ruleset === 'manual';
+    const combatPhase = !manual || state.orderPhase === 'combat';
+    const items = [];
+    const add = item => items.push(item);
+    if (combatPhase) {
+      let best = null;
+      for (const attacker of mine.filter(unit => !unit.fired)) {
+        if (manual && manualRules.localSupply(state, attacker) === 'isolated') continue;
+        for (const defender of foes) {
+          if (distance(attacker, defender) !== 1) continue;
+          const odds = combatOdds(state, attacker, defender);
+          if (!Number.isFinite(odds)) continue;
+          if (!best || odds > best.odds) best = { attacker, defender, odds };
+        }
+      }
+      if (best) add({ id: 'attack', icon: 'swords', priority: 100 + best.odds,
+        text: `Attack ${best.defender.name} at ${best.odds.toFixed(1)}:1 with ${best.attacker.name}.`,
+        unitId: best.attacker.id, targetId: best.defender.id, x: best.defender.x, y: best.defender.y });
+      const weak = foes.filter(foe => foe.hp <= foe.maxHp * 0.4 && mine.some(unit => !unit.fired && distance(unit, foe) === 1))
+        .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+      if (weak && (!best || weak.id !== best.defender.id)) add({ id: 'weak', icon: 'swords', priority: 82,
+        text: `${weak.name} is weakened. A neighbor can attack it.`,
+        unitId: mine.find(unit => distance(unit, weak) === 1).id, targetId: weak.id, x: weak.x, y: weak.y });
+    }
+    if (!manual || state.orderPhase === 'movement') {
+      const movers = mine.filter(unit => unit.mp > 0);
+      if (movers.length) {
+        const town = Object.values(state.map).filter(tile => (tile.sourcePoints || tile.value) && tile.owner !== side)
+          .sort((a, b) => (b.sourcePoints || b.value || 0) - (a.sourcePoints || a.value || 0))[0];
+        const mover = town ? movers.slice().sort((a, b) => distance(a, town) - distance(b, town))[0] : movers[0];
+        add({ id: 'move', icon: 'track', priority: 90, unitId: mover.id, x: town ? town.x : mover.x, y: town ? town.y : mover.y,
+          text: town ? `Move ${mover.name} toward ${town.name}. ${movers.length} still have movement.` : `${movers.length} formations still have movement.` });
+      }
+    }
+    const stuck = mine.find(unit => manual ? manualRules.localSupply(state, unit) !== 'supplied' : !unit.supplied);
+    if (stuck) {
+      const isolated = manual && manualRules.localSupply(state, stuck) === 'isolated';
+      add({ id: 'supply', icon: 'crate', priority: isolated ? 88 : 64, unitId: stuck.id, x: stuck.x, y: stuck.y,
+        text: isolated ? `${stuck.name} is isolated and cannot attack.` : `${stuck.name} is low on local supply.` });
+    }
+    if (manual && side === 'german' && state.fuel < manualRules.resourceProfile(state).fuel * 0.2) {
+      const tank = mine.find(unit => unit.type === 'armor');
+      add({ id: 'fuel', icon: 'fuel', priority: 72, unitId: tank && tank.id, x: tank && tank.x, y: tank && tank.y,
+        text: `Fuel is low (${state.fuel}). Limit further tank moves.` });
+    }
+    if (manual && combatPhase && state.artillery?.[side] > 0) add({ id: 'artillery', icon: 'cannon', priority: 58,
+      text: `${state.artillery[side]} artillery ready. Add it to the best attack.` });
+    if (manual) {
+      const due = manualRules.offMapReinforcements(state).filter(entry => entry.side === side && entry.turn <= state.turn + 1);
+      if (due[0]) add({ id: 'reinforce', icon: 'flag', priority: 48,
+        text: `${due[0].name} arrives ${due[0].date}${due[0].status === 'Delayed' ? ', delayed' : ''}.` });
+    }
+    const town = Object.values(state.map).filter(tile => tile.sourcePoints || tile.value).filter(tile => tile.owner !== side)
+      .sort((a, b) => (b.sourcePoints || b.value || 0) - (a.sourcePoints || a.value || 0))[0];
+    if (town) {
+      const nearest = mine.slice().sort((a, b) => distance(a, town) - distance(b, town))[0];
+      add({ id: 'town', icon: 'pin', priority: 76, unitId: nearest && nearest.id, x: town.x, y: town.y,
+        text: `${town.name} is still ${town.owner === 'german' ? 'German' : 'Allied'}.${nearest ? ` ${nearest.name} is closest.` : ''}` });
+    }
+    if (manual && combatPhase && state.playMode !== 'hotseat') add({ id: 'defense', icon: 'gauge', priority: 36,
+      text: 'Choose a defense before ending combat. The computer attacks next.' });
+    items.sort((a, b) => b.priority - a.priority);
+    const picked = [];
+    const seen = new Set();
+    for (const item of items) {
+      if (seen.has(item.text)) continue;
+      seen.add(item.text);
+      picked.push({ ...item, priority: undefined });
+      if (picked.length === 5) break;
+    }
+    const filler = side === 'german' ? 'Keep supply open and take the towns before any exit.' : 'Hold the towns and attack only at favorable odds.';
+    while (picked.length < 3) picked.push({ id: `guide-${picked.length}`, icon: 'flag', text: filler });
+    return picked.slice(0, 5);
+  }
   function campaignStanding(state) {
     if (aidCard.active(state)) return aidCard.standing(state);
     const target = 8;
@@ -726,9 +812,45 @@
           `Germany needs ${target - state.score} more points to reach its target.`,
       provisional: !state.winner };
   }
+  function formatPoints(value) {
+    const quarters = Math.round(Number(value) * 4);
+    const whole = Math.trunc(quarters / 4);
+    const fraction = Math.abs(quarters % 4);
+    return `${whole}${['', '.25', '.5', '.75'][fraction]}`;
+  }
+  function victoryOutlook(state) {
+    const standing = campaignStanding(state);
+    const card = aidCard.active(state);
+    const last = card ? aidCard.lastTurn(state) : 12;
+    const turnsLeft = state.winner || state.phase === 'finished' ? 0 : Math.max(0, last - state.turn + 1);
+    const turnsLabel = turnsLeft === 0 ? 'Final check' : `${turnsLeft} turn${turnsLeft === 1 ? '' : 's'} left`;
+    if (card) {
+      const german = state.victoryPoints?.german || 0;
+      const allied = state.victoryPoints?.american || 0;
+      const net = german - allied;
+      const ahead = net > 0 ? 'german' : net < 0 ? 'allied' : 'even';
+      const headline = state.winner ? `${state.winner === 'german' ? 'German' : 'Allied'} victory` :
+        ahead === 'german' ? `German winning by ${formatPoints(net)} VP` :
+        ahead === 'allied' ? `Allies winning by ${formatPoints(-net)} VP` : 'Even';
+      return { headline, net, german, allied, level: standing.level, leader: standing.leader, ahead,
+        target: standing.target, turnsLeft, turnsLabel, card: true, winner: state.winner || null,
+        levelLabel: `${standing.leader === 'german' ? 'German' : 'Allied'} ${standing.level}`,
+        germanLabel: `Germany ${formatPoints(german)} VP`, alliedLabel: `Allies ${formatPoints(allied)} VP` };
+    }
+    const score = Number(state.score) || 0;
+    const alliedHeld = Object.values(state.map || {}).reduce((sum, tile) => sum + (tile.owner === 'american' ? tile.value || 0 : 0), 0);
+    const ahead = state.winner ? state.winner : score >= standing.target ? 'german' : 'allied';
+    const headline = state.winner ? `${state.winner === 'german' ? 'German' : 'Allied'} victory` :
+      score > standing.target ? `German winning by ${formatPoints(score - standing.target)} points` :
+      score < standing.target ? `Allies ahead by ${formatPoints(standing.target - score)} points` : 'German at the victory line';
+    return { headline, net: score, german: score, allied: alliedHeld, level: score >= standing.target ? 'Target reached' : 'Below target',
+      leader: standing.leader, ahead: state.winner ? state.winner : ahead, target: standing.target, turnsLeft, turnsLabel, card: false,
+      winner: state.winner || null, levelLabel: score >= standing.target ? `Target ${standing.target} reached` : `Needs ${standing.target}`,
+      germanLabel: `Germany ${formatPoints(score)} / ${standing.target}`, alliedLabel: `Allies hold ${formatPoints(alliedHeld)}` };
+  }
   const api = { createGame, unitPresentation, neighbors, riverCourses, referenceMap, aidCard, mapDimensions, occupant, distance, reachable, move, attack, combatOdds,
     isSupplied, beginSide, endTurn, computerTurn, simulateDay, simulateAction, deserialize, arrivalsThisTurn, campaignStanding, describeDispatch, armySummary, reportOperation, TERRAIN, key,
-    battlePreview, orderReason, validTargets, parseSeed, restoreMetadata, daySnapshot, summarizeDay, planMovement };
+    battlePreview, orderReason, validTargets, parseSeed, restoreMetadata, daySnapshot, summarizeDay, planMovement, suggestions, advisorSide, victoryOutlook };
   manualRules = createManualRules(api);
   api.manual = manualRules;
   if (typeof module === 'object') module.exports = api;
@@ -759,6 +881,7 @@
   const COMMAND_SIDE_KEY = 'winter-offensive-command-side';
   const moveHistory = [];
   let lastReportPhase = null;
+  let advisorFocus = null;
   const typeIcon = symbol => ({ '=': 'armour', X: 'infantry', P: 'airborne', M: 'mech' }[symbol] || 'infantry');
   function paintStaticIcons() {
     document.querySelectorAll('[data-icon]').forEach(slot => {
@@ -790,6 +913,25 @@
     }));
     box.setAttribute('aria-label', `${filled} of ${total} movement points remaining`);
   }
+  function tugPercent(score, target) {
+    const span = Math.max(Number(target) * 2, Math.abs(Number(score)) + Number(target), 8);
+    const min = -span * 0.35, max = span;
+    return value => Math.max(2, Math.min(98, (Number(value) - min) / (max - min) * 100));
+  }
+  function renderWhoWins() {
+    const outlook = victoryOutlook(state);
+    const banner = $('who-wins');
+    banner.dataset.ahead = outlook.winner ? outlook.winner : outlook.ahead;
+    banner.setAttribute('aria-label', `${outlook.headline}. ${outlook.alliedLabel}. ${outlook.germanLabel}. Victory level ${outlook.levelLabel}. ${outlook.turnsLabel}.`);
+    $('who-wins-headline').textContent = outlook.headline;
+    $('who-wins-meta').textContent = `Victory level: ${outlook.levelLabel} · ${outlook.card ? `German victory at ${outlook.target}` : `Victory line ${outlook.target}`} · ${outlook.turnsLabel}`;
+    $('who-allied').textContent = outlook.alliedLabel;
+    $('who-german').textContent = outlook.germanLabel;
+    const pos = tugPercent(outlook.net, outlook.target);
+    $('who-marker').style.left = `${pos(outlook.net)}%`;
+    $('who-goal').style.left = `${pos(outlook.target)}%`;
+    $('who-bar').setAttribute('aria-label', `${outlook.headline}. Marker at ${outlook.germanLabel} against ${outlook.alliedLabel}. German victory begins at ${outlook.target}.`);
+  }
   function setTug(score, target) {
     const span = Math.max(Number(target) * 2, Math.abs(Number(score)) + Number(target), 8);
     const min = -span * 0.35, max = span;
@@ -798,6 +940,35 @@
     $('tug-target').style.left = pos(Number(target));
     $('tug-goal-label').textContent = String(target);
     $('tug').setAttribute('aria-label', `Net score ${score}. German victory begins at ${target}, marked on the bar.`);
+  }
+  function renderAdvisor() {
+    const advice = suggestions(state);
+    const show = Boolean(advisorSide(state)) && !busy;
+    $('advisor').hidden = !show;
+    $('advisor-count').textContent = `${advice.length} suggestions`;
+    const list = $('advisor-list');
+    list.replaceChildren();
+    if (!show) return;
+    for (const item of advice) {
+      const row = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.append(iconSpan(item.icon), document.createTextNode(item.text));
+      button.onclick = event => {
+        event.stopPropagation();
+        advisorFocus = { unitId: item.unitId || null, targetId: item.targetId || null, x: item.x, y: item.y };
+        const focus = state.units.find(unit => unit.id === item.unitId);
+        if (focus && focus.side === commandSide) selected = focus.id;
+        if (Number.isInteger(item.x) && Number.isInteger(item.y)) cursor = { x: item.x, y: item.y };
+        else if (focus) cursor = { x: focus.x, y: focus.y };
+        if (item.id === 'attack' || item.id === 'weak') mode = 'attack';
+        if (item.id === 'move') mode = 'move';
+        render();
+        canvas.focus();
+      };
+      row.append(button);
+      list.append(row);
+    }
   }
   function iconSpan(name) {
     const slot = document.createElement('span');
@@ -1079,6 +1250,9 @@
       hex(tile, 1); context.fill(); context.globalAlpha = 1;
       context.strokeStyle = ink; context.globalAlpha = 0.25; context.lineWidth = 1;
       if (!aidCard.active(state) || state.display.hexes) { hex(tile); context.stroke(); }
+      if (advisorFocus && advisorFocus.x === tile.x && advisorFocus.y === tile.y) {
+        context.strokeStyle = palette.highlight; context.lineWidth = 3; hex(tile, 2); context.stroke();
+      }
       context.globalAlpha = 1;
       if (options.has(key(tile.x, tile.y))) {
         context.fillStyle = paper; context.beginPath();
@@ -1137,6 +1311,9 @@
       context.fillText(unitPresentation(counter).symbol, point.x + 8, point.y - 4);
       context.font = '10px Consolas, monospace'; context.fillText(`${shownCp(counter)}/${counter.mp}`, point.x, point.y + 7);
       if (counter.id === selected) { context.strokeStyle = palette.highlight; context.lineWidth = 2; hex(counter, 1); context.stroke(); }
+      if (advisorFocus && (counter.id === advisorFocus.unitId || counter.id === advisorFocus.targetId)) {
+        context.strokeStyle = palette.highlight; context.lineWidth = 3; context.strokeRect(point.x - 22, point.y - 18, 44, 36);
+      }
       if (!counter.supplied) { context.fillStyle = palette.highlight; context.fillText('!', point.x + 20, point.y); }
       if (attackTargets.includes(counter)) {
         const primary = focusTarget && counter.id === focusTarget.id;
@@ -1260,6 +1437,7 @@
     const standing = campaignStanding(state);
     $('score').textContent = card ? String(standing.points) : `${state.score} / 8`;
     setTug(standing.points, standing.target);
+    renderWhoWins();
     $('score-explain').textContent = card ?
       `German victory points minus Allied victory points. Germany is on course at ${standing.target} or more${state.scenario === 'short' ? ' in this short scenario' : ''}. A positive score favors Germany. A negative score favors the Allies.` :
       'Objective points Germany holds right now. Germany needs 8 at the final check, and a German formation still in play.';
@@ -1499,6 +1677,7 @@
     if (!$('action-story').textContent.trim()) {
       $('action-story').textContent = 'The line under the map describes each move and battle. A click on a dotted hex moves. A click on an outlined enemy opens a preview and does not fire until you resolve it.';
     }
+    renderAdvisor();
     automaticPhaseReport();
   }
   function chooseSelection(preferAction) {
