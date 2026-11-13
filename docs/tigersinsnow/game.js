@@ -759,6 +759,53 @@
   const COMMAND_SIDE_KEY = 'winter-offensive-command-side';
   const moveHistory = [];
   let lastReportPhase = null;
+  const typeIcon = symbol => ({ '=': 'armour', X: 'infantry', P: 'airborne', M: 'mech' }[symbol] || 'infantry');
+  function paintStaticIcons() {
+    document.querySelectorAll('[data-icon]').forEach(slot => {
+      if (!slot.querySelector('svg')) slot.innerHTML = PanelIcons.icon(slot.dataset.icon);
+    });
+  }
+  function meterLevel(value, max, lowAt = 0.35) {
+    if (!(max > 0) || value <= 0) return 'out';
+    return value / max < lowAt ? 'low' : 'ok';
+  }
+  function setMeter(id, value, max, label, lowAt) {
+    const meter = $(id);
+    if (!meter) return;
+    const pct = max > 0 ? Math.max(0, Math.min(100, value / max * 100)) : 0;
+    meter.querySelector('span').style.width = `${pct}%`;
+    meter.dataset.level = meterLevel(value, max, lowAt);
+    meter.setAttribute('aria-valuenow', String(Math.round(value)));
+    meter.setAttribute('aria-valuemax', String(Math.round(max)));
+    meter.setAttribute('aria-label', label);
+  }
+  function setPips(filled, total) {
+    const box = $('movement-pips');
+    const shown = Math.min(12, Math.max(1, total || 0));
+    const on = total > 0 ? Math.round(Math.max(0, filled) / total * shown) : 0;
+    box.replaceChildren(...Array.from({ length: shown }, (_, index) => {
+      const pip = document.createElement('i');
+      if (index < on) pip.className = 'on';
+      return pip;
+    }));
+    box.setAttribute('aria-label', `${filled} of ${total} movement points remaining`);
+  }
+  function setTug(score, target) {
+    const span = Math.max(Number(target) * 2, Math.abs(Number(score)) + Number(target), 8);
+    const min = -span * 0.35, max = span;
+    const pos = value => `${Math.max(2, Math.min(98, (value - min) / (max - min) * 100))}%`;
+    $('tug-marker').style.left = pos(Number(score));
+    $('tug-target').style.left = pos(Number(target));
+    $('tug-goal-label').textContent = String(target);
+    $('tug').setAttribute('aria-label', `Net score ${score}. German victory begins at ${target}, marked on the bar.`);
+  }
+  function iconSpan(name) {
+    const slot = document.createElement('span');
+    slot.className = 'ico';
+    slot.setAttribute('aria-hidden', 'true');
+    slot.innerHTML = PanelIcons.icon(name);
+    return slot;
+  }
   function showPhaseReport() {
     if (!manualRules.supplement(state) || busy) return;
     const report = manualRules.phaseReport(state);
@@ -766,8 +813,17 @@
     $('phase-report-armies').replaceChildren();
     for (const army of report.armies) {
       const row = document.createElement('tr');
-      for (const value of [army.side === 'american' ? 'Allied' : 'German', army.supply, army.victory, army.artillery, army.fuel ?? 'N/A']) {
-        const cell = document.createElement('td'); cell.textContent = String(value); row.append(cell);
+      const figures = [
+        [army.side === 'american' ? 'flag' : 'flag', army.side === 'american' ? 'Allied' : 'German'],
+        ['crate', army.supply], ['star', army.victory], ['cannon', army.artillery], ['fuel', army.fuel ?? 'None']
+      ];
+      for (const [name, value] of figures) {
+        const cell = document.createElement('td');
+        const figure = document.createElement('span');
+        figure.className = 'report-figure';
+        figure.append(iconSpan(name), document.createTextNode(String(value)));
+        cell.append(figure);
+        row.append(cell);
       }
       $('phase-report-armies').append(row);
     }
@@ -800,8 +856,32 @@
   function renderSideReports() {
     for (const side of ['american', 'german']) {
       const summary = armySummary(state, side);
-      $(`${side}-army-summary`).textContent = `${summary.formations} active formations / ${summary.strength} ${state.ruleset === 'manual' ? 'combat points' : 'strength'} / ${summary.isolated} isolated`;
-      $(`${side}-objectives`).textContent = summary.objectives.length ? `Holding: ${summary.objectives.join(', ')}.` : 'Holding no objectives.';
+      const units = state.units.filter(unit => unit.side === side && unit.hp > 0 && !unit.exited);
+      const full = units.reduce((sum, unit) => sum + unit.maxHp, 0);
+      const summaryBox = $(`${side}-army-summary`);
+      summaryBox.replaceChildren();
+      summaryBox.className = 'army-meters';
+      const formations = document.createElement('span');
+      formations.className = 'chip';
+      formations.dataset.level = 'ok';
+      formations.append(iconSpan('infantry'), document.createTextNode(`${summary.formations} formations`));
+      const strength = document.createElement('span');
+      strength.className = 'report-figure';
+      strength.append(iconSpan('swords'), document.createTextNode(`${summary.strength}`));
+      const bar = document.createElement('span');
+      bar.className = 'meter';
+      bar.dataset.level = meterLevel(summary.strength, full);
+      bar.setAttribute('role', 'meter');
+      bar.setAttribute('aria-label', `${summary.strength} of ${full} combat points remaining`);
+      const fill = document.createElement('span');
+      fill.style.width = `${full > 0 ? Math.round(summary.strength / full * 100) : 0}%`;
+      bar.append(fill);
+      const isolated = document.createElement('span');
+      isolated.className = 'chip';
+      isolated.dataset.level = summary.isolated ? 'out' : 'ok';
+      isolated.append(iconSpan('crate'), document.createTextNode(summary.isolated ? `${summary.isolated} isolated` : 'Supplied'));
+      summaryBox.append(formations, strength, bar, isolated);
+      $(`${side}-objectives`).textContent = summary.objectives.length ? `Holding: ${summary.objectives.join(', ')}.` : 'Holding no towns.';
       const list = $(`${side}-reports`);
       list.replaceChildren();
       const events = state.reports?.[side] || [];
@@ -1167,7 +1247,11 @@
       $(`${side}-held-caption`).textContent = heldCaption;
       $(`${side}-score-formations`).textContent = String(summary.formations);
       $(`${side}-score-strength`).textContent = String(summary.strength);
+      const sideUnits = state.units.filter(unit => unit.side === side && unit.hp > 0 && !unit.exited);
+      const sideFull = sideUnits.reduce((sum, unit) => sum + unit.maxHp, 0);
+      setMeter(`${side}-army-meter`, summary.strength, sideFull, `${summary.strength} of ${sideFull} combat points remaining`);
       $(`${side}-score-isolated`).textContent = String(summary.isolated);
+      $(`${side}-score-isolated`).dataset.level = summary.isolated ? 'out' : 'ok';
       $(`${side}-strength-label`).textContent = manual ? 'Combat points remaining' : 'Strength remaining';
     }
     $('held-note').textContent = card ?
@@ -1175,6 +1259,7 @@
       'These figures are the objective points each army holds right now. Germany needs 8 at the final check, and only if a German formation is still in play.';
     const standing = campaignStanding(state);
     $('score').textContent = card ? String(standing.points) : `${state.score} / 8`;
+    setTug(standing.points, standing.target);
     $('score-explain').textContent = card ?
       `German victory points minus Allied victory points. Germany is on course at ${standing.target} or more${state.scenario === 'short' ? ' in this short scenario' : ''}. A positive score favors Germany. A negative score favors the Allies.` :
       'Objective points Germany holds right now. Germany needs 8 at the final check, and a German formation still in play.';
@@ -1214,6 +1299,12 @@
       $('supply-pool').textContent = String(state.generalSupply[commandSide]);
       $('artillery-pool').textContent = String(state.artillery[commandSide]);
       $('fuel-pool').textContent = String(state.fuel);
+      const ceilings = manualRules.resourceProfile(state);
+      setMeter('supply-meter', state.generalSupply[commandSide], ceilings.supply[commandSide],
+        `${state.generalSupply[commandSide]} supply remaining of ${ceilings.supply[commandSide]}`);
+      setMeter('artillery-meter', state.artillery[commandSide], ceilings.artillery[commandSide],
+        `${state.artillery[commandSide]} artillery points remaining of ${ceilings.artillery[commandSide]}`);
+      setMeter('fuel-meter', state.fuel, ceilings.fuel, `${state.fuel} German fuel remaining of ${ceilings.fuel}`, 0.2);
       $('defense-strategy').value = state.defenseStrategy;
       $('defense-strategy').disabled = observing() || busy;
     }
@@ -1225,12 +1316,16 @@
     }
     $('end-turn').textContent = manual && state.orderPhase === 'movement' ? 'End Movement' : manual ? 'End Combat / Day' : 'End Turn';
     const unit = state.units.find(candidate => candidate.id === selected);
-    $('unit-name').textContent = unit ? unit.name : 'No unit selected';
-    $('unit-kind').textContent = unit ? `${unit.nationality === 'british' ? 'BRITISH / ALLIED' : unit.side.toUpperCase()} / ${unitPresentation(unit).label.toUpperCase()}` : 'GERMAN COMMAND';
+    $('unit-title').textContent = unit ? unit.name : 'No unit selected';
+    $('unit-type-icon').innerHTML = PanelIcons.icon(unit ? typeIcon(unitPresentation(unit).symbol) : 'infantry');
+    $('next-icon').innerHTML = PanelIcons.icon(manual && state.orderPhase === 'combat' ? 'swords' : 'track');
+    $('unit-kind').textContent = unit ? `${unit.nationality === 'british' ? 'British / Allied' : unit.side === 'german' ? 'German' : 'US'} ${unitPresentation(unit).label.toLowerCase()}` : '';
     $('strength').textContent = unit ? `${shownCp(unit)} / ${shownMax(unit)}` : '-';
-    $('strength-hint').textContent = unit ? 'Fighting power now, out of full strength. Losses make the next battle weaker.' : '';
+    if (unit) setMeter('strength-meter', shownCp(unit), shownMax(unit), `${shownCp(unit)} of ${shownMax(unit)} combat points`);
+    $('strength-hint').textContent = unit ? 'Fighting power now, out of full strength.' : '';
     const openingMoveBan = Boolean(unit && state.turn === 1 && unit.side === 'german' && state.phase === 'german');
-    $('movement').textContent = unit ? String(unit.mp) : '-';
+    $('movement').textContent = unit ? `${unit.mp} / ${unit.mobility}` : '-';
+    setPips(unit ? unit.mp : 0, unit ? unit.mobility : 0);
     $('movement-hint').textContent = !unit ? '' :
       openingMoveBan ? 'Opening day, 16 December: Germany cannot move. This formation can only attack.' :
       manual && state.orderPhase === 'combat' ? 'Movement is closed. It opens again with the next day.' :
@@ -1238,12 +1333,14 @@
       `${unit.mp} movement points left out of ${unit.mobility}.`;
     const supplyWord = unit ? manual ? manualRules.localSupply(state, unit) : unit.supplied ? 'supplied' : 'isolated' : '';
     $('supply').textContent = supplyWord ? supplyWord.charAt(0).toUpperCase() + supplyWord.slice(1) : '-';
+    $('supply').dataset.level = supplyWord === 'supplied' || supplyWord === 'connected' ? 'ok' : supplyWord === 'limited' ? 'low' : supplyWord ? 'out' : 'out';
     $('supply').dataset.status = unit ? unit.supplied ? 'connected' : 'isolated' : '';
     $('supply-hint').textContent = !unit ? '' :
       supplyWord === 'supplied' ? 'Full combat effect. Friends or an open side keep the supply line.' :
       supplyWord === 'limited' ? 'Fights and moves at about three quarters. One friendly unit is nearby, but the position is tight.' :
       'Cannot attack, and fights at half effect. Open a gap or bring a friendly unit alongside.';
     $('combat').textContent = unit ? manual ? `${unit.readiness} / 7` : unit.fired ? 'Spent' : 'Ready' : '-';
+    if (unit && manual) setMeter('readiness-meter', unit.readiness, 7, `Readiness ${unit.readiness} of 7`);
     $('readiness-hint').textContent = !unit ? '' :
       !manual ? (unit.fired ? 'This formation has already attacked today.' : 'This formation has not attacked today.') :
       unit.fired ? `Already attacked today. Readiness ${unit.readiness} of 7 still adds ${unit.readiness * 10}% in a later fight.` :
@@ -1278,8 +1375,10 @@
     state.units.filter(candidate => candidate.hp > 0 && !candidate.exited).forEach(counter => {
       const button = document.createElement('button');
       button.className = 'roster-unit'; button.setAttribute('aria-pressed', String(counter.id === selected));
-      button.textContent = `${counter.nationality === 'british' ? 'BRITISH ' : ''}[${unitPresentation(counter).symbol}] ${counter.name}`;
-      const stats = document.createElement('span'); stats.textContent = `${shownCp(counter)} / ${counter.mp}`; button.append(stats);
+      const name = document.createElement('span');
+      name.textContent = `${counter.nationality === 'british' ? 'British ' : ''}${counter.name}`;
+      const stats = document.createElement('span'); stats.textContent = `${shownCp(counter)} / ${counter.mp}`;
+      button.append(iconSpan(typeIcon(unitPresentation(counter).symbol)), name, stats);
       button.disabled = busy;
       button.onclick = () => {
         selected = counter.id; cursor = { x: counter.x, y: counter.y };
@@ -1306,7 +1405,9 @@
       list.replaceChildren();
       for (const entry of reinforcementEntries.filter(candidate => candidate.side === side)) {
         const row = document.createElement('li');
-        row.textContent = `${entry.nationality === 'british' ? 'BRITISH / ' : ''}[${unitPresentation(entry).symbol}] ${entry.name} — TURN ${entry.turn} / ${entry.date}${['Scheduled', 'Due after combat'].includes(entry.status) ? '' : ` / ${entry.status}`}`;
+        row.className = 'report-figure';
+        row.append(iconSpan(typeIcon(unitPresentation(entry).symbol)), document.createTextNode(
+          `${entry.nationality === 'british' ? 'British ' : ''}${entry.name} — turn ${entry.turn} / ${entry.date}${['Scheduled', 'Due after combat'].includes(entry.status) ? '' : ` / ${entry.status}`}`));
         list.append(row);
       }
       if (!list.childElementCount) {
@@ -1319,10 +1420,21 @@
     Object.values(state.map).filter(tile => tile.value).forEach(tile => {
       const row = document.createElement('li');
       row.dataset.side = tile.owner;
+      row.className = 'town-card';
+      const flag = iconSpan('flag');
+      const name = document.createElement('strong');
+      name.textContent = tile.name;
+      const badge = document.createElement('span');
+      badge.className = 'vp-badge';
+      badge.append(iconSpan('star'), document.createTextNode(card && tile.sourcePoints ? String(tile.sourcePoints) : String(tile.value)));
       const holder = tile.owner === 'german' ? 'Germany holds it now' : card ? 'The Allies hold it now' : 'America holds it now';
-      row.textContent = card && tile.sourcePoints ?
-        `${tile.name}. ${holder}. Germany scores ${tile.sourcePoints} victory points each day a German unit is standing here. An empty town scores nothing.` :
-        `${tile.name}. ${holder}. Worth ${tile.value} points while that side controls it.`;
+      const caption = document.createElement('span');
+      caption.className = 'stat-hint';
+      caption.textContent = card && tile.sourcePoints ?
+        `${holder}. Germany scores ${tile.sourcePoints} each day a German unit stands here.` :
+        `${holder}. Worth ${tile.value} while that side controls it.`;
+      badge.setAttribute('aria-label', `${badge.textContent} victory points`);
+      row.append(flag, name, badge, caption);
       $('objectives').append(row);
     });
     $('dispatches').replaceChildren();
@@ -1645,7 +1757,9 @@
         ...(state.playMode === 'hotseat' ? { defenseStrategy: $('plan-defense-strategy').value,
           defensiveArtillery: Number($('plan-defense-artillery').value) } : {})
       });
-      const heading = document.createElement('strong'); heading.textContent = `${preview.odds.toFixed(2)}:1 nominal attack odds`;
+      const heading = document.createElement('strong');
+      heading.className = 'with-icon';
+      heading.append(iconSpan('swords'), document.createTextNode(` ${preview.odds.toFixed(2)}:1 attack odds`));
       const note = document.createElement('p'); note.textContent = 'Actual losses and outcomes may vary.';
       const more = document.createElement('details');
       const summary = document.createElement('summary'); summary.textContent = 'Show combat details';
@@ -1863,5 +1977,6 @@
     event.target.value = '';
   };
   new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  paintStaticIcons();
   render();
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -1024,7 +1024,7 @@
       finishDay, COST, SCHEDULE, preview, planBattle, nextBattle, terrainDefense, strategyLabel, movementCost, crossingCost,
       maneuvers, chooseManeuver, chooseDefense, finishMovement, supplement, phaseReport, movementWarning,
       alteredStrategyChance, lose, artilleryMaximum, provisional, displayedCombatPoints, enemyStrengthOffset,
-      attemptAirdrops, armorFuel };
+      attemptAirdrops, armorFuel, resourceProfile };
   }
   if (typeof module === 'object') module.exports = createManualRules;
   else root.createManualRules = createManualRules;

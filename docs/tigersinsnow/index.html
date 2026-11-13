@@ -177,6 +177,42 @@
     #computer-defense label { display: block; margin: 10px 0 4px; font-size: 15px; }
     #computer-defense p { margin: 10px 0 0; font-size: 15px; line-height: 1.4; color: var(--cp-text-muted); }
     @media (max-width: 900px) { .command-cards { grid-template-columns: 1fr; } }
+    .ico { width: 22px; height: 22px; display: inline-flex; flex: none; color: var(--cp-text); }
+    .ico svg { width: 100%; height: 100%; display: block; }
+    .with-icon { display: inline-flex; align-items: center; gap: 8px; }
+    .stat-head { display: flex; align-items: center; gap: 8px; }
+    .meter { display: block; height: 10px; margin-top: 6px; border-radius: 999px; background: var(--cp-border); overflow: hidden; }
+    .meter > span { display: block; height: 100%; width: 0; background: var(--cp-success); border-radius: inherit; }
+    .meter[data-level="low"] > span { background: #b45309; }
+    .meter[data-level="out"] > span { background: var(--cp-danger); }
+    html[data-theme="dark"] .meter[data-level="low"] > span { background: #fbbf24; }
+    .pips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .pips i { width: 12px; height: 16px; border-radius: 3px; background: var(--cp-border); }
+    .pips i.on { background: var(--cp-link); }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 15px; font-weight: 700; }
+    .chip[data-level="ok"] { background: #dcfce7; color: #14532d; }
+    .chip[data-level="low"] { background: #fef3c7; color: #78350f; }
+    .chip[data-level="out"] { background: #fee2e2; color: #7f1d1d; }
+    html[data-theme="dark"] .chip[data-level="ok"] { background: #14532d; color: #dcfce7; }
+    html[data-theme="dark"] .chip[data-level="low"] { background: #78350f; color: #fef3c7; }
+    html[data-theme="dark"] .chip[data-level="out"] { background: #7f1d1d; color: #fecaca; }
+    .tug-wrap { margin: 8px 0 4px; }
+    .tug { position: relative; height: 16px; border-radius: 999px; background: linear-gradient(90deg, var(--cp-link), #7dd3fc 42%, #fecdd3 58%, var(--cp-danger)); }
+    .tug .needle, .tug .goal { position: absolute; top: -5px; width: 3px; height: 26px; border-radius: 2px; }
+    .tug .needle { background: var(--cp-text); }
+    .tug .goal { width: 2px; background: var(--cp-warning); }
+    .tug-scale { display: flex; justify-content: space-between; margin-top: 6px; font-size: 13px; color: var(--cp-text-muted); }
+    .town-card { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--cp-border); border-left: 6px solid var(--cp-link); border-radius: 8px; }
+    .town-card[data-side="german"] { border-left-color: var(--cp-danger); }
+    .town-card[data-side="american"] > .ico { color: var(--cp-link); }
+    .town-card[data-side="german"] > .ico { color: var(--cp-danger); }
+    .town-card .stat-hint { grid-column: 2 / -1; margin: 0; }
+    .vp-badge { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; }
+    .army-meters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .army-meters .meter { width: 120px; margin: 0; }
+    .report-figure { display: inline-flex; align-items: center; gap: 6px; }
+    .roster-unit .ico { width: 18px; height: 18px; }
+    aside.command-bar #objectives li { padding-top: 0; border-top: 0; }
     .section-label { color: var(--cp-text-muted); font: 10px Consolas, monospace; margin: 0 0 12px; }
     #unit-name { font: bold 20px Consolas, monospace; margin: 0 0 6px; overflow-wrap: anywhere; }
     #unit-kind { font: 10px Consolas, monospace; color: var(--cp-text-muted); }
@@ -391,11 +427,11 @@
         <div class="score-comparison">
           <section class="score-army" data-side="american" aria-label="American points and army condition">
             <h2>AMERICAN / WEST</h2><p><strong id="american-held-points" class="held-points"></strong> <span id="american-held-caption">held-objective points</span></p>
-            <dl><dt>Active formations</dt><dd id="american-score-formations"></dd><dt id="american-strength-label">Strength remaining</dt><dd id="american-score-strength"></dd><dt>Isolated formations</dt><dd id="american-score-isolated"></dd></dl>
+            <dl><dt>Active formations</dt><dd id="american-score-formations"></dd><dt id="american-strength-label">Strength remaining</dt><dd id="american-score-strength"></dd></dl><div id="american-army-meter" class="meter" role="meter" aria-valuemin="0"><span></span></div><p><span id="american-score-isolated" class="chip"></span> isolated</p>
           </section>
           <section class="score-army" data-side="german" aria-label="German points and army condition">
             <h2>GERMAN / EAST</h2><p><strong id="german-held-points" class="held-points"></strong> <span id="german-held-caption">held-objective points</span></p>
-            <dl><dt>Active formations</dt><dd id="german-score-formations"></dd><dt id="german-strength-label">Strength remaining</dt><dd id="german-score-strength"></dd><dt>Isolated formations</dt><dd id="german-score-isolated"></dd></dl>
+            <dl><dt>Active formations</dt><dd id="german-score-formations"></dd><dt id="german-strength-label">Strength remaining</dt><dd id="german-score-strength"></dd></dl><div id="german-army-meter" class="meter" role="meter" aria-valuemin="0"><span></span></div><p><span id="german-score-isolated" class="chip"></span> isolated</p>
           </section>
         </div>
         <p id="held-note">These figures are the objective points each army holds right now. The victory rule below is separate.</p>
@@ -408,32 +444,36 @@
       </section>
       <aside class="command-bar" aria-label="Player command">
         <section id="next-step" aria-labelledby="next-step-title">
-          <h2 id="next-step-title">What to do next</h2>
+          <h2 id="next-step-title" class="with-icon"><span id="next-icon" class="ico" aria-hidden="true"></span> What to do next</h2>
           <p id="order-guidance" aria-live="polite"></p>
         </section>
         <div class="command-cards">
           <section class="unit-card" aria-label="Selected formation">
             <p class="panel-kicker">Selected formation</p>
-            <h2 id="unit-name"></h2>
+            <h2 id="unit-name" class="with-icon"><span id="unit-type-icon" class="ico" aria-hidden="true"></span><span id="unit-title"></span></h2>
             <p id="unit-kind"></p>
             <dl>
-              <div><dt>Combat points</dt><dd id="strength"></dd><p id="strength-hint" class="stat-hint"></p></div>
-              <div><dt>Movement</dt><dd id="movement"></dd><p id="movement-hint" class="stat-hint"></p></div>
-              <div><dt>Local supply</dt><dd id="supply"></dd><p id="supply-hint" class="stat-hint"></p></div>
-              <div><dt>Readiness</dt><dd id="combat"></dd><p id="readiness-hint" class="stat-hint"></p></div>
+              <div><dt class="stat-head"><span class="ico" data-icon="swords" aria-hidden="true"></span> Combat points</dt><dd id="strength"></dd><div id="strength-meter" class="meter" role="meter" aria-valuemin="0"><span></span></div><p id="strength-hint" class="stat-hint"></p></div>
+              <div><dt class="stat-head"><span class="ico" data-icon="track" aria-hidden="true"></span> Movement</dt><dd id="movement"></dd><div id="movement-pips" class="pips" role="img"></div><p id="movement-hint" class="stat-hint"></p></div>
+              <div><dt class="stat-head"><span class="ico" data-icon="crate" aria-hidden="true"></span> Local supply</dt><dd id="supply" class="chip"></dd><p id="supply-hint" class="stat-hint"></p></div>
+              <div><dt class="stat-head"><span class="ico" data-icon="gauge" aria-hidden="true"></span> Readiness</dt><dd id="combat"></dd><div id="readiness-meter" class="meter" role="meter" aria-valuemin="0" aria-valuemax="7"><span></span></div><p id="readiness-hint" class="stat-hint"></p></div>
             </dl>
           </section>
           <section id="manual-command" class="resource-card" aria-label="Army resources today" hidden>
             <p class="panel-kicker">Your army today</p>
             <ul class="resource-list">
-              <li><span id="supply-label" class="resource-label" title="The shared stock this army spends in battle. At zero, its formations fight at half strength.">Supply</span><strong id="supply-pool"></strong><span class="stat-hint">Spent in battle. At zero, this army fights at half strength.</span></li>
-              <li><span class="resource-label" title="Each point adds 10 combat points to one battle. Unused points are replaced at the start of the next day.">Artillery</span><strong id="artillery-pool"></strong><span class="stat-hint">Each point adds 10 combat points to one battle. It refills tomorrow.</span></li>
-              <li><span class="resource-label" title="Only German tanks spend fuel, when they move or attack. The pool is never refilled. Low fuel halves their movement.">German fuel</span><strong id="fuel-pool"></strong><span class="stat-hint">German tanks spend this to move and attack. It never refills. Low fuel halves their movement.</span></li>
+              <li><span id="supply-label" class="resource-label stat-head" title="The shared stock this army spends in battle. At zero, its formations fight at half strength."><span class="ico" data-icon="crate" aria-hidden="true"></span> Supply</span><strong id="supply-pool"></strong><div id="supply-meter" class="meter" role="meter" aria-valuemin="0"><span></span></div><span class="stat-hint">Spent in battle. At zero, this army fights at half strength.</span></li>
+              <li><span class="resource-label stat-head" title="Each point adds 10 combat points to one battle. Unused points are replaced at the start of the next day."><span class="ico" data-icon="cannon" aria-hidden="true"></span> Artillery</span><strong id="artillery-pool"></strong><div id="artillery-meter" class="meter" role="meter" aria-valuemin="0"><span></span></div><span class="stat-hint">Each point adds 10 combat points to one battle. It refills tomorrow.</span></li>
+              <li><span class="resource-label stat-head" title="Only German tanks spend fuel, when they move or attack. The pool is never refilled. Low fuel halves their movement."><span class="ico" data-icon="fuel" aria-hidden="true"></span> German fuel</span><strong id="fuel-pool"></strong><div id="fuel-meter" class="meter" role="meter" aria-valuemin="0"><span></span></div><span class="stat-hint">German tanks spend this to move and attack. It never refills. Low fuel halves their movement.</span></li>
             </ul>
           </section>
           <section class="score-card objectives-section" aria-label="Victory score and towns">
-            <p class="panel-kicker">Victory score</p>
+            <p class="panel-kicker with-icon"><span class="ico" data-icon="star" aria-hidden="true"></span> Victory score</p>
             <p class="score-figure"><strong id="score"></strong></p>
+            <div class="tug-wrap">
+              <div id="tug" class="tug" role="img"><span id="tug-marker" class="needle"></span><span id="tug-target" class="goal" title="German victory starts here"></span></div>
+              <div class="tug-scale"><span>Allies ahead</span><span id="tug-goal-label">700</span><span>Germany ahead</span></div>
+            </div>
             <p id="score-explain"></p>
             <ul id="objectives"></ul>
           </section>
@@ -521,6 +561,6 @@
     <p>Manual campaigns incorporate the player’s aid card’s full roster, reinforcement dates, ratings and cumulative victory scoring on the rebuilt 19 × 11 map, plus the Apple-version supplement’s second combat, 25-CP elimination threshold, weighted strategy pressure, air-interdiction reports and R-key status display. Starting positions and unspecified formulas remain documented adaptations. Computer vs Computer supplies the demo; obsolete Apple disk/monitor setup is replaced by browser controls.</p>
     <p id="restart-error" role="alert"></p>
     <div class="actions"><button data-close="restart-dialog">Cancel</button><button data-command-side="german">Command Germany</button><button data-command-side="american">Command America</button><button data-command-side="computer">Computer vs Computer</button><button data-command-side="hotseat">Two players / Hotseat</button></div></dialog>
-  <script src="rot.js"></script><script src="reference-map.js"></script><script src="aid-card.js"></script><script src="manual-maneuvers.js"></script><script src="manual-rules.js"></script><script src="game.js"></script>
+  <script src="rot.js"></script><script src="reference-map.js"></script><script src="aid-card.js"></script><script src="manual-maneuvers.js"></script><script src="manual-rules.js"></script><script src="panel-icons.js"></script><script src="game.js"></script>
 </body>
 </html>
