@@ -1099,13 +1099,49 @@ test('displayed score keeps the same winner as the victory rule', () => {
     const table = engine.victoryLevelTable(scenario);
     assert.deepEqual(table.map(row => row.through), engine.aidCard.levels.map(row => row[scenario === 'short' ? 3 : 2]));
     assert.deepEqual(table.map(row => [row.side, row.level]), engine.aidCard.levels.map(row => [row[0], row[1]]));
+    const bonusShown = scenario === 'short' ? 324 : 699;
+    assert.deepEqual(table.map(row => row.margin), scenario === 'short' ? [
+      'Allies ahead by 274 or more',
+      'Allies ahead by 150 up to, but not including, 274',
+      'Allies ahead by 0 up to, but not including, 150',
+      'Germany ahead by more than 0, up to 100',
+      'Germany ahead by more than 100, up to 375',
+      'Germany ahead by more than 375'
+    ] : [
+      'Allies ahead by 649 or more',
+      'Allies ahead by 400 up to, but not including, 649',
+      'Allies ahead by 0 up to, but not including, 400',
+      'Germany ahead by more than 0, up to 250',
+      'Germany ahead by more than 250, up to 500',
+      'Germany ahead by more than 500'
+    ]);
+    for (const lead of [-0.25, 0, 0.25, 50, 50.25, 299, 299.25, 324, 324.25, 325, 699, 699.25, 700, 949, 949.25, 1199, 1199.25, 1200]) {
+      if (scenario === 'short' && lead > 800) continue;
+      state.winner = null;
+      state.victoryPoints = { german: Math.max(lead, 0), american: Math.max(-lead, 0) };
+      const outlook = engine.victoryOutlook(state);
+      const standing = engine.campaignStanding(state);
+      const current = outlook.levelRows.filter(row => row.current);
+      assert.equal(current.length, 1);
+      assert.equal(current[0].side, standing.leader);
+      assert.equal(current[0].level, standing.level);
+      const boardLead = outlook.alliedDisplayed - outlook.germanDisplayed;
+      const germanLead = -boardLead;
+      if (current[0].side !== 'german') {
+        const low = bonusShown - current[0].through;
+        assert.ok(boardLead + 1e-6 >= low);
+        if (current[0].above !== null) assert.ok(boardLead < bonusShown - current[0].above - 1e-9);
+      } else {
+        assert.ok(germanLead > current[0].above - bonusShown + 1e-9);
+        if (Number.isFinite(current[0].through)) assert.ok(germanLead <= current[0].through - bonusShown + 1e-6);
+      }
+    }
     for (let net = -100; net <= bonus + 500; net += 25) {
       state.winner = null;
       state.victoryPoints = { german: Math.max(net, 0), american: Math.max(-net, 0) };
       const outlook = engine.victoryOutlook(state);
       const rule = engine.campaignStanding(state).leader === 'german' ? 'german' : 'allied';
-      const higher = outlook.alliedDisplayed === outlook.germanDisplayed ? 'german' :
-        outlook.alliedDisplayed > outlook.germanDisplayed ? 'allied' : 'german';
+      const higher = outlook.germanDisplayed > outlook.alliedDisplayed ? 'german' : 'allied';
       assert.equal(outlook.displayLeader, rule);
       assert.equal(higher, rule);
       assert.equal(engine.victoryBreakdown(state).sumsMatch, true);
@@ -1114,11 +1150,19 @@ test('displayed score keeps the same winner as the victory rule', () => {
   const classic = game.createGame(4, 'classic');
   const saved = JSON.stringify(classic);
   classic.winner = null;
+  assert.deepEqual(engine.victoryLevelTable('classic').map(row => row.margin), [
+    'America ahead by 0 or more, including a tie',
+    'Germany ahead by more than 0'
+  ]);
   for (let score = 0; score <= 12; score++) {
     classic.score = score;
     const outlook = engine.victoryOutlook(classic);
     const rule = engine.campaignStanding(classic).leader === 'german' ? 'german' : 'allied';
+    const current = outlook.levelRows.filter(row => row.current);
+    assert.equal(current.length, 1);
+    assert.equal(current[0].side, engine.campaignStanding(classic).leader);
     assert.equal(outlook.displayLeader, rule);
+    assert.equal(outlook.levelLabel, current[0].side === 'german' ? 'German win' : 'America winning');
     assert.equal(engine.victoryBreakdown(classic).sumsMatch, true);
   }
   classic.score = 7;

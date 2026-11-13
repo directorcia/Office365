@@ -832,11 +832,6 @@
     const fraction = Math.abs(quarters % 4);
     return `${whole}${['', '.25', '.5', '.75'][fraction]}`;
   }
-  function progressLayout(lead, target) {
-    const span = Math.max(Number(target) * 1.2, Number(lead), 1);
-    const pct = value => Math.max(0, Math.min(100, Number(value) / span * 100));
-    return { fill: pct(Math.max(0, lead)), line: pct(target) };
-  }
   function earnedScores(state) {
     const card = aidCard.active(state);
     if (card) return { german: state.victoryPoints?.german || 0, allied: state.victoryPoints?.american || 0, card: true };
@@ -852,12 +847,30 @@
     const displayLeader = margin > 0 ? 'german' : 'allied';
     return { ...earned, bonus, alliedDisplayed, germanDisplayed: earned.german, margin, displayLeader, tie };
   }
+  function boardMargin(side, above, through, bonus, alliedName) {
+    if (side !== 'german') {
+      const atCeiling = bonus - through;
+      if (above === null) return `${alliedName} ahead by ${formatPoints(atCeiling)} or more`;
+      return `${alliedName} ahead by ${formatPoints(atCeiling)} up to, but not including, ${formatPoints(bonus - above)}`;
+    }
+    const justOver = above - bonus;
+    if (!Number.isFinite(through)) return `Germany ahead by more than ${formatPoints(justOver)}`;
+    return `Germany ahead by more than ${formatPoints(justOver)}, up to ${formatPoints(through - bonus)}`;
+  }
   function victoryLevelTable(scenario = 'campaign') {
     const column = scenario === 'short' ? 3 : 2;
+    const bonus = scenario === 'short' ? 324 : scenario === 'classic' ? 7 : 699;
+    const alliedName = scenario === 'classic' ? 'America' : 'Allies';
+    if (scenario === 'classic') {
+      return [
+        { side: 'american', level: 'winning', above: null, through: 7, margin: 'America ahead by 0 or more, including a tie' },
+        { side: 'german', level: 'winning', above: 7, through: Infinity, margin: 'Germany ahead by more than 0' }
+      ];
+    }
     let above = null;
     return aidCard.levels.map(row => {
       const through = row[column];
-      const entry = { side: row[0], level: row[1], above, through };
+      const entry = { side: row[0], level: row[1], above, through, bonus, margin: boardMargin(row[0], above, through, bonus, alliedName) };
       above = through;
       return entry;
     });
@@ -937,20 +950,22 @@
     if (state.winner === 'german' && board.displayLeader === 'german') headline = `German victory: Germany ${germanText} vs ${alliedName} ${alliedText}, Germany won by ${leadText}`;
     else if (state.winner === 'american' && board.displayLeader === 'allied') headline = `${card ? 'Allied' : 'American'} victory: ${alliedName} ${alliedText} vs Germany ${germanText}, ${alliedName} won by ${leadText}`;
     else if (state.winner) headline = `${state.winner === 'german' ? 'German' : card ? 'Allied' : 'American'} victory because the other army was wiped out. On points: ${headline}`;
-    const advisorTip = board.tie ? `Scores are level: the ${alliedName} are still winning.` :
-      board.displayLeader === 'german' ? `Germany leads the board by ${leadText}.` :
-      `${alliedName} lead the board by ${leadText}, including the defender bonus.`;
+    const levelLabel = card ? `${standing.leader === 'german' ? 'German' : 'Allied'} ${standing.level}` : (board.displayLeader === 'german' ? 'German win' : `${alliedName} winning`);
+    const advisorTip = board.tie ? `Scores are level: the ${alliedName} are still winning (${levelLabel}).` :
+      board.displayLeader === 'german' ? `Germany leads the board by ${leadText} (${levelLabel}).` :
+      `${alliedName} lead the board by ${leadText}, including the defender bonus (${levelLabel}).`;
     const share = board.germanDisplayed + board.alliedDisplayed;
     const resultName = state.winner === 'german' ? 'GERMAN' : card ? 'ALLIED' : 'AMERICAN';
-    const rows = card ? victoryLevelTable(state.scenario === 'short' ? 'short' : 'campaign').map(row => ({
-      ...row, current: standing.leader === row.side && standing.level === row.level
-    })) : [];
+    const rows = victoryLevelTable(card ? (state.scenario === 'short' ? 'short' : 'campaign') : 'classic').map(row => ({
+      ...row, current: card ? standing.leader === row.side && standing.level === row.level :
+        (row.side === 'german') === (board.displayLeader === 'german')
+    }));
     return { headline, requirement, advisorTip, net: standing.points, german: board.german, allied: board.allied,
       germanDisplayed: board.germanDisplayed, alliedDisplayed: board.alliedDisplayed, bonus: board.bonus,
       displayLeader: board.displayLeader, tie: board.tie, level: standing.level || (board.displayLeader === 'german' ? 'German win' : 'Allied win'),
       leader: standing.leader, ahead: board.displayLeader, onTrack: board.displayLeader === 'german', target: standing.target,
       turnsLeft, turnsLabel, card, winner: state.winner || null,
-      levelLabel: card ? `${standing.leader === 'german' ? 'German' : 'Allied'} ${standing.level}` : (board.displayLeader === 'german' ? 'German win' : `${alliedName} winning`),
+      levelLabel,
       germanLabel: `Germany ${germanText}`, alliedLabel: `${alliedName} ${alliedText}`,
       bonusNote: victoryBreakdown(state).bonusNote, today: victoryBreakdown(state).today, levelRows: rows,
       fill: share > 0 ? board.alliedDisplayed / share * 100 : 50, line: 50,
@@ -1055,22 +1070,21 @@
     body.append(lead, earned);
     if (outlook.levelRows.length) {
       const caption = document.createElement('p');
-      caption.textContent = 'The victory level uses Germany’s earned lead (German victory points minus Allied victory points), with the same boundaries as the campaign rules. The highlighted row is the level right now.';
+      caption.textContent = 'The level is how far ahead the leader is on the board. The highlighted row is the level right now.';
       const table = document.createElement('table');
       const head = document.createElement('tr');
-      for (const label of ['Level', 'German earned lead']) {
+      for (const label of ['Level', 'Winning margin on the board']) {
         const cell = document.createElement('th'); cell.textContent = label; head.append(cell);
       }
       table.append(head);
+      const alliedName = outlook.card ? 'Allied' : 'American';
       for (const row of outlook.levelRows) {
         const tr = document.createElement('tr');
         if (row.current) tr.dataset.current = 'true';
         const name = document.createElement('td');
-        name.textContent = `${row.side === 'german' ? 'German' : 'Allied'} ${row.level}`;
+        name.textContent = `${row.side === 'german' ? 'German' : alliedName} ${row.level}`;
         const range = document.createElement('td');
-        const low = row.above === null ? null : row.above + 1;
-        range.textContent = row.above === null ? `${formatPoints(row.through)} or less` :
-          Number.isFinite(row.through) ? `${formatPoints(low)} to ${formatPoints(row.through)}` : `${formatPoints(low)} or more`;
+        range.textContent = row.margin;
         tr.append(name, range); table.append(tr);
       }
       body.append(caption, table);
@@ -1096,12 +1110,13 @@
     today.textContent = report.today;
     box.append(today);
   }
-  function setTug(score, target) {
-    const layout = progressLayout(Number(score), Number(target));
-    $('tug-marker').style.left = `${layout.fill}%`;
-    $('tug-target').style.left = `${layout.line}%`;
-    $('tug-goal-label').textContent = `Win line ${target}`;
-    $('tug').setAttribute('aria-label', `Net score ${score}. German victory begins at ${target}. Below that line the other side is holding.`);
+  function setTug(outlook) {
+    $('tug-marker').style.left = `${outlook.fill}%`;
+    $('tug-target').style.left = '50%';
+    $('tug-target').title = 'Even scores on the board';
+    $('tug-goal-label').textContent = outlook.levelLabel;
+    const current = outlook.levelRows.find(row => row.current);
+    $('tug').setAttribute('aria-label', `${outlook.headline}. Victory level ${outlook.levelLabel}. ${current ? current.margin : ''}`);
   }
   function renderAdvisor() {
     const advice = suggestions(state);
@@ -1142,13 +1157,15 @@
   function showPhaseReport() {
     if (!manualRules.supplement(state) || busy) return;
     const report = manualRules.phaseReport(state);
-    $('phase-report-date').textContent = `${report.date} / ${report.weather} / ${report.phase} / Score ${report.score}`;
+    const outlook = victoryOutlook(state);
+    const current = outlook.levelRows.find(row => row.current);
+    $('phase-report-date').textContent = `${report.date} / ${report.weather} / ${report.phase} / ${outlook.levelLabel}: ${outlook.headline}${current ? `. ${current.margin}` : ''}`;
     $('phase-report-armies').replaceChildren();
     for (const army of report.armies) {
       const row = document.createElement('tr');
       const figures = [
         [army.side === 'american' ? 'flag' : 'flag', army.side === 'american' ? 'Allied' : 'German'],
-        ['crate', army.supply], ['star', army.victory], ['cannon', army.artillery], ['fuel', army.fuel ?? 'None']
+        ['crate', army.supply], ['star', formatPoints(army.side === 'american' ? outlook.alliedDisplayed : outlook.germanDisplayed)], ['cannon', army.artillery], ['fuel', army.fuel ?? 'None']
       ];
       for (const [name, value] of figures) {
         const cell = document.createElement('td');
@@ -1598,21 +1615,23 @@
       'These figures are the objective points each army holds right now. On the bar, America starts with 7 points, and the higher number is winning.';
     const standing = campaignStanding(state);
     const outlook = victoryOutlook(state);
+    const currentLevel = outlook.levelRows.find(row => row.current);
     $('score').textContent = outlook.tie ? 'Tie' : outlook.displayLeader === 'german' ? `Germany +${formatPoints(Math.abs(outlook.germanDisplayed - outlook.alliedDisplayed))}` : `${outlook.card ? 'Allies' : 'America'} +${formatPoints(Math.abs(outlook.alliedDisplayed - outlook.germanDisplayed))}`;
-    setTug(standing.points, standing.target);
+    setTug(outlook);
     renderWhoWins();
     $('score-explain').textContent = outlook.headline;
-    $('campaign-points').textContent = `${standing.points} / ${standing.target}`;
-    $('campaign-leader').textContent = standing.status;
+    $('campaign-points').textContent = `${outlook.alliedLabel} vs ${outlook.germanLabel}`;
+    $('campaign-leader').textContent = outlook.card ? outlook.levelLabel : standing.status;
     $('campaign-leader').dataset.side = standing.leader;
-    $('campaign-score-detail').textContent = `${standing.detail}${standing.provisional ? ' Provisional: combat, captures and elimination can change the outcome.' : ''}`;
+    $('campaign-score-detail').textContent = `${currentLevel ? `${currentLevel.margin}. ` : ''}${outlook.headline}.${standing.provisional ? ' Provisional: combat, captures and elimination can change the outcome.' : ''}`;
     $('campaign-score-basis').textContent = card ?
       `Earned victory points, before the Allied defender bonus: 1 per enemy combat point destroyed; German marked south/north presence ${3 * aidCard.multiplier(state)}/${10 * aidCard.multiplier(state)}, Bastogne ${50 * aidCard.multiplier(state)}, Marche/Rochefort ${25 * aidCard.multiplier(state)} each per turn; Allied marked east presence 20; German exits CP × (16 − turn/4). The bar adds the defender bonus to the Allied total. Ratings G${state.ratings.german}/A${state.ratings.american}.` : manual ?
       'Adapted German score: objectives + exits − Allied breakthrough. Not the original SSI scoring table.' :
       'German score: currently controlled objective points.';
     $('victory-rule-title').textContent = card ? 'MOST POINTS WIN / ALLIED DEFENDER BONUS' : 'MOST POINTS WIN / 8-POINT DEFENDER BONUS';
-    $('campaign-score-progress').max = standing.target;
-    $('campaign-score-progress').value = Math.max(0, Math.min(standing.target, standing.points));
+    $('campaign-score-progress').max = 100;
+    $('campaign-score-progress').value = Math.round(outlook.fill);
+    $('campaign-score-progress').setAttribute('aria-label', outlook.headline);
     $('phase').textContent = state.winner ? victoryOutlook(state).resultLabel : busy ? 'PROCESSING PHASE' :
       observing() ? `COMPUTER VS COMPUTER / ${autoplay ? 'PLAYING' : 'PAUSED'}` :
         `${commandSide.toUpperCase()} ${manual ? state.orderPhase.toUpperCase() : 'ORDERS'}`;
@@ -2264,7 +2283,7 @@
     const line = $('campaign-win-line');
     const strong = document.createElement('strong');
     strong.textContent = `Most points wins. The Allies start with ${target} victory points already.`;
-    line.replaceChildren(strong, document.createTextNode(' Add it to the victory points (VP) the Allies earn. The higher total wins. Classic saves use an 8-point bonus.'));
+    line.replaceChildren(strong, document.createTextNode(' Add it to the victory points (VP) the Allies earn. The higher total wins. The victory level is how far ahead that total is on the board. Classic saves show America starting with 7.'));
   }
   $('campaign-scenario').addEventListener('change', campaignWinLine);
   $('victory-help').onclick = () => { renderWhoWins(); $('victory-explainer').showModal(); };
