@@ -809,4 +809,13 @@ test('German AI takes Bastogne and the key towns before exits and stacks good-od
   const major=rules.planBattle(plain,attacker);
   assert.equal(major.options.strategy,'major');
   assert.ok(major.odds>=2.5);
+  const openTowns=game.createGame(3,'manual','german',2,{playMode:'computer'});
+  openTowns.turn=8;openTowns.phase='german';openTowns.orderPhase='movement';
+  openTowns.units.forEach(unit=>{unit.hp=0;});
+  const restless=openTowns.units.find(unit=>unit.side==='german'&&unit.type==='armor');
+  Object.assign(restless,point(4,2),{hp:100,maxHp:100,mp:30,exited:false});
+  for (const tile of Object.values(openTowns.map)) if (tile.sourcePoints) tile.owner='american';
+  const stay=game.planMovement(openTowns,restless);
+  assert.ok(stay);
+  assert.equal(stay.tile.exit,false);
 });
