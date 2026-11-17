@@ -1033,3 +1033,191 @@ test('automatic retreats keep British formations off the Meuse until a German un
     assert.equal(reference.crossesMeuse(point(1, 4), lifted.state.map[lifted.result.retreatPath[0]]), true);
   }
 });
+
+test('displayed score keeps the same winner as the victory rule', () => {
+  const opening = engine.createGame(4, 'manual', 'german');
+  const before = JSON.stringify(opening);
+  const start = engine.victoryOutlook(opening);
+  assert.equal(JSON.stringify(opening), before);
+  assert.equal(start.headline, 'Allies 699 vs Germany 0: Allies winning by 699');
+  assert.equal(start.alliedDisplayed, 699);
+  assert.equal(start.germanDisplayed, 0);
+  assert.equal(start.bonus, 699);
+  assert.equal(start.displayLeader, 'allied');
+  assert.equal(start.leader, 'american');
+  assert.equal(start.level, 'Strategic');
+  assert.equal(engine.victoryBreakdown(opening).sumsMatch, true);
+  opening.victoryPoints = { german: 1166, american: 547 };
+  opening.casualties = { german: 100, american: 200 };
+  opening.exitPoints = 50;
+  const board = engine.victoryOutlook(opening);
+  assert.equal(board.headline, 'Allies 1246 vs Germany 1166: Allies winning by 80');
+  assert.equal(board.alliedDisplayed, 1246);
+  assert.equal(board.germanDisplayed, 1166);
+  assert.doesNotMatch(board.headline, /German win/);
+  const parts = engine.victoryBreakdown(opening);
+  assert.equal(parts.sumsMatch, true);
+  assert.equal(parts.allied.total, 1246);
+  assert.equal(parts.allied.lines.find(line => line.bonus).amount, 699);
+  assert.equal(parts.allied.lines.reduce((sum, line) => sum + line.amount, 0), parts.allied.total);
+  assert.equal(parts.german.lines.reduce((sum, line) => sum + line.amount, 0), parts.german.total);
+  opening.winner = null;
+  opening.victoryPoints = { german: 699, american: 0 };
+  const lastAllied = engine.victoryOutlook(opening);
+  assert.equal(engine.campaignStanding(opening).leader, 'american');
+  assert.equal(lastAllied.tie, true);
+  assert.equal(lastAllied.displayLeader, 'allied');
+  assert.match(lastAllied.headline, /Allies still winning/);
+  for (const lead of [699.25, 699.5, 699.75, 700, 700.25]) {
+    opening.victoryPoints = { german: lead, american: 0 };
+    const germanLead = engine.victoryOutlook(opening);
+    assert.equal(engine.campaignStanding(opening).leader, 'german');
+    assert.equal(germanLead.displayLeader, 'german');
+    assert.ok(germanLead.germanDisplayed > germanLead.alliedDisplayed);
+    assert.equal(germanLead.germanDisplayed - germanLead.alliedDisplayed, Math.max(1, Math.round(lead - 699)));
+    assert.equal(germanLead.levelRows.find(row => row.current).margin, 'Germany 1–250');
+    assert.ok(Number.isInteger(germanLead.alliedDisplayed) && Number.isInteger(germanLead.germanDisplayed));
+  }
+  opening.victoryPoints = { german: 50.25, american: 0 };
+  const justUnder = engine.victoryOutlook(opening);
+  assert.equal(justUnder.level, 'Operational');
+  assert.equal(justUnder.alliedDisplayed - justUnder.germanDisplayed, 648);
+  assert.equal(justUnder.levelRows.find(row => row.current).margin, 'Allies 400–648');
+  opening.victoryPoints = { german: 0.25, american: 0 };
+  assert.equal(engine.victoryOutlook(opening).levelRows.find(row => row.current).margin, 'Allies 649+');
+  assert.equal(board.displayLeader, 'allied');
+  assert.equal(board.leader, 'american');
+  assert.equal(board.level, 'Marginal');
+  opening.winner = 'american';
+  opening.victoryPoints = { german: 1166, american: 547 };
+  assert.equal(engine.victoryOutlook(opening).resultLabel, 'ALLIED VICTORY');
+  opening.winner = null;
+  opening.victoryPoints = { german: 800, american: 100 };
+  const onTheLine = engine.victoryOutlook(opening);
+  assert.equal(onTheLine.tie, false);
+  assert.equal(onTheLine.displayLeader, 'german');
+  assert.equal(onTheLine.leader, 'german');
+  assert.equal(onTheLine.headline, 'Germany 800 vs Allies 799: Germany winning by 1');
+  opening.victoryPoints = { german: 1000, american: 100 };
+  const ahead = engine.victoryOutlook(opening);
+  assert.equal(ahead.displayLeader, 'german');
+  assert.equal(ahead.leader, 'german');
+  assert.equal(ahead.headline, 'Germany 1000 vs Allies 799: Germany winning by 201');
+  for (const scenario of ['campaign', 'short']) {
+    const bonus = scenario === 'short' ? 325 : 700;
+    const state = engine.createGame(1, 'manual', 'german', 2, { scenario });
+    const table = engine.victoryLevelTable(scenario);
+    assert.deepEqual(table.map(row => row.through), engine.aidCard.levels.map(row => row[scenario === 'short' ? 3 : 2]));
+    assert.deepEqual(table.map(row => [row.side, row.level]), engine.aidCard.levels.map(row => [row[0], row[1]]));
+    assert.deepEqual(table.map(row => row.margin), scenario === 'short' ? [
+      'Allies 274+',
+      'Allies 150–273',
+      'Allies 0–149',
+      'Germany 1–100',
+      'Germany 101–375',
+      'Germany 376+'
+    ] : [
+      'Allies 649+',
+      'Allies 400–648',
+      'Allies 0–399',
+      'Germany 1–250',
+      'Germany 251–500',
+      'Germany 501+'
+    ]);
+    const leads = [-0.5, -0.25, 0];
+    for (const edge of [0, 50, 174, 299, 324, 325, 424, 699, 700, 949, 1199, 1200]) {
+      for (const fraction of [0, 0.25, 0.5, 0.75]) leads.push(edge + fraction);
+    }
+    for (const lead of leads) {
+      state.winner = null;
+      state.victoryPoints = { german: Math.max(lead, 0), american: Math.max(-lead, 0) };
+      const outlook = engine.victoryOutlook(state);
+      const standing = engine.campaignStanding(state);
+      const current = outlook.levelRows.filter(row => row.current);
+      assert.equal(current.length, 1, `${scenario} ${lead}`);
+      assert.equal(current[0].side, standing.leader);
+      assert.equal(current[0].level, standing.level);
+      const boardLead = outlook.alliedDisplayed - outlook.germanDisplayed;
+      assert.equal(boardLead, Math.round(boardLead));
+      assert.ok(boardLead >= current[0].min && boardLead <= current[0].max, `${scenario} ${lead} showed ${boardLead} outside ${current[0].margin}`);
+      assert.equal(outlook.displayLeader, standing.leader === 'german' ? 'german' : 'allied');
+      const parts = engine.victoryBreakdown(state);
+      assert.equal(parts.sumsMatch, true);
+      assert.ok([...parts.german.lines, ...parts.allied.lines].every(line => Number.isInteger(line.amount)));
+      assert.doesNotMatch(outlook.headline, /\d\.\d/);
+    }
+    for (let net = -100; net <= bonus + 500; net += 25) {
+      state.winner = null;
+      state.victoryPoints = { german: Math.max(net, 0), american: Math.max(-net, 0) };
+      const outlook = engine.victoryOutlook(state);
+      const rule = engine.campaignStanding(state).leader === 'german' ? 'german' : 'allied';
+      const higher = outlook.germanDisplayed > outlook.alliedDisplayed ? 'german' : 'allied';
+      assert.equal(outlook.displayLeader, rule);
+      assert.equal(higher, rule);
+      assert.equal(engine.victoryBreakdown(state).sumsMatch, true);
+    }
+  }
+  const classic = game.createGame(4, 'classic');
+  const saved = JSON.stringify(classic);
+  classic.winner = null;
+  assert.deepEqual(engine.victoryLevelTable('classic').map(row => row.margin), [
+    'America 0+',
+    'Germany 1+'
+  ]);
+  for (let score = 0; score <= 12; score++) {
+    classic.score = score;
+    const outlook = engine.victoryOutlook(classic);
+    const rule = engine.campaignStanding(classic).leader === 'german' ? 'german' : 'allied';
+    const current = outlook.levelRows.filter(row => row.current);
+    assert.equal(current.length, 1);
+    assert.equal(current[0].side, engine.campaignStanding(classic).leader);
+    assert.equal(outlook.displayLeader, rule);
+    assert.equal(outlook.levelLabel, current[0].side === 'german' ? 'German win' : 'America winning');
+    assert.equal(engine.victoryBreakdown(classic).sumsMatch, true);
+  }
+  classic.score = 7;
+  assert.equal(engine.victoryOutlook(classic).tie, true);
+  assert.equal(engine.victoryOutlook(classic).displayLeader, 'allied');
+  classic.score = 8;
+  assert.equal(engine.victoryOutlook(classic).headline, 'Germany 8 vs America 7: Germany winning by 1');
+  classic.winner = 'german';
+  assert.equal(engine.victoryOutlook(classic).resultLabel, 'GERMAN VICTORY');
+  const restored = game.deserialize(saved);
+  assert.equal(engine.victoryOutlook(restored).card, false);
+  assert.equal(JSON.stringify(restored), saved);
+  const advice = engine.suggestions(engine.createGame(4, 'manual', 'german'));
+  assert.ok(advice.some(item => item.id === 'threshold' && /defender bonus|board/.test(item.text)));
+  assert.ok(advice.length >= 3 && advice.length <= 5);
+  assert.ok(advice.every(item => item.text.length < 120));
+});
+
+test('advisor suggestions stay between three and five and never change the game', () => {
+  const opening = engine.createGame(7, 'manual', 'german');
+  const before = JSON.stringify(opening);
+  const advice = engine.suggestions(opening);
+  assert.equal(JSON.stringify(opening), before);
+  assert.ok(advice.length >= 3 && advice.length <= 5);
+  assert.ok(advice.some(item => item.id === 'attack' && /\d+\.\d:1/.test(item.text)));
+  assert.ok(advice.every(item => item.text.length < 120 && item.icon));
+  assert.deepEqual(engine.suggestions({ ...opening, playMode: 'computer', playerSide: undefined }), []);
+  const alliedWatching = engine.createGame(7, 'manual', 'american');
+  assert.equal(engine.advisorSide(alliedWatching), null);
+  assert.deepEqual(engine.suggestions(alliedWatching), []);
+  const allied = engine.createGame(7, 'manual', 'german');
+  allied.playerSide = 'american';
+  allied.phase = 'american';
+  allied.orderPhase = 'movement';
+  allied.units.find(unit => unit.side === 'american' && unit.hp > 0).mp = 6;
+  const beforeAllied = JSON.stringify(allied);
+  const american = engine.suggestions(allied);
+  assert.equal(JSON.stringify(allied), beforeAllied);
+  assert.equal(engine.advisorSide(allied), 'american');
+  assert.ok(american.some(item => item.id === 'move' && /movement|Move/.test(item.text)));
+  assert.ok(american.length >= 3 && american.length <= 5);
+  const hotseat = engine.createGame(7, 'manual', 'german', 2, { playMode: 'hotseat' });
+  hotseat.phase = 'american'; hotseat.orderPhase = 'movement';
+  const seat = engine.suggestions(hotseat);
+  assert.equal(engine.advisorSide(hotseat), 'american');
+  assert.ok(seat.every(item => !item.text.includes('276th') || item.id !== 'fuel'));
+  assert.ok(seat.length >= 3 && seat.length <= 5);
+});

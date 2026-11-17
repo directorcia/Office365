@@ -417,6 +417,7 @@
       if (base.aidCard.active(state)) {
         const recipient = otherSide(unit.side), loss = before - unit.hp;
         state.casualties[unit.side] += loss; state.victoryPoints[recipient] += loss;
+        base.noteVictory(state, recipient, loss, 'enemy combat points destroyed');
         score(state);
       }
     }
@@ -773,6 +774,7 @@
       attemptAirdrops(state);
       log(state, `${15 + state.turn} DEC / ${state.weather.toUpperCase()} / new day.`);
       state.dayStart = base.daySnapshot(state);
+      base.resetVpToday(state);
     }
     function endTurn(state, side) {
       if (state.winner || state.pendingBattle || state.pendingDefense || state.aidFlow || state.phase !== side) return false;
@@ -1024,7 +1026,7 @@
       finishDay, COST, SCHEDULE, preview, planBattle, nextBattle, terrainDefense, strategyLabel, movementCost, crossingCost,
       maneuvers, chooseManeuver, chooseDefense, finishMovement, supplement, phaseReport, movementWarning,
       alteredStrategyChance, lose, artilleryMaximum, provisional, displayedCombatPoints, enemyStrengthOffset,
-      attemptAirdrops, armorFuel };
+      attemptAirdrops, armorFuel, resourceProfile };
   }
   if (typeof module === 'object') module.exports = createManualRules;
   else root.createManualRules = createManualRules;

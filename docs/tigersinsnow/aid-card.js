@@ -87,20 +87,34 @@
   }
   function assessDay(state, base) {
     const factor = multiplier(state), changes = { german: 0, american: 0 };
+    const parts = { german: { towns: 0, edges: 0, exits: 0 }, american: { edges: 0 } };
     for (const unit of state.units.filter(unit => unit.hp > 0 && !unit.exited)) {
       const tile = state.map[base.key(unit.x, unit.y)];
       if (unit.side === 'german') {
-        changes.german += edgeAward(tile, 'german') * factor;
-        if (tile.sourcePoints) changes.german += tile.sourcePoints * factor;
+        const edge = edgeAward(tile, 'german') * factor;
+        changes.german += edge; parts.german.edges += edge;
+        if (tile.sourcePoints) {
+          const town = tile.sourcePoints * factor;
+          changes.german += town; parts.german.towns += town;
+        }
         if (tile.exit && !base.neighbors(state, tile).some(next => {
           const enemy = base.occupant(state, next);
           return enemy && enemy.side !== unit.side;
         })) {
           const points = unit.hp * (16 - state.turn) / 4;
-          changes.german += points; state.exitPoints += points; unit.exited = true; unit.mp = 0;
+          changes.german += points; parts.german.exits += points; state.exitPoints += points; unit.exited = true; unit.mp = 0;
           base.reportOperation(state, unit.side, `${unit.name} exited at ${unit.hp} CP × (16 − ${state.turn}) / 4, earning ${points} VP.`);
         }
-      } else changes.american += edgeAward(tile, 'american');
+      } else {
+        const edge = edgeAward(tile, 'american');
+        changes.american += edge; parts.american.edges += edge;
+      }
+    }
+    if (base.noteVictory) {
+      base.noteVictory(state, 'german', parts.german.towns, 'towns held');
+      base.noteVictory(state, 'german', parts.german.edges, 'marked map edges');
+      base.noteVictory(state, 'german', parts.german.exits, 'leaving the map');
+      base.noteVictory(state, 'american', parts.american.edges, 'marked eastern map edge');
     }
     state.victoryPoints.german += changes.german;
     state.victoryPoints.american += changes.american;
