@@ -140,6 +140,8 @@
       name: "Espresso coffee machine",
       description: "Technical cutaway illustration of a precision espresso coffee machine.",
       results: [
+        { model: "mai-image-2.7-Flash", image: "images/mai-image-2-7-Flash.png", fileName: "mai-image-2-7-Flash.png", creationDate: "November 18, 2026", date: "2026-11-18", dimensions: "1024 x 1024 px", fileSize: "1.63 MB", format: "PNG" },
+        { model: "mai-image-2.7", image: "images/mai-image-2-7.png", fileName: "mai-image-2-7.png", creationDate: "November 18, 2026", date: "2026-11-18", dimensions: "1536 x 1536 px", fileSize: "2.80 MB", format: "PNG" },
         { model: "mai-image-2.6-flash", image: "images/mai-image-2.6-flash-20260905.png", fileName: "mai-image-2.6-flash-20260905.png", creationDate: "September 5, 2026", dimensions: "1024 x 1024 px", fileSize: "1.39 MB", format: "PNG" },
         { model: "mai-image-2.6", image: "images/mai-image-2.6-20260815.png", fileName: "mai-image-2.6-20260815.png", creationDate: "August 15, 2026", dimensions: "768 x 768 px", fileSize: "667 KB", format: "PNG" },
         { model: "mai-image-2.5", image: "images/mai-image-2.5-20260724.png", fileName: "mai-image-2.5-20260724.png", creationDate: "July 24, 2026", dimensions: "768 x 768 px", fileSize: "667 KB", format: "PNG" },
@@ -165,7 +167,7 @@
     const selectedModels = new Set(comparisonSets[0].results.map((result) => result.model));
     function resultDate(result) {
       const dateMatch = result.fileName.match(/(\d{4})(\d{2})(\d{2})(?=\.[^.]+$)/);
-      return dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : "";
+      return result.date || (dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : "");
     }
     function renderComparison(set) {
       promptDescription.textContent = set.description;
