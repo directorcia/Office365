@@ -115,6 +115,8 @@
     h2 { font: bold 12px Consolas, monospace; margin: 0; letter-spacing: 0; }
     .coordinates { font: 11px Consolas, monospace; color: var(--cp-text-muted); }
     .map-scroll { overflow-x: auto; margin-top: 12px; }
+    .map-zoom { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+    .map-zoom output { min-width: 4.5em; color: var(--cp-text-muted); font: 12px Consolas, monospace; text-align: center; }
     #unit-tooltip, #legend-tooltip { position: fixed; z-index: 100; pointer-events: none; width: 260px; max-width: calc(100vw - 16px); padding: 12px; border: 1px solid var(--cp-border-strong); border-radius: 10px; background: var(--cp-surface); color: var(--cp-text); box-shadow: var(--cp-shadow); font-size: 12px; }
     #legend-tooltip { width: max-content; padding: 8px 12px; }
     #unit-tooltip h3 { margin: 0 0 8px; font-size: 14px; }
@@ -240,6 +242,7 @@
     dl { display: grid; grid-template-columns: 1fr auto; gap: 12px; font: 11px Consolas, monospace; padding: 16px 0; margin: 0; }
     dt { color: var(--cp-text-muted); } dd { margin: 0; }
     .orders { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 16px; }
+    .orders kbd { margin-left: 6px; padding: 1px 5px; border: 1px solid currentColor; border-radius: 3px; font: 11px Consolas, monospace; opacity: 0.72; }
     #end-turn { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); font-weight: 600; }
     #end-turn:hover:not(:disabled) { background: var(--cp-accent-hover); }
     .sidebar-section { border-left: 1px solid var(--cp-border); padding-left: 20px; }
@@ -474,7 +477,7 @@
       <details id="vp-breakdown"><summary>Where the points come from</summary><div id="vp-breakdown-body"></div></details>
     </section>
     <div class="status"><span id="date"></span><span id="turn"></span><span id="weather"></span><span id="ruleset-status"></span><span id="seed-status"></span><span id="phase" role="status"></span></div>
-    <div class="orders" role="group" aria-label="Unit orders"><button id="move" aria-pressed="true">Move</button><button id="attack" aria-pressed="false">Attack</button><button id="undo-move" disabled aria-label="Undo Move" title="Undo the last move (before combat or ending the turn)">&#8630; Undo</button><button id="end-turn">End Turn</button></div>
+    <div class="orders" role="group" aria-label="Unit orders"><button id="move" aria-pressed="true" aria-keyshortcuts="M" title="Move mode (M)">Move <kbd>M</kbd></button><button id="attack" aria-pressed="false" aria-keyshortcuts="A" title="Attack mode (A)">Attack <kbd>A</kbd></button><button id="undo-move" disabled aria-label="Undo Move" aria-keyshortcuts="U" title="Undo the last move (U; before combat or ending the turn)">&#8630; Undo <kbd>U</kbd></button><button id="end-turn" aria-keyshortcuts="E" title="End the phase or turn (E)">End Turn <kbd>E</kbd></button></div>
     <section id="spectator-controls" aria-label="Computer versus computer playback" hidden>
       <button id="simulation-play">Play</button> <button id="simulation-action">Next Action</button> <button id="simulation-step">Next Day</button>
       <label for="simulation-speed">Playback speed</label> <select id="simulation-speed"><option value="3000">Slow / 3 seconds</option><option value="1500" selected>Normal / 1.5 seconds</option><option value="500">Fast / 0.5 seconds</option></select>
@@ -516,6 +519,12 @@
               <span class="legend-item" data-map="reference" role="img" aria-label="German alternate reinforcement edge" tabindex="0" hidden><canvas class="legend-symbol" data-symbol="german" width="26" height="26" aria-hidden="true"></canvas><span class="legend-caption">German edge</span></span>
               <span class="legend-item" data-terrain="isolated" role="img" aria-label="Isolated formation, shown with an exclamation mark" tabindex="0"><b>!</b><span class="legend-caption">Isolated</span></span>
             </div>
+            <div class="map-zoom" role="group" aria-label="Map zoom controls">
+              <button id="map-zoom-out" type="button" aria-label="Zoom map out" title="Zoom map out">-</button>
+              <output id="map-zoom-level" aria-live="polite">100%</output>
+              <button id="map-zoom-in" type="button" aria-label="Zoom map in" title="Zoom map in">+</button>
+              <button id="map-zoom-reset" type="button" aria-label="Reset map zoom" title="Reset map zoom">Reset</button>
+            </div>
             <section id="maneuver-panel" aria-label="Pending battle maneuver" hidden>
               <h2>RETREAT / ADVANCE</h2><p id="maneuver-description" aria-live="polite"></p>
               <div id="maneuver-directions" class="actions"></div>
@@ -528,7 +537,7 @@
               <label for="battle-defense-artillery">Defensive artillery</label><input id="battle-defense-artillery" type="number" min="0" max="8" step="1" value="0">
               <button id="resolve-defense">Resolve defensive battle</button><p id="defense-error" role="alert"></p>
             </section>
-            <canvas id="battlefield" width="740" height="512" tabindex="0" aria-label="Hex battlefield. German counters have a white-bordered black cross on medium grey; US counters have a white star on dark green; British Allied counters use B. Equals marks mechanized units; X marks infantry. Hover over a counter for unit details. Select friendly units and destinations. Arrow keys move the cursor; Enter activates a hex. Player-aid campaigns also support directions 1–6, F to finish a formation's movement or maneuver, and E to end a phase."></canvas>
+            <canvas id="battlefield" width="740" height="512" tabindex="0" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Enter Space" aria-label="Hex battlefield. German counters have a white-bordered black cross on medium grey; US counters have a white star on dark green; British Allied counters use B. Equals marks mechanized units; X marks infantry. Hover over a counter for unit details. Select friendly units and destinations. Arrow keys move the cursor; Enter activates a hex. Player-aid campaigns also support directions 1–6, F to finish a formation's movement or maneuver, and E to end a phase."></canvas>
             <details id="reinforcement-schedule" aria-label="Manual campaign reinforcement schedule" hidden>
               <summary>INBOUND REINFORCEMENTS / <span id="reinforcement-schedule-count">0 WAITING</span></summary>
               <p>Formations waiting to enter. Scheduled arrivals join after that day's combat; blocked arrivals remain here as delayed.</p>

@@ -1358,6 +1358,33 @@
   chooseSelection(true);
   const center = tile => state.referenceVersion === 2 ? referenceMap.center(tile) :
     { x: 30 + tile.x * 23, y: 31 + tile.y * 40 };
+  const mapScroll = canvas.closest('.map-scroll');
+  let mapZoom = 1;
+  function setMapZoom(value) {
+    mapZoom = Math.max(0.75, Math.min(1.75, Math.round(value * 4) / 4));
+    const zoomed = mapZoom !== 1;
+    if (zoomed) {
+      canvas.style.width = `${mapZoom * 100}%`;
+      canvas.style.maxWidth = 'none';
+      canvas.style.flex = '0 0 auto';
+    } else {
+      canvas.style.removeProperty('width');
+      canvas.style.removeProperty('max-width');
+      canvas.style.removeProperty('flex');
+    }
+    mapScroll.style.overflowX = mapZoom > 1 ? 'auto' : '';
+    $('map-zoom-level').value = `${Math.round(mapZoom * 100)}%`;
+    $('map-zoom-out').disabled = mapZoom <= 0.75;
+    $('map-zoom-in').disabled = mapZoom >= 1.75;
+    if (mapZoom > 1) {
+      const tile = state.map[key(cursor.x, cursor.y)];
+      mapScroll.scrollLeft = Math.max(0,
+        center(tile).x * canvas.clientWidth / canvas.width - mapScroll.clientWidth / 2);
+    } else mapScroll.scrollLeft = 0;
+  }
+  $('map-zoom-out').onclick = () => setMapZoom(mapZoom - 0.25);
+  $('map-zoom-in').onclick = () => setMapZoom(mapZoom + 0.25);
+  $('map-zoom-reset').onclick = () => setMapZoom(1);
   function hex(tile, inset = 0) {
     const point = center(tile);
     context.beginPath();
@@ -2088,6 +2115,25 @@
   document.addEventListener('keydown', event => {
     if ($('phase-report-dialog').open) {
       event.preventDefault(); event.stopImmediatePropagation(); $('phase-report-dialog').close(); return;
+    }
+    if (!event.ctrlKey && !event.altKey && !event.metaKey &&
+      !['INPUT','SELECT','TEXTAREA'].includes(event.target.tagName) &&
+      !document.querySelector('dialog[open]') && !busy && !observing() && !state.winner) {
+      const key = event.key.toLowerCase();
+      if (key === 'm') {
+        event.preventDefault(); mode = 'move'; render(); message('Move mode. Select a formation, then a dotted destination.');
+        return;
+      }
+      if (key === 'a') {
+        event.preventDefault(); mode = 'attack'; render(); message('Attack mode. Select a formation, then an outlined enemy.');
+        return;
+      }
+      if (key === 'u') {
+        event.preventDefault(); $('undo-move').click(); return;
+      }
+      if (key === 'e') {
+        event.preventDefault(); $('end-turn').click(); return;
+      }
     }
     if (manualRules.supplement(state) && !busy && event.key.toLowerCase() === 'r' &&
       !event.ctrlKey && !event.altKey && !event.metaKey &&
