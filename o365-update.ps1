@@ -68,6 +68,7 @@ param(
     [switch]$SkipConnectivityCheck,
     
     [Parameter(HelpMessage = "Use alternative PowerShell Gallery repository")]
+    [ValidateNotNullOrEmpty()]
     [string]$Repository = 'PSGallery',
 
     [Parameter(HelpMessage = "Maximum minutes per background installation")]
@@ -167,12 +168,20 @@ param(
     outside PowerShellGet.
 
 .NOTES
-    Author: CIAOPS    Version: 2.15
-    Last Updated: September 2026
+    Author: CIAOPS    Version: 2.16
+    Last Updated: November 2026
     Requires: PowerShell 7.X or higher, Administrator privileges
     
     IMPORTANT: This version removes deprecated Azure AD and MSOnline modules in favor of Microsoft Graph PowerShell SDK
     
+    Major Changes in v2.16 (19 November 2026):
+    - Made prerequisite failures and unreachable repositories fail fast instead of continuing
+      into operations that cannot succeed
+    - Prevented -CheckOnly from performing deprecated-module cleanup
+    - Applied package-provider failures and forced-cleanup failures to the final exit code
+    - Fixed AllowClobber conflict retries for update operations and detection of blocked jobs
+    - Added clearer read-only mode reporting for administrator and session checks
+
     Major Changes in v2.15 (8 September 2026):
     - Added -ForceVersionCleanup switch for a comprehensive, unconditional cleanup of every
       old version of every installed module (not limited to -ModuleScope), overriding
@@ -560,19 +569,19 @@ function Test-PackageProvider {
                 Install-PackageProvider -Name $PackageName -Force -Confirm:$false
                 Write-ColorOutput "    Successfully installed $PackageName" -Type Process
             }
-            return
+            return $true
         }
         
         if ([version]$installedProvider.Version -ge [version]'2.8.5.201') {
             Write-Verbose "Package provider '$PackageName' meets the minimum version."
-            return
+            return $true
         }
 
         # Check for updates
         $onlineProvider = Find-PackageProvider -Name $PackageName -ErrorAction SilentlyContinue
         if (-not $onlineProvider) {
             Write-ColorOutput "    Cannot find online version of $PackageName" -Type Warning
-            return
+            return $true
         }
         
         $localVersion = $installedProvider.Version
@@ -580,6 +589,7 @@ function Test-PackageProvider {
         
         if ([version]$localVersion -ge [version]$onlineVersion) {
             Write-ColorOutput "    Local provider $PackageName ($localVersion) is up to date" -Type Process
+            return $true
         }
         else {
             Write-ColorOutput "    Local provider $PackageName ($localVersion) can be updated to ($onlineVersion)" -Type Warning
@@ -598,9 +608,12 @@ function Test-PackageProvider {
                     $WarningPreference = $oldWarningPreference
                 }
             }
+            return $true
         }
     }
-    catch {        Write-ColorOutput "    Error processing package provider '$PackageName' - $($PSItem.Exception.Message)" -Type Error
+    catch {
+        Write-ColorOutput "    Error processing package provider '$PackageName' - $($PSItem.Exception.Message)" -Type Error
+        return $false
     }
 }
 
@@ -777,7 +790,7 @@ function Test-CoreModuleInstallation {
                             Force = $true
                             Confirm = $false
                             Scope = 'AllUsers'
-                            Repository = 'PSGallery'
+                            Repository = $Repository
                             ErrorAction = 'SilentlyContinue'
                             WarningAction = 'SilentlyContinue'
                             InformationAction = 'SilentlyContinue'
@@ -1398,6 +1411,7 @@ function Install-ModuleWithProgress {
         [hashtable]$InstallParams = @{},
         
         [Parameter()]
+        [ValidateSet('Install', 'Update')]
         [string]$Operation = 'Install'
     )
     
@@ -1449,7 +1463,7 @@ function Install-ModuleWithProgress {
     Write-ColorOutput "" -Type Info
       # Create a background job for the actual installation with phase tracking
     $jobScript = {
-        param($ModuleName, $InstallParams, $Operation, $LanguageMode, $ProgressFilePath)
+        param($ModuleName, $InstallParams, $Operation, $LanguageMode, $ProgressFilePath, $Repository)
         $ErrorActionPreference = 'Stop'
         $ProgressPreference = 'SilentlyContinue'
         $ConfirmPreference = 'None'
@@ -1466,7 +1480,7 @@ function Install-ModuleWithProgress {
             if (-not $nugetProvider) {
                 Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -Confirm:$false -ErrorAction Stop
             }
-            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+            Set-PSRepository -Name $Repository -InstallationPolicy Trusted -ErrorAction Stop
             
             # Create progress tracking for Az and Graph modules in constrained mode
             $isConstrainedLargeModule = ($LanguageMode -eq 'ConstrainedLanguage' -and 
@@ -1536,7 +1550,7 @@ function Install-ModuleWithProgress {
                 
                 # Force AllowClobber for conflict resolution
                 try {
-                    if ($Operation -eq 'Install' -or ($Operation -eq 'Update' -and $ModuleName -eq 'PnP.PowerShell')) {
+                    if ($Operation -in @('Install', 'Update')) {
                         $retryParams = $InstallParams.Clone()
                         if ($ModuleName -eq 'PnP.PowerShell') {
                             $retryParams.SkipPublisherCheck = $true
@@ -1552,11 +1566,7 @@ function Install-ModuleWithProgress {
                         
                         return @{ Success = $true; Message = "$Operation completed successfully after retry" }
                     } else {
-                        # Update-Module doesn't support AllowClobber
-                        if ($progressFile -and (Test-Path $progressFile)) {
-                            "Retry: Update-Module doesn't support AllowClobber - cannot retry" | Out-File $progressFile -Append
-                        }
-                        return @{ Success = $false; Message = "Update-Module conflict cannot be resolved - try uninstalling and reinstalling" }
+                        return @{ Success = $false; Message = "Unsupported operation '$Operation'." }
                     }
                 }
                 catch {
@@ -1633,7 +1643,7 @@ function Install-ModuleWithProgress {
                 try {
                     Write-ColorOutput "    🔄 Retry attempt with -AllowClobber..." -Type Process
                     
-                    if ($Operation -eq 'Install' -or ($Operation -eq 'Update' -and $ModuleName -eq 'PnP.PowerShell')) {
+                    if ($Operation -in @('Install', 'Update')) {
                         $retryArgs = @{
                             Name = $ModuleName
                             Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
@@ -1658,9 +1668,7 @@ function Install-ModuleWithProgress {
                         Write-ColorOutput ("    Retry time: {0:N1} minutes" -f ($actualTime / 60)) -Type Info
                         return $true
                     } else {
-                        # Update-Module doesn't support AllowClobber
-                        Write-ColorOutput "    ❌ Cannot retry Update-Module with AllowClobber (not supported)" -Type Error
-                        Write-ColorOutput "    💡 Try uninstalling and reinstalling the module instead" -Type Info
+                        $Script:LastInstallationError = "Unsupported operation '$Operation'."
                         return $false
                     }
                 }
@@ -1683,7 +1691,7 @@ function Install-ModuleWithProgress {
     # Start the background job (progress file path is generated here and passed in so both sides agree)
     $progressFile = Join-Path $env:TEMP "ModuleProgress_$($ModuleName)_$([guid]::NewGuid().ToString('N')).txt"
     try {
-        $job = Start-Job -ScriptBlock $jobScript -ArgumentList $ModuleName, $InstallParams, $Operation, $languageMode, $progressFile
+        $job = Start-Job -ScriptBlock $jobScript -ArgumentList $ModuleName, $InstallParams, $Operation, $languageMode, $progressFile, $Repository
     }
     catch {
         Write-ColorOutput "    Background job creation failed - falling back to direct execution" -Type Warning
@@ -1784,7 +1792,7 @@ function Install-ModuleWithProgress {
                 try {
                     Write-ColorOutput "    🔄 Retry attempt with -AllowClobber..." -Type Process
                     
-                    if ($Operation -eq 'Install') {
+                    if ($Operation -in @('Install', 'Update')) {
                         $retryArgs = @{
                             Name = $ModuleName
                             Force = if ($retryParams.ContainsKey('Force')) { $retryParams.Force } else { $true }
@@ -1800,9 +1808,7 @@ function Install-ModuleWithProgress {
                         $retryArgs.RequiredVersion = $InstallParams.RequiredVersion
                         $null = Install-Module @retryArgs
                     } else {
-                        # Update-Module doesn't support AllowClobber, so we can't retry
-                        Write-ColorOutput "    ❌ Cannot retry Update-Module with AllowClobber (not supported)" -Type Error
-                        throw
+                        throw "Unsupported operation '$Operation'."
                     }
                     
                     Write-ColorOutput "    ✅ Successfully resolved conflict and installed $ModuleName" -Type Process
@@ -1839,7 +1845,7 @@ function Install-ModuleWithProgress {
                                ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph'))
     
     try {
-    while ($job.State -in @('NotStarted', 'Running')) {
+    while ($job.State -in @('NotStarted', 'Running', 'Blocked')) {
         $elapsed = (Get-Date) - $startTime
         $elapsedSeconds = $elapsed.TotalSeconds
         $elapsedMinutes = $elapsed.TotalMinutes
@@ -1955,7 +1961,7 @@ function Install-ModuleWithProgress {
         # The job is configured as non-interactive above, but surface a useful
         # error if a provider or module still requests input.
         if ($job.State -eq 'Blocked') {
-            throw "Installation job is blocked waiting for user interaction. Ensure the NuGet provider and PSGallery trust settings are available."
+            throw "Installation job is blocked waiting for user interaction. Ensure the NuGet provider and $($Repository) trust settings are available."
         }
         $null = Wait-Job -Job $job -Timeout 1 -ErrorAction Stop
         $iteration++
@@ -2739,8 +2745,10 @@ function Test-Prerequisites {
         $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
         $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
         
-        if ($isAdmin -or $CheckOnly -or $CheckSessions) {
+        if ($isAdmin) {
             Write-ColorOutput "✅ Running with administrator privileges" -Type Success
+        } elseif ($CheckOnly -or $CheckSessions) {
+            Write-ColorOutput "ℹ️ Administrator privileges are not required for this read-only operation" -Type Info
         } else {
             Write-ColorOutput "❌ Administrator privileges are required (AllUsers scope installs)" -Type Error
             $allPrerequisitesMet = $false
@@ -3080,6 +3088,7 @@ function Remove-DeprecatedModules {
     Write-ProgressHeader "Deprecated Module Cleanup"
     
     $removedCount = 0
+    $failedCount = 0
     
     foreach ($deprecatedModule in $Script:DeprecatedModules) {
         try {
@@ -3100,12 +3109,14 @@ function Remove-DeprecatedModules {
                     }
                     catch {
                         Write-ColorOutput "    ⚠️ Could not remove: $($_.Exception.Message)" -Type Warning
+                        $failedCount++
                     }
                 }
             }
         }
         catch {
             Write-ColorOutput "Error checking for $($deprecatedModule.Name)`: $($_.Exception.Message)" -Type Error
+            $failedCount++
         }
     }
     
@@ -3113,6 +3124,11 @@ function Remove-DeprecatedModules {
         Write-ColorOutput "✅ Removed $removedCount deprecated module version(s)" -Type Process
     } else {
         Write-ColorOutput "✅ No deprecated modules found or removal needed" -Type Process
+    }
+
+    return @{
+        RemovedCount = $removedCount
+        FailedCount = $failedCount
     }
 }
 
@@ -3154,8 +3170,24 @@ try {
 
     if (-not $isAdmin -and -not $CheckOnly -and -not $CheckSessions) {
         $scriptPath = $PSCommandPath
-        $pathForDisplay = ($scriptPath -replace "'", "''")
-        $elevateCmd = "Start-Process -Verb RunAs pwsh -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File', '$pathForDisplay')"
+        $argumentParts = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "'$($scriptPath -replace "'", "''")'")
+        foreach ($boundName in $PSBoundParameters.Keys | Sort-Object) {
+            $boundValue = $PSBoundParameters[$boundName]
+            if ($boundValue -is [System.Management.Automation.SwitchParameter]) {
+                if ($boundValue) {
+                    $argumentParts += "-$boundName"
+                }
+            } elseif ($boundValue -is [array]) {
+                $argumentParts += "-$boundName"
+                foreach ($item in $boundValue) {
+                    $argumentParts += "'$($item.ToString() -replace "'", "''")'"
+                }
+            } else {
+                $argumentParts += "-$boundName"
+                $argumentParts += "'$($boundValue.ToString() -replace "'", "''")'"
+            }
+        }
+        $elevateCmd = "Start-Process -Verb RunAs pwsh -ArgumentList @($($argumentParts -join ', '))"
 
         Write-ColorOutput "❌ Administrator privileges are required." -Type Error
         Write-ColorOutput "This updater makes system-wide module changes (AllUsers scope)." -Type Info
@@ -3178,11 +3210,12 @@ try {
     }
     
     # Show header (Clear-Host removed to avoid console issues in some environments)
-    Write-ProgressHeader "Microsoft Cloud PowerShell Module Updater v2.15" "Enhanced version with improved module management and version cleanup"
+    Write-ProgressHeader "Microsoft Cloud PowerShell Module Updater v2.16" "Enhanced version with improved module management and version cleanup"
     
     # Display configuration
     Write-ColorOutput "Configuration:" -Type Info
-    Write-ColorOutput "  Mode: $(if ($CheckOnly) { 'Check Only' } else { 'Update' })" -Type Info
+    $displayMode = if ($CheckSessions) { 'Session Check' } elseif ($CheckOnly) { 'Check Only' } else { 'Update' }
+    Write-ColorOutput "  Mode: $displayMode" -Type Info
     Write-ColorOutput "  Scope: $($ModuleScope -join ', ')" -Type Info
     Write-ColorOutput "  Repository: $Repository" -Type Info
     Write-ColorOutput "  Prompt: $Prompt" -Type Info
@@ -3230,11 +3263,16 @@ try {
     if (-not $SkipConnectivityCheck) {
         Write-ColorOutput "🌐 Testing network connectivity..." -Type System
         $connectivityOk = Test-NetworkConnectivity
-        if (-not $connectivityOk -and -not $CheckOnly -and $Prompt) {
-            $continueResponse = Read-Host "Network connectivity issues detected. Continue anyway? (Y/N)"
-            if ($continueResponse -notmatch '^[Yy]') {
-                Write-ColorOutput "Script execution cancelled due to connectivity issues." -Type Warning
-                exit 0
+        if (-not $connectivityOk) {
+            if ($Prompt) {
+                $continueResponse = Read-Host "Network connectivity issues detected. Continue anyway? (Y/N)"
+                if ($continueResponse -notmatch '^[Yy]') {
+                    Write-ColorOutput "Script execution cancelled due to connectivity issues." -Type Warning
+                    exit 1
+                }
+            } else {
+                Write-ColorOutput "❌ Repository '$Repository' is unreachable. Fix connectivity or use -SkipConnectivityCheck to continue anyway." -Type Error
+                exit 1
             }
         }
         Write-ColorOutput "✅ Network connectivity check completed" -Type Process
@@ -3256,13 +3294,21 @@ try {
     # Ensure the NuGet package provider is available before any module installs
     if (-not $CheckOnly) {
         Write-ColorOutput "📦 Verifying package provider..." -Type System
-        Test-PackageProvider -PackageName 'NuGet'
+        $packageProviderReady = Test-PackageProvider -PackageName 'NuGet'
+        if (-not $packageProviderReady) {
+            Write-ColorOutput "❌ NuGet package provider is unavailable; module installation cannot continue." -Type Error
+            exit 1
+        }
     }
     
     # Clean up deprecated modules first
-    if (-not $SkipDeprecatedCleanup) {
+    $Script:ProcessingFailureCount = 0
+    $deprecatedCleanupResult = $null
+    if ($CheckOnly) {
+        Write-ColorOutput "⏭️ Deprecated module cleanup skipped in check-only mode" -Type Info
+    } elseif (-not $SkipDeprecatedCleanup) {
         Write-ColorOutput "🧹 Checking for deprecated modules..." -Type System
-        Remove-DeprecatedModules
+        $deprecatedCleanupResult = Remove-DeprecatedModules
     } else {
         Write-ColorOutput "⏭️ Deprecated module cleanup skipped" -Type Warning
     }
@@ -3270,6 +3316,11 @@ try {
     # Process modules
     Write-ColorOutput "🚀 Starting module processing..." -Type System
     Start-ModuleProcessing
+
+    if ($deprecatedCleanupResult -and $deprecatedCleanupResult.FailedCount -gt 0) {
+        Write-ColorOutput "⚠️ $($deprecatedCleanupResult.FailedCount) deprecated module version(s) could not be removed." -Type Warning
+        $Script:ProcessingFailureCount = ($Script:ProcessingFailureCount + $deprecatedCleanupResult.FailedCount)
+    }
 
     # Comprehensive forced cleanup: runs regardless of ModuleScope, -Prompt or
     # -SkipVersionCleanup, and independent of whether module processing had failures,
@@ -3283,6 +3334,7 @@ try {
         $forcedCleanupResult = Remove-AllOldModuleVersions -Force -KeepLatestOnly
         if ($forcedCleanupResult.FailedCleanups -gt 0) {
             Write-ColorOutput "⚠️ $($forcedCleanupResult.FailedCleanups) module(s) could not be fully cleaned up. Close any sessions using them and re-run with -ForceVersionCleanup." -Type Warning
+            $Script:ProcessingFailureCount += $forcedCleanupResult.FailedCleanups
         }
     }
 
