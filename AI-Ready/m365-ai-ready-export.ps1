@@ -627,6 +627,58 @@ function Get-DoubleValue {
     return $Default
 }
 
+function ConvertTo-SharingCapabilityName {
+    # SharePoint SharingCapability is Microsoft.SharePoint.Client.SharingCapabilities
+    # (the tenant property uses the same values). A collector may pass the live enum,
+    # its underlying integer, a numeric string from JSON, or the enum name:
+    #   0 Disabled
+    #   1 ExternalUserSharingOnly
+    #   2 ExternalUserAndGuestSharing  (Anyone / guest links)
+    #   3 ExistingExternalUserSharingOnly
+    # AnonymousAccess is not a member of this enum. Unrecognised values are returned
+    # unchanged so a future name is still visible to the caller.
+    param([AllowNull()][object]$Value)
+
+    if ($null -eq $Value) { return $null }
+
+    $text = ([string]$Value).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+
+    $parsedInt = 0
+    $isInteger = [int]::TryParse($text, [System.Globalization.NumberStyles]::Integer, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsedInt)
+    if (-not $isInteger -and ($Value -is [System.Enum])) {
+        try {
+            $parsedInt = [int]$Value
+            $isInteger = $true
+        }
+        catch {
+            $isInteger = $false
+        }
+    }
+
+    if ($isInteger) {
+        switch ($parsedInt) {
+            0 { return 'Disabled' }
+            1 { return 'ExternalUserSharingOnly' }
+            2 { return 'ExternalUserAndGuestSharing' }
+            3 { return 'ExistingExternalUserSharingOnly' }
+            default { return $text }
+        }
+    }
+
+    $knownNames = @(
+        'Disabled',
+        'ExternalUserSharingOnly',
+        'ExternalUserAndGuestSharing',
+        'ExistingExternalUserSharingOnly'
+    )
+    foreach ($name in $knownNames) {
+        if ($text -eq $name) { return $name }
+    }
+
+    return $text
+}
+
 function ConvertTo-NormalizedGraphPermissionName {
     param([string]$Value)
 
@@ -1943,7 +1995,7 @@ function Get-TenantMetadata {
         TenantId           = if (Test-ValueCollected -Value $tenantIdValue) { $tenantIdValue } else { 'not collected' }
         DefaultDomain      = if (Test-ValueCollected -Value $defaultDomain) { $defaultDomain } else { 'not collected' }
         GeoLocation        = $geoLocation
-        ScriptVersion      = '1.0'
+        ScriptVersion      = '1.1'
         RunTimestampUtc    = (Get-Date).ToUniversalTime().ToString('o')
         ExecutingAdmin     = if ($script:MgContext) { $script:MgContext.Account } else { 'not collected' }
         GrantedScopes      = if ($script:MgContext -and $script:MgContext.Scopes) { @($script:MgContext.Scopes) } elseif (@($script:GraphProvidedScopes).Count -gt 0) { @($script:GraphProvidedScopes) } else { 'not collected' }
@@ -2606,15 +2658,24 @@ function Get-SharePointOneDriveReadinessLocal {
             StorageQuotaInMB    = $site.StorageQuota
             UsedStorageInMB     = $site.StorageUsageCurrent
             SharingCapability   = $site.SharingCapability
-            AnyoneLinkEnabled   = $site.SharingCapability -in @('AnonymousAccess', 'ExternalUserAndGuestSharing')
+            AnyoneLinkEnabled   = (ConvertTo-SharingCapabilityName -Value $site.SharingCapability) -eq 'ExternalUserAndGuestSharing'
             LastContentModified = $site.LastContentModifiedDate
+        }
+    }
+
+    $externalSharingLevel = 'not collected'
+    if ($tenant) {
+        $rawSharingCapability = Get-ObjectPropertyValue -InputObject $tenant -Name 'SharingCapability' -Default 'not collected'
+        $sharingCapabilityName = ConvertTo-SharingCapabilityName -Value $rawSharingCapability
+        if (-not [string]::IsNullOrWhiteSpace([string]$sharingCapabilityName)) {
+            $externalSharingLevel = [string]$sharingCapabilityName
         }
     }
 
     return [ordered]@{
         Status                = 'reported'
         Reason                = ''
-        ExternalSharingLevel   = if ($tenant) { [string](Get-ObjectPropertyValue -InputObject $tenant -Name 'SharingCapability' -Default 'not collected') } else { 'not collected' }
+        ExternalSharingLevel   = $externalSharingLevel
         DefaultSharingLinkType = if ($tenant) { [string](Get-ObjectPropertyValue -InputObject $tenant -Name 'DefaultSharingLinkType' -Default 'not collected') } else { 'not collected' }
         RestrictedSearchEnabled = if ($tenant -and $null -ne (Get-ObjectPropertyValue -InputObject $tenant -Name 'RestrictedSharePointSearch')) { [bool](Get-ObjectPropertyValue -InputObject $tenant -Name 'RestrictedSharePointSearch') } else { 'not collected' }
         TotalSiteCount         = $totalCount
@@ -3270,8 +3331,13 @@ function Get-SharePointExposureAdvanced {
         $sampleSites = @($sharePoint.Sites)
     }
 
-    $externalSharingSites = @($sampleSites | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'SharingCapability' -Default '')) -in @('ExternalUserSharingOnly', 'ExternalUserAndGuestSharing', 'AnonymousAccess') }).Count
-    $anyoneLinkSites = @($sampleSites | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'SharingCapability' -Default '')) -eq 'AnonymousAccess' }).Count
+    # Anyone links are ExternalUserAndGuestSharing (2) only. External sharing is 1, 2, or 3.
+    # Values arrive as enums, ints, numeric strings, or names; AnonymousAccess is not valid.
+    $sharingCapabilityNames = @($sampleSites | ForEach-Object {
+        ConvertTo-SharingCapabilityName -Value (Get-ObjectPropertyValue -InputObject $_ -Name 'SharingCapability' -Default $null)
+    })
+    $externalSharingSites = @($sharingCapabilityNames | Where-Object { $_ -in @('ExternalUserSharingOnly', 'ExternalUserAndGuestSharing', 'ExistingExternalUserSharingOnly') }).Count
+    $anyoneLinkSites = @($sharingCapabilityNames | Where-Object { $_ -eq 'ExternalUserAndGuestSharing' }).Count
     $inactiveSites = @($sampleSites | Where-Object {
         # Site summaries store this as LastContentModified.
         $lastModified = Get-ObjectPropertyValue -InputObject $_ -Name 'LastContentModified'
