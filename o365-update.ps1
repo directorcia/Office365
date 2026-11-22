@@ -178,6 +178,7 @@ Why PowerShell 7?
     Major Changes in v2.18:
     - Verifies effective write access to the AllUsers module directory before making changes
     - Enforces TimeoutMinutes in restricted environments by running installs in a child process
+    - Reports failed final version cleanups separately and includes them in the failure exit code
 
     Major Changes in v2.17:
     - Added -WhatIf/-Confirm support for installs, updates, old-version cleanup and deprecated
@@ -2631,6 +2632,7 @@ function Start-ModuleProcessing {
     $processedCount = 0
     $successCount = 0
     $failureCount = 0
+    $cleanupFailureCount = 0
     $cleanupCandidates = [System.Collections.Generic.List[object]]::new()
     $Script:ModuleOperationResults = @()
 
@@ -2850,6 +2852,7 @@ function Start-ModuleProcessing {
         foreach ($module in $cleanupCandidates) {
             $finalCleanupResult = Remove-OldModuleVersions -ModuleName $module.Name -KeepLatestOnly
             if (-not $finalCleanupResult.Success) {
+                $cleanupFailureCount++
                 Write-ColorOutput "  ⚠️ Final cleanup could not fully complete for $($module.Name): $($finalCleanupResult.ErrorMessage)" -Type Warning
             }
         }
@@ -2861,7 +2864,8 @@ function Start-ModuleProcessing {
     Write-ColorOutput "Successful operations: $successCount" -Type Process
     Write-ColorOutput "Skipped (user/WhatIf): $($Script:SkippedCount)" -Type Info
     Write-ColorOutput "Failed operations: $failureCount" -Type Error
-    $Script:ProcessingFailureCount = $failureCount
+    Write-ColorOutput "Failed final cleanups: $cleanupFailureCount" -Type Error
+    $Script:ProcessingFailureCount = $failureCount + $cleanupFailureCount
 
     if ($Script:ModuleOperationResults -and $Script:ModuleOperationResults.Count -gt 0) {
         Write-ColorOutput ""

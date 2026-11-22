@@ -261,4 +261,52 @@ exit 1
             Assert-Equal $result.RemovedCount 0 'RemovedCount'
         }
     }
+
+    Context 'Final cleanup failure accounting' {
+        BeforeEach {
+            $Script:CheckOnly = $false
+            $Script:Prompt = $false
+            $Script:SkipVersionCleanup = $false
+            $Script:SkippedCount = 0
+            $Script:ModuleResults = [System.Collections.Generic.List[object]]::new()
+            $Script:FilteredModuleList = @(
+                @{ Name = 'MicrosoftTeams'; Category = 'Teams'; Description = 'Teams' }
+            )
+            Mock Get-ModuleVersionInfo {
+                @{
+                    ErrorMessage = $null
+                    IsInstalled = $true
+                    MultipleVersionsInstalled = $true
+                    InstalledVersions = @(
+                        [pscustomobject]@{ Version = [version]'2.0.0' },
+                        [pscustomobject]@{ Version = [version]'1.0.0' }
+                    )
+                    LocalVersion = '2.0.0'
+                    OnlineVersion = '2.0.0'
+                    InstallRecommended = $false
+                    UpdateAvailable = $false
+                }
+            }
+        }
+
+        It 'counts a failed cleanup even when the module is already up to date' {
+            Mock Remove-OldModuleVersions { @{ Success = $false; ErrorMessage = 'Access denied' } }
+            Start-ModuleProcessing
+            Assert-Equal $Script:ProcessingFailureCount 1 'failure count'
+        }
+
+        It 'does not count a successful cleanup as a failure' {
+            Mock Remove-OldModuleVersions { @{ Success = $true; ErrorMessage = $null } }
+            Start-ModuleProcessing
+            Assert-Equal $Script:ProcessingFailureCount 0 'failure count'
+        }
+
+        It 'does not attempt final cleanup in check-only mode' {
+            $Script:CheckOnly = $true
+            Mock Remove-OldModuleVersions { throw 'Cleanup must not run in check-only mode' }
+            Start-ModuleProcessing
+            Assert-Equal $Script:ProcessingFailureCount 0 'failure count'
+            Assert-MockCalled Remove-OldModuleVersions -Times 0 -Exactly -Scope It
+        }
+    }
 }
