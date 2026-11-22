@@ -186,6 +186,10 @@
        FailedCollectors is greater than zero.
 
     Change log:
+    - 2026-11-22: Purview label cmdlets use -ErrorAction Stop. A failure is
+      not collected and is recorded on Errors. Get-LabelPolicy is retried once
+      when labels exist and the first policy read is empty; a second empty
+      read stays not collected instead of a scored zero.
     - 2026-11-22: A Data governance section that collected neither labels nor
       compliance data keeps the Purview connection failure in its reason.
       -FailOnCollectorError exits 3 when the run finished with collector errors.
@@ -1313,6 +1317,7 @@ function Register-GraphReportDiagnostic {
         [Parameter(Mandatory)][string]$Uri,
         [Parameter(Mandatory)][string]$Message,
         [AllowNull()][object]$StatusCode,
+        [string]$Section = 'GraphReport',
         [switch]$DiagnosticOnly
     )
 
@@ -1334,7 +1339,7 @@ function Register-GraphReportDiagnostic {
     $reportVariable = Get-Variable -Name Report -Scope Script -ErrorAction SilentlyContinue
     if ($null -ne $reportVariable -and $null -ne $reportVariable.Value -and $reportVariable.Value.Contains('Errors') -and $null -ne $reportVariable.Value.Errors) {
         $reportVariable.Value.Errors.Add([ordered]@{
-            Section      = 'GraphReport'
+            Section      = $Section
             Message      = $Message
             Exception    = 'GraphReportRequestFailed'
             Detail       = $Uri
@@ -4166,6 +4171,23 @@ function Get-ExportExitCode {
     return 0
 }
 
+function Get-PurviewLabelCommandResult {
+    # $null means the cmdlet is unavailable or failed. An empty array means the
+    # cmdlet succeeded and returned nothing. Callers must not treat $null as zero.
+    param([Parameter(Mandatory)][string]$CommandName)
+
+    if (-not (Get-Command $CommandName -ErrorAction SilentlyContinue)) { return $null }
+    try {
+        $items = @(& $CommandName -ErrorAction Stop | Where-Object { $null -ne $_ })
+        return ,$items
+    }
+    catch {
+        $message = "$CommandName failed: $($_.Exception.Message)"
+        Register-GraphReportDiagnostic -Uri $CommandName -Message $message -Section 'DataGovernance'
+        return $null
+    }
+}
+
 function Get-DataGovernanceReadiness {
     $labels = @()
     $graphCollected = $false
@@ -4200,19 +4222,40 @@ function Get-DataGovernanceReadiness {
     $complianceLabels = $null
     $compliancePolicies = $null
     $autoPolicies = $null
+    $labelPolicyNote = ''
     if (-not $graphCollected -and $hasIppsSession) {
-        if (Get-Command Get-Label -ErrorAction SilentlyContinue) {
-            try { $complianceLabels = @(Get-Label -ErrorAction SilentlyContinue) } catch { $complianceLabels = $null }
+        $complianceLabels = Get-PurviewLabelCommandResult -CommandName 'Get-Label'
+        $compliancePolicies = Get-PurviewLabelCommandResult -CommandName 'Get-LabelPolicy'
+        $labelCount = if ($null -eq $complianceLabels) { 0 } else { @($complianceLabels).Count }
+        # A live run returned labels and then an empty policy list. The next run
+        # returned the policies. Do not score that first empty list as zero.
+        if ($labelCount -gt 0 -and $null -ne $compliancePolicies -and @($compliancePolicies).Count -eq 0) {
+            $retryDelaySeconds = 2
+            $retryDelayVariable = Get-Variable -Name LabelPolicyRetryDelaySeconds -Scope Script -ErrorAction SilentlyContinue
+            if ($null -ne $retryDelayVariable -and $null -ne $retryDelayVariable.Value) {
+                $retryDelaySeconds = [int]$retryDelayVariable.Value
+            }
+            if ($retryDelaySeconds -gt 0) { Start-Sleep -Seconds $retryDelaySeconds }
+            $retriedPolicies = Get-PurviewLabelCommandResult -CommandName 'Get-LabelPolicy'
+            if ($null -eq $retriedPolicies) {
+                $compliancePolicies = $null
+            }
+            elseif (@($retriedPolicies).Count -eq 0) {
+                $compliancePolicies = $null
+                $labelPolicyNote = 'Get-Label returned labels, and Get-LabelPolicy still returned no policies after one retry. Label policy counts are not collected.'
+                Register-GraphReportDiagnostic -Uri 'Get-LabelPolicy' -Message $labelPolicyNote -Section 'DataGovernance' -DiagnosticOnly
+            }
+            else {
+                $compliancePolicies = $retriedPolicies
+            }
         }
-        if (Get-Command Get-LabelPolicy -ErrorAction SilentlyContinue) {
-            try { $compliancePolicies = @(Get-LabelPolicy -ErrorAction SilentlyContinue) } catch { $compliancePolicies = $null }
-        }
-        if (Get-Command Get-AutoSensitivityLabelPolicy -ErrorAction SilentlyContinue) {
-            try { $autoPolicies = @(Get-AutoSensitivityLabelPolicy -ErrorAction SilentlyContinue) } catch { $autoPolicies = $null }
-        }
+        $autoPolicies = Get-PurviewLabelCommandResult -CommandName 'Get-AutoSensitivityLabelPolicy'
     }
 
     $labelSnapshot = Get-SensitivityLabelSnapshot -GraphCollected $graphCollected -GraphLabels $labels -ComplianceSessionConnected $hasIppsSession -ComplianceLabels $complianceLabels -ComplianceLabelPolicies $compliancePolicies -AutoSensitivityLabelPolicies $autoPolicies -GraphFailureReason $graphFailureReason
+    if (-not [string]::IsNullOrWhiteSpace($labelPolicyNote)) {
+        $labelSnapshot.Reason = $labelPolicyNote
+    }
     $published = $labelSnapshot.Published
     $labelTotal = $labelSnapshot.Total
     $autoLabel = $labelSnapshot.AutoLabel
@@ -4255,6 +4298,10 @@ function Get-DataGovernanceReadiness {
         if (-not $labelsCollected -and -not [string]::IsNullOrWhiteSpace([string]$labelSnapshot.Reason)) { $reasonParts.Add([string]$labelSnapshot.Reason) }
         if (-not $hasComplianceData -and -not [string]::IsNullOrWhiteSpace($complianceGapReason)) { $reasonParts.Add($complianceGapReason) }
         $reason = $reasonParts -join ' '
+    }
+    if (-not [string]::IsNullOrWhiteSpace($labelPolicyNote) -and $reason -notlike "*$labelPolicyNote*") {
+        if ($status -eq 'reported') { $status = 'partial' }
+        $reason = ("$reason $labelPolicyNote").Trim()
     }
 
     return [ordered]@{
