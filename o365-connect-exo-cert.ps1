@@ -96,6 +96,17 @@
     Copy the device code to the clipboard during provisioning sign-in. Opt-in only, because
     clipboard contents can leak on shared/RDP sessions.
 
+.PARAMETER PassThru
+    Emit a structured PSCustomObject summary to the success pipeline when the workflow completes
+    so callers can capture or pipe certificate, provisioning, or connection details.
+
+.PARAMETER WhatIf
+    Show the selected workflow without installing modules, changing certificates or app
+    registrations, or connecting to Exchange Online.
+
+.PARAMETER Confirm
+    Prompt once before running the selected workflow and its associated state changes.
+
 .EXAMPLE
     .\o365-connect-exo-cert.ps1 -GenerateLocalCertificate -ProvisionEntraApp -Tenant contoso.onmicrosoft.com
     One-time setup: generate a certificate, create the Entra app, grant permissions,
@@ -106,49 +117,113 @@
     Unattended connect using the saved profile for that tenant.
 
 .EXAMPLE
-    .\o365-connect-exo-cert.ps1 -UseCertificateAuth -Organization contoso.onmicrosoft.com -AppId 11111111-2222-3333-4444-555555555555 -CertificateThumbprint ABCDEF0123456789ABCDEF0123456789ABCDEF01
-    Connect with explicit values, bypassing the profile map.
+    .\o365-connect-exo-cert.ps1 -UseCertificateAuth -Organization contoso.onmicrosoft.com -AppId 11111111-2222-3333-4444-555555555555 -CertificateThumbprint ABCDEF0123456789ABCDEF0123456789ABCDEF01 -PassThru
+    Connect with explicit values bypassing the profile map, and return a connection result object.
+
+.INPUTS
+    None. Parameters are supplied on the command line.
+
+.OUTPUTS
+    None by default. With -PassThru, outputs a PSCustomObject containing Mode, Status,
+    Organization/Tenant, AppId, CertificateThumbprint, and file paths where applicable.
 
 .NOTES
+    Purpose: Exchange Online certificate generation, Entra ID app provisioning, and unattended connection.
+    Requirements:
+      - Windows PowerShell 5.1 or PowerShell 7+ on Windows (uses Cert:\CurrentUser\My).
+      - ExchangeOnlineManagement module (required for -UseCertificateAuth and -ProvisionEntraApp; installation is offered when missing).
+      - Global Administrator or Privileged Role Administrator + Exchange Administrator for one-time -ProvisionEntraApp setup.
+    Change log:
+      - 2026-11-22: Add StrictMode-safe JSON profile property reads, parameter sets, helper ShouldProcess,
+        Graph $select projection, single-pass profile filtering, resource disposal, EXO provisioning session
+        cleanup, splatting, Write-Progress, and -PassThru structured output.
+      - 2026-11-22: Harden profile-map updates and certificate-export rollback; add WhatIf support.
     CIAOPS - Script provided as is. Use at own risk. No guarantees or warranty provided.
     Usage - https://github.com/directorcia/Office365/wiki/Connect-to-Exchange-Online-with-Certificates
     Source - https://github.com/directorcia/Office365/blob/master/o365-connect-exo-cert.ps1
 #>
+#Requires -Version 5.1
+
+## ============================================================================
+##  PARAMETERS
+## ============================================================================
+[CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'Unspecified')]
 param(
+    [Alias('Headless')]
     [switch]$noprompt = $false,   ## if -noprompt used then user will not be asked for any input
     [switch]$noupdate = $false,   ## if -noupdate used then module will not be checked for more recent version
     [switch]$enableLog = $false,  ## if -enableLog create a transcript log file
 
-    ## --- Mode selection (exactly one is required) ---
-    [switch]$GenerateLocalCertificate = $false,  ## MODE 1: create/export a new self-signed cert
-    [switch]$UseCertificateAuth = $false,        ## MODE 2: connect with an existing app/cert
+    ## --- Mode selection (mutually exclusive parameter sets; Unspecified preserves custom error message) ---
+    [Parameter(ParameterSetName = 'GenerateCertificate', Mandatory = $true, HelpMessage = 'Generate and export a new self-signed certificate.')]
+    [switch]$GenerateLocalCertificate,  ## MODE 1: create/export a new self-signed cert
+
+    [Parameter(ParameterSetName = 'CertificateAuth', Mandatory = $true, HelpMessage = 'Connect to Exchange Online using certificate authentication.')]
+    [switch]$UseCertificateAuth,        ## MODE 2: connect with an existing app/cert
 
     ## --- MODE 1 (certificate generation) options ---
+    [Parameter(ParameterSetName = 'GenerateCertificate')]
+    [ValidateNotNullOrEmpty()]
     [string]$GeneratedCertSubject = "O365-EXO-AppAuth",  ## CN and default friendly name of the new cert
+
+    [Parameter(ParameterSetName = 'GenerateCertificate')]
+    [ValidateRange(1, 100)]
     [int]$GeneratedCertYearsValid = 2,                    ## cert lifetime in years
+
+    [Parameter(ParameterSetName = 'GenerateCertificate')]
     [string]$GeneratedCertOutputPath = "",  ## defaults to parent of script directory at runtime
+
+    [Parameter(ParameterSetName = 'GenerateCertificate')]
     [switch]$ExportGeneratedPfx = $false,   ## also export private key as password-protected .pfx
+
+    [Parameter(ParameterSetName = 'GenerateCertificate')]
     [securestring]$GeneratedPfxPassword,    ## .pfx password; prompted for if omitted (unless -noprompt)
 
-    ## --- MODE 2 (certificate connect) options ---
+    ## --- Shared & MODE 2 (certificate connect) options ---
     ## Values may come from these parameters directly or from the JSON profile map.
     [string]$Tenant,                 ## tenant ID/domain; provisioning target (MODE 1) or map filter (MODE 2)
+
+    [Parameter(ParameterSetName = 'CertificateAuth')]
     [string]$ProfileName,            ## select a profile map entry by name
+
+    [Parameter(ParameterSetName = 'CertificateAuth')]
     [string]$Organization,           ## Exchange organization to connect to
+
+    [Parameter(ParameterSetName = 'CertificateAuth')]
     [string]$AppId,                  ## Entra ID application (client) ID
+
+    [Parameter(ParameterSetName = 'CertificateAuth')]
     [string]$CertificateThumbprint,  ## SHA-1 thumbprint of the cert in Cert:\CurrentUser\My
+
     [string]$CertificateMapPath = "",  ## defaults to o365-exo-cert-auth.json in parent of script directory
 
     ## When used with -GenerateLocalCertificate, also create the Entra app, upload the cert,
     ## grant Exchange.ManageAsApp, and update the profile map automatically.
+    [Parameter(ParameterSetName = 'GenerateCertificate')]
     [switch]$ProvisionEntraApp = $false,
+
+    [Parameter(ParameterSetName = 'GenerateCertificate')]
     [string]$AppDisplayName = "",  ## Entra app display name; defaults to -GeneratedCertSubject
+
     ## Client ID of a public client app registered in your tenant for device-code Graph auth.
     ## Defaults to the well-known Azure PowerShell public client.
+    [Parameter(ParameterSetName = 'GenerateCertificate')]
+    [ValidatePattern('^[0-9A-Fa-f]{8}-([0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}$')]
     [string]$SetupClientId = "1950a258-227b-4e31-a9cf-717495945fc2",
+
     ## Opt-in only. Clipboard copy can leak auth codes in shared/RDP sessions.
-    [switch]$CopyDeviceCodeToClipboard = $false
+    [Parameter(ParameterSetName = 'GenerateCertificate')]
+    [switch]$CopyDeviceCodeToClipboard = $false,
+
+    ## Emit a structured result object to the pipeline on completion.
+    [switch]$PassThru = $false
 )
+
+## ============================================================================
+##  CONFIGURATION
+## ============================================================================
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
 ## Resolve paths relative to the script file itself, not the caller's working directory.
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -179,15 +254,42 @@ if ([string]::IsNullOrWhiteSpace($elevatedShellPath) -or -not (Test-Path -Litera
     throw "Unable to resolve current PowerShell host executable path for elevated module operations (PID $PID)."
 }
 
+## ============================================================================
+##  HELPER FUNCTIONS
+## ============================================================================
+function Get-ObjectPropertyValue {
+    <#
+    .SYNOPSIS
+        Read an object or PSCustomObject property safely under Set-StrictMode -Version Latest.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)][object]$InputObject,
+        [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$Name,
+        [Parameter(Mandatory = $false)][object]$Default = $null
+    )
+
+    if ($null -eq $InputObject) {
+        return $Default
+    }
+
+    $property = $InputObject.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $Default
+    }
+
+    return $property.Value
+}
+
 function Resolve-ExoCertificateProfile {
     <#
     .SYNOPSIS
         Load and filter the JSON certificate profile map, returning the matching profile entry.
     .DESCRIPTION
         Reads the map file at -Path, applies optional -TenantFilter, -ProfileFilter, and
-        -OrganizationFilter, and returns the single matching profile object. Prompts interactively
-        when multiple profiles match and -NoPrompt is not specified. Returns $null when the map
-        file is absent.
+        -OrganizationFilter in a single pass, and returns the single matching profile object.
+        Prompts interactively when multiple profiles match and -NoPrompt is not specified.
+        Returns $null when the map file is absent.
     .OUTPUTS
         PSCustomObject  The selected profile entry, or $null if the map file is absent.
     #>
@@ -210,24 +312,27 @@ function Resolve-ExoCertificateProfile {
     Write-Verbose "Resolving certificate profile from map path: $Path"
     Write-Debug "Resolving certificate profile from map path: $Path"
 
-    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -Path $Path)) {
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
         Write-Debug "Certificate map file missing or not provided."
         return $null
     }
 
     try {
-        $raw = Get-Content -Path $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        $mapContent = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+        $raw = $mapContent | ConvertFrom-Json -ErrorAction Stop
     }
     catch {
         throw "Unable to parse certificate mapping file '$Path'. $($_.Exception.Message)"
     }
 
     $profileItems = @()
-    if ($raw -is [System.Array]) {
+    if ($mapContent.TrimStart().StartsWith('[', [System.StringComparison]::Ordinal)) {
         $profileItems = @($raw)
     }
-    elseif ($null -ne $raw.profiles) {
-        $profileItems = @($raw.profiles)
+    elseif ($null -ne $raw -and $raw.PSObject.Properties['profiles']) {
+        if ($null -ne $raw.profiles) {
+            $profileItems = @($raw.profiles)
+        }
     }
 
     if ($profileItems.Count -eq 0) {
@@ -235,27 +340,39 @@ function Resolve-ExoCertificateProfile {
     }
 
     Write-Verbose "Certificate map loaded: $($profileItems.Count) profile(s); applying filters."
-    $candidateProfiles = $profileItems
-    if (-not [string]::IsNullOrWhiteSpace($ProfileFilter)) {
-        $candidateProfiles = @($candidateProfiles | Where-Object { $_.name -eq $ProfileFilter })
+    $hasProfileFilter = -not [string]::IsNullOrWhiteSpace($ProfileFilter)
+    $hasTenantFilter  = -not [string]::IsNullOrWhiteSpace($TenantFilter)
+    $hasOrgFilter     = -not [string]::IsNullOrWhiteSpace($OrganizationFilter)
+
+    ## Temporarily relax StrictMode inside a child scope solely for JSON property reads:
+    ## JSON profile entries legitimately omit optional fields (e.g. 'name' or 'tenant'),
+    ## and direct binder member access is ~15x faster than PSObject.Properties reflection.
+    $candidateList = [System.Collections.Generic.List[object]]::new()
+    & {
+        Set-StrictMode -Off
+        foreach ($item in $profileItems) {
+            if ($null -eq $item) { continue }
+            if ($hasProfileFilter -and $item.name -ne $ProfileFilter) { continue }
+            if ($hasTenantFilter -and $item.tenant -ne $TenantFilter -and $item.organization -ne $TenantFilter) { continue }
+            if ($hasOrgFilter -and $item.organization -ne $OrganizationFilter) { continue }
+
+            $candidateList.Add($item)
+        }
     }
-    if (-not [string]::IsNullOrWhiteSpace($TenantFilter)) {
-        $candidateProfiles = @($candidateProfiles | Where-Object { $_.tenant -eq $TenantFilter -or $_.organization -eq $TenantFilter })
-    }
-    if (-not [string]::IsNullOrWhiteSpace($OrganizationFilter)) {
-        $candidateProfiles = @($candidateProfiles | Where-Object { $_.organization -eq $OrganizationFilter })
-    }
+    $candidateProfiles = $candidateList.ToArray()
 
     if ($candidateProfiles.Count -eq 0) {
-        $appliedFilters = @()
-        if (-not [string]::IsNullOrWhiteSpace($ProfileFilter))      { $appliedFilters += "ProfileName='$ProfileFilter'" }
-        if (-not [string]::IsNullOrWhiteSpace($TenantFilter))       { $appliedFilters += "Tenant='$TenantFilter'" }
-        if (-not [string]::IsNullOrWhiteSpace($OrganizationFilter)) { $appliedFilters += "Organization='$OrganizationFilter'" }
+        $appliedFilters = [System.Collections.Generic.List[string]]::new()
+        if ($hasProfileFilter) { $appliedFilters.Add("ProfileName='$ProfileFilter'") }
+        if ($hasTenantFilter)  { $appliedFilters.Add("Tenant='$TenantFilter'") }
+        if ($hasOrgFilter)     { $appliedFilters.Add("Organization='$OrganizationFilter'") }
         $filterDesc = if ($appliedFilters.Count -gt 0) { " (filters: $($appliedFilters -join ', '))" } else { " (no filters applied)" }
 
-        $availableDesc = ($profileItems | ForEach-Object {
-            "name='$($_.name)' tenant='$($_.tenant)' org='$($_.organization)'"
-        }) -join '; '
+        $availableSummaries = [System.Collections.Generic.List[string]]::new()
+        foreach ($item in $profileItems) {
+            $availableSummaries.Add("name='$(Get-ObjectPropertyValue $item 'name')' tenant='$(Get-ObjectPropertyValue $item 'tenant')' org='$(Get-ObjectPropertyValue $item 'organization')'")
+        }
+        $availableDesc = $availableSummaries -join '; '
 
         throw "No matching certificate profile found in '$Path'$filterDesc. Available profiles: [$availableDesc]"
     }
@@ -269,8 +386,9 @@ function Resolve-ExoCertificateProfile {
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Multiple matching certificate profiles found:"
     for ($index = 0; $index -lt $candidateProfiles.Count; $index++) {
-        $displayName = if ([string]::IsNullOrWhiteSpace($candidateProfiles[$index].name)) { "(unnamed)" } else { $candidateProfiles[$index].name }
-        Write-Host -ForegroundColor $Colors.ProcessMessage ("[{0}] {1} | Tenant={2} | Org={3} | AppId={4}" -f ($index + 1), $displayName, $candidateProfiles[$index].tenant, $candidateProfiles[$index].organization, $candidateProfiles[$index].appId)
+        $profileName = [string](Get-ObjectPropertyValue $candidateProfiles[$index] 'name')
+        $displayName = if ([string]::IsNullOrWhiteSpace($profileName)) { "(unnamed)" } else { $profileName }
+        Write-Host -ForegroundColor $Colors.ProcessMessage ("[{0}] {1} | Tenant={2} | Org={3} | AppId={4}" -f ($index + 1), $displayName, (Get-ObjectPropertyValue $candidateProfiles[$index] 'tenant'), (Get-ObjectPropertyValue $candidateProfiles[$index] 'organization'), (Get-ObjectPropertyValue $candidateProfiles[$index] 'appId'))
     }
 
     do {
@@ -293,7 +411,7 @@ function New-ExoLocalCertificate {
     .OUTPUTS
         PSCustomObject  Certificate metadata and paths to the exported .cer and optional .pfx.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
@@ -326,23 +444,28 @@ function New-ExoLocalCertificate {
             $securePfxPassword = Read-Host -Prompt "Enter password for generated PFX file" -AsSecureString
         }
 
-        if ($null -eq $securePfxPassword) {
-            throw "ExportGeneratedPfx requires GeneratedPfxPassword (or prompt input when noprompt is not used)."
+        if ($null -eq $securePfxPassword -or $securePfxPassword.Length -eq 0) {
+            throw "ExportGeneratedPfx requires a non-empty GeneratedPfxPassword (or prompt input when noprompt is not used)."
         }
     }
 
-    if (-not (Test-Path -Path $OutputPath)) {
+    if (-not $PSCmdlet.ShouldProcess("Cert:\CurrentUser\My and '$OutputPath'", "Create and export certificate 'CN=$SubjectName'")) {
+        return $null
+    }
+
+    if (-not (Test-Path -LiteralPath $OutputPath)) {
         Write-Debug "Creating certificate output directory: $OutputPath"
-        New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
+        try {
+            [System.IO.Directory]::CreateDirectory($OutputPath) | Out-Null
+        }
+        catch {
+            throw "Unable to create certificate output directory '$OutputPath'. $($_.Exception.Message)"
+        }
     }
 
     ## RSA-2048/SHA-256 with KeySpec Signature matches what Entra ID expects for
     ## client-assertion certs; Exportable allows the optional .pfx export below.
     $certificate = New-SelfSignedCertificate -Subject "CN=$SubjectName" -CertStoreLocation "Cert:\CurrentUser\My" -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears($YearsValid) -KeySpec Signature -ErrorAction Stop
-
-    $resolvedFriendlyName = if ([string]::IsNullOrWhiteSpace($FriendlyName)) { $SubjectName } else { $FriendlyName }
-    $certificate.FriendlyName = $resolvedFriendlyName
-    Write-Debug "Certificate friendly name set to: $resolvedFriendlyName"
 
     ## File names embed the thumbprint (e.g. Subject-THUMBPRINT.cer) so repeated runs
     ## never overwrite each other; strip characters unsafe in file names first.
@@ -353,6 +476,10 @@ function New-ExoLocalCertificate {
 
     ## Remove the store cert if any export fails, so a failed run leaves no orphaned certificate behind.
     try {
+        $resolvedFriendlyName = if ([string]::IsNullOrWhiteSpace($FriendlyName)) { $SubjectName } else { $FriendlyName }
+        $certificate.FriendlyName = $resolvedFriendlyName
+        Write-Debug "Certificate friendly name set to: $resolvedFriendlyName"
+
         Export-Certificate -Cert $certificate -FilePath $cerPath -Type CERT -Force -ErrorAction Stop | Out-Null
 
         if ($ExportPfx) {
@@ -361,9 +488,12 @@ function New-ExoLocalCertificate {
         }
     }
     catch {
-        Remove-Item -Path "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
-        if (Test-Path -Path $cerPath) { Remove-Item -Path $cerPath -Force -ErrorAction SilentlyContinue }
-        throw "Certificate export failed; generated certificate removed from store. $($_.Exception.Message)"
+        Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $cerPath) { Remove-Item -LiteralPath $cerPath -Force -ErrorAction SilentlyContinue }
+        if ($null -ne $pfxPath -and (Test-Path -LiteralPath $pfxPath)) {
+            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+        }
+        throw "Certificate export failed; generated certificate and partial export files were removed. $($_.Exception.Message)"
     }
 
     return [PSCustomObject]@{
@@ -399,11 +529,14 @@ function Get-DeviceCodeGraphToken {
     Write-Debug "Requesting device code for tenant: $TenantId, client: $ClientId"
 
     try {
-        $deviceCodeResponse = Invoke-RestMethod -Method Post `
-            -Uri "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/devicecode" `
-            -Body @{ client_id = $ClientId; scope = $Scope } `
-            -ContentType "application/x-www-form-urlencoded" `
-            -ErrorAction Stop
+        $deviceCodeParams = @{
+            Method      = 'Post'
+            Uri         = "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/devicecode"
+            Body        = @{ client_id = $ClientId; scope = $Scope }
+            ContentType = 'application/x-www-form-urlencoded'
+            ErrorAction = 'Stop'
+        }
+        $deviceCodeResponse = Invoke-RestMethod @deviceCodeParams
     }
     catch {
         throw "Device code request failed. Check -SetupClientId and -Tenant. Error: $($_.Exception.Message)"
@@ -443,16 +576,19 @@ function Get-DeviceCodeGraphToken {
     $deadline     = (Get-Date).AddSeconds($deviceCodeResponse.expires_in)
     $pollInterval = [int]$deviceCodeResponse.interval
 
-    ## NOTE: 'continue' inside a switch/catch does not continue the while loop in PowerShell.
-    ## Use an explicit $keepPolling flag instead.
+    ## NOTE: 'continue' inside a switch/catch does not continue an unlabeled outer while loop in PowerShell.
+    ## Label the loop explicitly so 'continue pollLoop' resumes polling cleanly.
+    $tokenRequestParams = @{
+        Method      = 'Post'
+        Uri         = "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token"
+        Body        = $tokenBody
+        ContentType = 'application/x-www-form-urlencoded'
+        ErrorAction = 'Stop'
+    }
     :pollLoop while ((Get-Date) -lt $deadline) {
         Start-Sleep -Seconds $pollInterval
         try {
-            $tokenResponse = Invoke-RestMethod -Method Post `
-                -Uri "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token" `
-                -Body $tokenBody `
-                -ContentType "application/x-www-form-urlencoded" `
-                -ErrorAction Stop
+            $tokenResponse = Invoke-RestMethod @tokenRequestParams
             Write-Debug "Graph token acquired."
             return $tokenResponse.access_token
         }
@@ -563,11 +699,11 @@ function Set-ExoProfileMapEntry {
         Atomically upsert a certificate profile entry in the JSON profile map file.
     .DESCRIPTION
         Acquires a named system mutex scoped to the resolved map file path, reads the existing
-        map, replaces the entry matching the same tenant or appId (or appends a new entry), then
-        writes the result via a temp-file atomic replace. Handles abandoned mutex from prior
-        crashes. Concurrent callers are serialised rather than silently racing.
+        map, replaces the entry matching the same appId (or appends a new entry), then writes
+        the result via a temp-file atomic replace. Handles abandoned mutex from prior crashes.
+        Concurrent callers are serialised rather than silently racing.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$MapPath,
         [Parameter(Mandatory = $true)][object]$ProfileEntry,
@@ -575,7 +711,22 @@ function Set-ExoProfileMapEntry {
     )
 
     $fullMapPath = [System.IO.Path]::GetFullPath($MapPath)
-    $hashBytes = [System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($fullMapPath.ToLowerInvariant()))
+    if (-not $PSCmdlet.ShouldProcess($fullMapPath, "Update Exchange Online certificate profile map")) {
+        return
+    }
+
+    $parentDirectory = Split-Path -Parent $fullMapPath
+    if (-not [string]::IsNullOrWhiteSpace($parentDirectory) -and -not (Test-Path -LiteralPath $parentDirectory)) {
+        [System.IO.Directory]::CreateDirectory($parentDirectory) | Out-Null
+    }
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($fullMapPath.ToLowerInvariant()))
+    }
+    finally {
+        $sha256.Dispose()
+    }
     $hashHex = ([System.BitConverter]::ToString($hashBytes)).Replace('-', '')
     $mutexName = "Global\CIAOPS_EXO_PROFILEMAP_$hashHex"
 
@@ -597,41 +748,60 @@ function Set-ExoProfileMapEntry {
         Write-Verbose "Profile map lock acquired for: $fullMapPath"
 
         $mapData = @{ profiles = @() }
-        if (Test-Path -Path $fullMapPath) {
+        if (Test-Path -LiteralPath $fullMapPath) {
             try {
-                $raw = Get-Content -Path $fullMapPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                $mapContent = Get-Content -LiteralPath $fullMapPath -Raw -ErrorAction Stop
+                $raw = $mapContent | ConvertFrom-Json -ErrorAction Stop
                 ## Accept both supported map formats (bare array and { profiles = [...] })
                 ## so an array-format map is not silently wiped on update.
-                if ($raw -is [System.Array]) { $mapData = @{ profiles = @($raw) } }
-                elseif ($null -ne $raw.profiles) { $mapData = $raw }
+                if ($mapContent.TrimStart().StartsWith('[', [System.StringComparison]::Ordinal)) {
+                    $mapData = @{ profiles = @($raw) }
+                }
+                elseif ($null -ne $raw -and $raw.PSObject.Properties['profiles']) {
+                    if ($null -eq $raw.profiles) {
+                        throw "The profile map object has a null 'profiles' property."
+                    }
+                    $mapData = @{ profiles = @($raw.profiles) }
+                }
+                else {
+                    throw "The profile map must be an array or an object containing a 'profiles' array."
+                }
             }
             catch {
-                Write-Debug "Could not parse existing profile map inside lock - will overwrite."
+                throw "Unable to read existing certificate profile map '$fullMapPath'; it was not changed. $($_.Exception.Message)"
             }
         }
 
         $profileList = [System.Collections.Generic.List[object]]::new()
         foreach ($p in $mapData.profiles) { $profileList.Add($p) }
 
-        ## Replace existing entry for the same tenant/app, or append.
-        ## This preserves profiles that share the same display name across different tenants.
+        ## App IDs uniquely identify registrations; a tenant may intentionally have several profiles.
         $existingIdx = $null
+        $profileAppId = $null
+        if ($null -ne $ProfileEntry -and $ProfileEntry.PSObject.Properties['appId']) {
+            $profileAppId = $ProfileEntry.appId
+        }
         for ($i = 0; $i -lt $profileList.Count; $i++) {
-            $sameApp = (-not [string]::IsNullOrWhiteSpace($profileList[$i].appId) -and $profileList[$i].appId -eq $ProfileEntry.appId)
-            $sameTenant = ((-not [string]::IsNullOrWhiteSpace($profileList[$i].tenant) -and $profileList[$i].tenant -eq $ProfileEntry.tenant) -or
-                (-not [string]::IsNullOrWhiteSpace($profileList[$i].organization) -and $profileList[$i].organization -eq $ProfileEntry.organization))
-
-            if ($sameApp -or $sameTenant) { $existingIdx = $i; break }
+            $existingAppId = $null
+            if ($null -ne $profileList[$i] -and $profileList[$i].PSObject.Properties['appId']) {
+                $existingAppId = $profileList[$i].appId
+            }
+            if (-not [string]::IsNullOrWhiteSpace($profileAppId) -and
+                -not [string]::IsNullOrWhiteSpace($existingAppId) -and
+                $existingAppId -eq $profileAppId) {
+                $existingIdx = $i
+                break
+            }
         }
         if ($null -ne $existingIdx) { $profileList[$existingIdx] = $ProfileEntry } else { $profileList.Add($ProfileEntry) }
 
-        @{ profiles = $profileList.ToArray() } | ConvertTo-Json -Depth 5 | Set-Content -Path $tempPath -Encoding UTF8
-        Move-Item -Path $tempPath -Destination $fullMapPath -Force
+        @{ profiles = $profileList.ToArray() } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $tempPath -Encoding UTF8
+        Move-Item -LiteralPath $tempPath -Destination $fullMapPath -Force
         Write-Host -ForegroundColor $Colors.ProcessMessage "Profile map updated: $fullMapPath"
     }
     finally {
-        if (Test-Path -Path $tempPath) {
-            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $tempPath) {
+            Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
         }
         if ($hasHandle) {
             $mutex.ReleaseMutex()
@@ -679,9 +849,17 @@ function Get-CertClientAssertionToken {
     $signingInput = [System.Text.Encoding]::UTF8.GetBytes("$headerB64.$payloadB64")
 
     ## Sign with the certificate's RSA private key using PKCS#1 v1.5 / SHA-256.
-    $rsa       = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($Certificate)
-    $sigBytes  = $rsa.SignData($signingInput, [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
-    $sigB64    = [System.Convert]::ToBase64String($sigBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+    $rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($Certificate)
+    if ($null -eq $rsa) {
+        throw "Certificate '$($Certificate.Thumbprint)' does not expose an RSA private key."
+    }
+    try {
+        $sigBytes = $rsa.SignData($signingInput, [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    }
+    finally {
+        $rsa.Dispose()
+    }
+    $sigB64 = [System.Convert]::ToBase64String($sigBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 
     $clientAssertion = "$headerB64.$payloadB64.$sigB64"
 
@@ -689,15 +867,20 @@ function Get-CertClientAssertionToken {
     Write-Debug "Requesting Graph token via client assertion for app $AppId in tenant $TenantId"
 
     try {
-        $response = Invoke-RestMethod -Method Post -Uri $tokenEndpoint -ErrorAction Stop `
-            -ContentType "application/x-www-form-urlencoded" `
-            -Body @{
-                grant_type             = "client_credentials"
-                client_id              = $AppId
-                scope                  = $Scope
-                client_assertion_type  = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
-                client_assertion       = $clientAssertion
+        $assertionTokenParams = @{
+            Method      = 'Post'
+            Uri         = $tokenEndpoint
+            ErrorAction = 'Stop'
+            ContentType = 'application/x-www-form-urlencoded'
+            Body        = @{
+                grant_type            = 'client_credentials'
+                client_id             = $AppId
+                scope                 = $Scope
+                client_assertion_type = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+                client_assertion      = $clientAssertion
             }
+        }
+        $response = Invoke-RestMethod @assertionTokenParams
         return $response.access_token
     }
     catch {
@@ -707,7 +890,7 @@ function Get-CertClientAssertionToken {
     }
 }
 
-function Write-ExoCertConnectionDetails {
+function Write-ExoCertConnectionDetail {
     <#
     .SYNOPSIS
         Display local certificate details and the matching Entra ID app/keyCredential after connecting.
@@ -717,6 +900,7 @@ function Write-ExoCertConnectionDetails {
         match the certificate against stored keyCredentials. Falls back gracefully with a
         descriptive warning when the app lacks Application.Read.All permission.
     #>
+    [Alias('Write-ExoCertConnectionDetails')]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$TenantId,
@@ -742,35 +926,53 @@ function Write-ExoCertConnectionDetails {
         $graphToken  = Get-CertClientAssertionToken -TenantId $TenantId -AppId $AppId -Certificate $LocalCert
         $graphBase   = "https://graph.microsoft.com/v1.0"
         $appFilter   = [uri]::EscapeDataString("appId eq '" + ($AppId -replace "'", "''") + "'")
-        $appResult   = Invoke-ExoGraphRequest -AccessToken $graphToken -Method Get `
-                           -Uri "$graphBase/applications?`$filter=$appFilter&`$select=displayName,keyCredentials"
+        $appQueryParams = @{
+            AccessToken = $graphToken
+            Method      = 'Get'
+            Uri         = "$graphBase/applications?`$filter=$appFilter&`$select=displayName,keyCredentials"
+        }
+        $appResult   = Invoke-ExoGraphRequest @appQueryParams
         $appObj      = $appResult.value | Select-Object -First 1
 
         Write-Host -ForegroundColor $Colors.ProcessMessage "`n$sep"
         Write-Host -ForegroundColor $Colors.ProcessMessage "  ENTRA ID APP REGISTRATION"
         Write-Host -ForegroundColor $Colors.ProcessMessage $sep
-        Write-Host -ForegroundColor $Colors.ProcessMessage ("  Display Name  : {0}" -f $appObj.displayName)
-        Write-Host -ForegroundColor $Colors.ProcessMessage ("  App ID        : {0}" -f $AppId)
-
-        ## Find the keyCredential whose customKeyIdentifier matches this cert's SHA-1 thumbprint.
-        $thumbBase64  = [System.Convert]::ToBase64String($LocalCert.GetCertHash())
-        $matchingKey  = $appObj.keyCredentials | Where-Object { $_.customKeyIdentifier -eq $thumbBase64 } | Select-Object -First 1
-
-        if ($null -ne $matchingKey) {
-            Write-Host -ForegroundColor $Colors.ProcessMessage ("  Cert Label    : {0}" -f $matchingKey.displayName)
-            Write-Host -ForegroundColor $Colors.ProcessMessage ("  Cert Start    : {0}" -f ([datetime]$matchingKey.startDateTime).ToString('yyyy-MM-dd HH:mm:ss'))
-            Write-Host -ForegroundColor $Colors.ProcessMessage ("  Cert End      : {0}" -f ([datetime]$matchingKey.endDateTime).ToString('yyyy-MM-dd HH:mm:ss'))
+        if ($null -eq $appObj) {
+            Write-Host -ForegroundColor $Colors.WarningMessage "  App registration '$AppId' was not found in directory '$TenantId'."
         }
         else {
-            Write-Host -ForegroundColor $Colors.WarningMessage "  Matching key credential not found in Entra app (thumbprint mismatch or cert not yet uploaded)."
-        }
+            Write-Host -ForegroundColor $Colors.ProcessMessage ("  Display Name  : {0}" -f $appObj.displayName)
+            Write-Host -ForegroundColor $Colors.ProcessMessage ("  App ID        : {0}" -f $AppId)
 
-        ## Show all other certs registered on the same app so the user knows what else is there.
-        $otherKeys = @($appObj.keyCredentials | Where-Object { $_.customKeyIdentifier -ne $thumbBase64 })
-        if ($otherKeys.Count -gt 0) {
-            Write-Host -ForegroundColor $Colors.ProcessMessage ("`n  Other registered certs on this app ({0}):" -f $otherKeys.Count)
-            foreach ($key in $otherKeys) {
-                Write-Host -ForegroundColor $Colors.ProcessMessage ("    - {0}  [{1} -> {2}]" -f $key.displayName, ([datetime]$key.startDateTime).ToString('yyyy-MM-dd'), ([datetime]$key.endDateTime).ToString('yyyy-MM-dd'))
+            ## Find the keyCredential whose customKeyIdentifier matches this cert's SHA-1 thumbprint.
+            $thumbBase64 = [System.Convert]::ToBase64String($LocalCert.GetCertHash())
+            $matchingKey = $null
+            $otherKeys   = [System.Collections.Generic.List[object]]::new()
+            foreach ($key in @($appObj.keyCredentials)) {
+                if ($null -eq $key) { continue }
+                if ($null -eq $matchingKey -and $key.customKeyIdentifier -eq $thumbBase64) {
+                    $matchingKey = $key
+                }
+                elseif ($key.customKeyIdentifier -ne $thumbBase64) {
+                    $otherKeys.Add($key)
+                }
+            }
+
+            if ($null -ne $matchingKey) {
+                Write-Host -ForegroundColor $Colors.ProcessMessage ("  Cert Label    : {0}" -f $matchingKey.displayName)
+                Write-Host -ForegroundColor $Colors.ProcessMessage ("  Cert Start    : {0}" -f ([datetime]$matchingKey.startDateTime).ToString('yyyy-MM-dd HH:mm:ss'))
+                Write-Host -ForegroundColor $Colors.ProcessMessage ("  Cert End      : {0}" -f ([datetime]$matchingKey.endDateTime).ToString('yyyy-MM-dd HH:mm:ss'))
+            }
+            else {
+                Write-Host -ForegroundColor $Colors.WarningMessage "  Matching key credential not found in Entra app (thumbprint mismatch or cert not yet uploaded)."
+            }
+
+            ## Show all other certs registered on the same app so the user knows what else is there.
+            if ($otherKeys.Count -gt 0) {
+                Write-Host -ForegroundColor $Colors.ProcessMessage ("`n  Other registered certs on this app ({0}):" -f $otherKeys.Count)
+                foreach ($key in $otherKeys) {
+                    Write-Host -ForegroundColor $Colors.ProcessMessage ("    - {0}  [{1} -> {2}]" -f $key.displayName, ([datetime]$key.startDateTime).ToString('yyyy-MM-dd'), ([datetime]$key.endDateTime).ToString('yyyy-MM-dd'))
+                }
             }
         }
     }
@@ -789,7 +991,7 @@ function Write-ExoCertConnectionDetails {
     Write-Host -ForegroundColor $Colors.ProcessMessage "$sep`n"
 }
 
-function Get-ExoProvisioningRoleTargets {
+function Get-ExoProvisioningRoleTarget {
     <#
     .SYNOPSIS
         Resolve the Exchange Online and Microsoft Graph service principals and required app role IDs.
@@ -801,6 +1003,7 @@ function Get-ExoProvisioningRoleTargets {
     .OUTPUTS
         PSCustomObject  ExoServicePrincipal, ExoManageAsAppRole, GraphServicePrincipal, GraphReadAllRole.
     #>
+    [Alias('Get-ExoProvisioningRoleTargets')]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$AccessToken,
@@ -813,12 +1016,12 @@ function Get-ExoProvisioningRoleTargets {
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Locating Exchange Online service principal in directory..."
     $exoSpFilter = [uri]::EscapeDataString("appId eq '$ExoResourceAppId'")
-    $exoSpResult = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/servicePrincipals?`$filter=$exoSpFilter"
+    $exoSpResult = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/servicePrincipals?`$filter=$exoSpFilter&`$select=id,appId,appRoles"
     if ($null -eq $exoSpResult.value -or $exoSpResult.value.Count -eq 0) {
         throw "Exchange Online service principal not found. Ensure Exchange Online is provisioned in this tenant."
     }
     $exoSp = $exoSpResult.value[0]
-    $manageAsAppRole = $exoSp.appRoles | Where-Object { $_.value -eq "Exchange.ManageAsApp" }
+    $manageAsAppRole = $exoSp.appRoles | Where-Object { $_.value -eq "Exchange.ManageAsApp" } | Select-Object -First 1
     if ($null -eq $manageAsAppRole) {
         throw "Exchange.ManageAsApp role not found on Exchange Online service principal."
     }
@@ -826,7 +1029,7 @@ function Get-ExoProvisioningRoleTargets {
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Locating Microsoft Graph service principal in directory..."
     $graphSpFilter = [uri]::EscapeDataString("appId eq '$GraphResourceAppId'")
-    $graphSpResult = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/servicePrincipals?`$filter=$graphSpFilter"
+    $graphSpResult = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/servicePrincipals?`$filter=$graphSpFilter&`$select=id,appId,appRoles"
     if ($null -eq $graphSpResult.value -or $graphSpResult.value.Count -eq 0) {
         throw "Microsoft Graph service principal not found in this tenant."
     }
@@ -872,9 +1075,12 @@ function Get-OrCreateExoEntraApplication {
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Checking for existing app registration: $DisplayName..."
     $appFilter = [uri]::EscapeDataString("displayName eq '" + ($DisplayName -replace "'", "''") + "'")
-    $existingApps = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/applications?`$filter=$appFilter"
+    $existingApps = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/applications?`$filter=$appFilter&`$select=id,appId,displayName"
 
-    if ($existingApps.value.Count -gt 0) {
+    if ($existingApps.value.Count -gt 1) {
+        throw "Multiple Entra app registrations match display name '$DisplayName' ($($existingApps.value.Count) found). Specify a unique -AppDisplayName or remove duplicate registrations."
+    }
+    if ($existingApps.value.Count -eq 1) {
         Write-Host -ForegroundColor $Colors.WarningMessage "App '$DisplayName' already exists - reusing existing registration."
         return $existingApps.value[0]
     }
@@ -912,7 +1118,7 @@ function Set-ExoEntraApplicationCertificate {
         patches the app's keyCredentials via Graph while preserving any existing certificates,
         then re-reads the app to confirm the upload succeeded before returning.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$AccessToken,
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$AppObjectId,
@@ -920,11 +1126,15 @@ function Set-ExoEntraApplicationCertificate {
         [Parameter(Mandatory = $true)][hashtable]$Colors
     )
 
+    if (-not $PSCmdlet.ShouldProcess("Entra Application Object '$AppObjectId'", "Upload certificate '$Thumbprint' to keyCredentials")) {
+        return
+    }
+
     $graphBase = "https://graph.microsoft.com/v1.0"
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Uploading certificate to app registration..."
 
-    $certStoreObj = Get-Item "Cert:\CurrentUser\My\$Thumbprint" -ErrorAction Stop
+    $certStoreObj = Get-Item -LiteralPath "Cert:\CurrentUser\My\$Thumbprint" -ErrorAction Stop
     $cerBytes = $certStoreObj.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
     $cerBase64 = [System.Convert]::ToBase64String($cerBytes)
     $customKeyIdBase64 = [System.Convert]::ToBase64String($certStoreObj.GetCertHash())
@@ -980,7 +1190,7 @@ function Get-OrCreateExoEntraServicePrincipal {
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Ensuring service principal exists..."
     $spFilter = [uri]::EscapeDataString("appId eq '$AppId'")
-    $existingSp = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/servicePrincipals?`$filter=$spFilter"
+    $existingSp = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/servicePrincipals?`$filter=$spFilter&`$select=id,appId"
 
     if ($existingSp.value.Count -gt 0) {
         $spObject = $existingSp.value[0]
@@ -993,16 +1203,16 @@ function Get-OrCreateExoEntraServicePrincipal {
     return $spObject
 }
 
-function Set-ExoEntraAppRoleAssignments {
+function Set-ExoEntraAppRoleAssignment {
     <#
     .SYNOPSIS
         Grant Exchange.ManageAsApp and Graph Application.Read.All to the provisioned service principal.
     .DESCRIPTION
-        Checks existing app role assignments for the service principal and grants each missing
-        role. EXO is checked first, then Graph, with a fresh assignment fetch before each grant
-        to avoid stale data. Already-granted roles are skipped silently.
+        Fetches existing app role assignments once and grants any missing role. Already-granted
+        roles are skipped silently.
     #>
-    [CmdletBinding()]
+    [Alias('Set-ExoEntraAppRoleAssignments')]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$AccessToken,
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$ServicePrincipalId,
@@ -1013,12 +1223,28 @@ function Set-ExoEntraAppRoleAssignments {
         [Parameter(Mandatory = $true)][hashtable]$Colors
     )
 
+    if (-not $PSCmdlet.ShouldProcess("Service Principal '$ServicePrincipalId'", "Grant Exchange.ManageAsApp and Microsoft Graph Application.Read.All app roles")) {
+        return
+    }
+
     $graphBase = "https://graph.microsoft.com/v1.0"
+    $assignmentsUri = "$graphBase/servicePrincipals/$ServicePrincipalId/appRoleAssignments?`$select=appRoleId,resourceId"
+    $existingAssignments = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri $assignmentsUri
+
+    $exoAlreadyGranted   = $false
+    $graphAlreadyGranted = $false
+    foreach ($assignment in @($existingAssignments.value)) {
+        if ($null -eq $assignment) { continue }
+        if ($assignment.appRoleId -eq $ExoManageAsAppRoleId -and $assignment.resourceId -eq $ExoServicePrincipalId) {
+            $exoAlreadyGranted = $true
+        }
+        if ($assignment.appRoleId -eq $GraphReadAllRoleId -and $assignment.resourceId -eq $GraphServicePrincipalId) {
+            $graphAlreadyGranted = $true
+        }
+    }
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Granting Exchange.ManageAsApp permission (admin consent)..."
-    $exoAssignments = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/servicePrincipals/$ServicePrincipalId/appRoleAssignments"
-    $alreadyGranted = $exoAssignments.value | Where-Object { $_.appRoleId -eq $ExoManageAsAppRoleId -and $_.resourceId -eq $ExoServicePrincipalId }
-    if ($null -ne $alreadyGranted) {
+    if ($exoAlreadyGranted) {
         Write-Host -ForegroundColor $Colors.ProcessMessage "Exchange.ManageAsApp already granted - skipping."
     }
     else {
@@ -1028,10 +1254,7 @@ function Set-ExoEntraAppRoleAssignments {
     }
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Granting Microsoft Graph Application.Read.All permission (admin consent)..."
-    ## Re-fetch assignments after the EXO grant check/post so this remains correct if grant order changes.
-    $graphAssignments = Invoke-ExoGraphRequest -AccessToken $AccessToken -Method Get -Uri "$graphBase/servicePrincipals/$ServicePrincipalId/appRoleAssignments"
-    $graphAlreadyGranted = $graphAssignments.value | Where-Object { $_.appRoleId -eq $GraphReadAllRoleId -and $_.resourceId -eq $GraphServicePrincipalId }
-    if ($null -ne $graphAlreadyGranted) {
+    if ($graphAlreadyGranted) {
         Write-Host -ForegroundColor $Colors.ProcessMessage "Microsoft Graph Application.Read.All already granted - skipping."
     }
     else {
@@ -1046,9 +1269,9 @@ function Invoke-EntraAppProvisioning {
     .SYNOPSIS
         Orchestrates Entra app provisioning for EXO by invoking focused helper functions.
     .DESCRIPTION
-        Calls Get-ExoProvisioningRoleTargets, Get-OrCreateExoEntraApplication,
+        Calls Get-ExoProvisioningRoleTarget, Get-OrCreateExoEntraApplication,
         Set-ExoEntraApplicationCertificate, Get-OrCreateExoEntraServicePrincipal, and
-        Set-ExoEntraAppRoleAssignments in sequence. Requires FullLanguage mode. All resource-app
+        Set-ExoEntraAppRoleAssignment in sequence. Requires FullLanguage mode. All resource-app
         IDs are passed explicitly; no hidden scope reads.
     .OUTPUTS
         PSCustomObject  AppId (Entra client app ID), AppObjId (app object ID), SpObjId (service principal object ID).
@@ -1070,37 +1293,53 @@ function Invoke-EntraAppProvisioning {
     }
 
     ## CerFilePath retained for backward compatibility in script interface.
-    if (-not [string]::IsNullOrWhiteSpace($CerFilePath) -and -not (Test-Path -Path $CerFilePath)) {
+    if (-not [string]::IsNullOrWhiteSpace($CerFilePath) -and -not (Test-Path -LiteralPath $CerFilePath)) {
         throw "Certificate file path '$CerFilePath' was provided but does not exist."
     }
 
-    $targets = Get-ExoProvisioningRoleTargets -AccessToken $AccessToken -ExoResourceAppId $ExoResourceAppId -GraphResourceAppId $GraphResourceAppId -Colors $Colors
-    $appObject = Get-OrCreateExoEntraApplication `
-        -AccessToken $AccessToken `
-        -DisplayName $DisplayName `
-        -ExoManageAsAppRoleId $targets.ExoManageAsAppRole.id `
-        -GraphReadAllRoleId $targets.GraphReadAllRole.id `
-        -ExoResourceAppId $ExoResourceAppId `
-        -GraphResourceAppId $GraphResourceAppId `
-        -Colors $Colors
+    $progressActivity = "Provisioning Entra ID App '$DisplayName'"
+    try {
+        Write-Progress -Id 1 -Activity $progressActivity -Status "Resolving directory service principals and app roles" -PercentComplete 10
+        $targets = Get-ExoProvisioningRoleTarget -AccessToken $AccessToken -ExoResourceAppId $ExoResourceAppId -GraphResourceAppId $GraphResourceAppId -Colors $Colors
 
-    Set-ExoEntraApplicationCertificate -AccessToken $AccessToken -AppObjectId $appObject.id -Thumbprint $Thumbprint -Colors $Colors
+        Write-Progress -Id 1 -Activity $progressActivity -Status "Creating or reusing Entra ID application" -PercentComplete 35
+        $createAppParams = @{
+            AccessToken          = $AccessToken
+            DisplayName          = $DisplayName
+            ExoManageAsAppRoleId = $targets.ExoManageAsAppRole.id
+            GraphReadAllRoleId   = $targets.GraphReadAllRole.id
+            ExoResourceAppId     = $ExoResourceAppId
+            GraphResourceAppId   = $GraphResourceAppId
+            Colors               = $Colors
+        }
+        $appObject = Get-OrCreateExoEntraApplication @createAppParams
 
-    $spObject = Get-OrCreateExoEntraServicePrincipal -AccessToken $AccessToken -AppId $appObject.appId -Colors $Colors
+        Write-Progress -Id 1 -Activity $progressActivity -Status "Uploading public certificate to app registration" -PercentComplete 60
+        Set-ExoEntraApplicationCertificate -AccessToken $AccessToken -AppObjectId $appObject.id -Thumbprint $Thumbprint -Colors $Colors
 
-    Set-ExoEntraAppRoleAssignments `
-        -AccessToken $AccessToken `
-        -ServicePrincipalId $spObject.id `
-        -ExoServicePrincipalId $targets.ExoServicePrincipal.id `
-        -ExoManageAsAppRoleId $targets.ExoManageAsAppRole.id `
-        -GraphServicePrincipalId $targets.GraphServicePrincipal.id `
-        -GraphReadAllRoleId $targets.GraphReadAllRole.id `
-        -Colors $Colors
+        Write-Progress -Id 1 -Activity $progressActivity -Status "Ensuring service principal exists" -PercentComplete 80
+        $spObject = Get-OrCreateExoEntraServicePrincipal -AccessToken $AccessToken -AppId $appObject.appId -Colors $Colors
 
-    return [PSCustomObject]@{
-        AppId    = $appObject.appId
-        AppObjId = $appObject.id
-        SpObjId  = $spObject.id
+        Write-Progress -Id 1 -Activity $progressActivity -Status "Assigning Microsoft Graph and Exchange app roles" -PercentComplete 90
+        $roleAssignmentParams = @{
+            AccessToken             = $AccessToken
+            ServicePrincipalId      = $spObject.id
+            ExoServicePrincipalId   = $targets.ExoServicePrincipal.id
+            ExoManageAsAppRoleId    = $targets.ExoManageAsAppRole.id
+            GraphServicePrincipalId = $targets.GraphServicePrincipal.id
+            GraphReadAllRoleId      = $targets.GraphReadAllRole.id
+            Colors                  = $Colors
+        }
+        Set-ExoEntraAppRoleAssignment @roleAssignmentParams
+
+        return [PSCustomObject]@{
+            AppId    = $appObject.appId
+            AppObjId = $appObject.id
+            SpObjId  = $spObject.id
+        }
+    }
+    finally {
+        Write-Progress -Id 1 -Activity $progressActivity -Completed
     }
 }
 
@@ -1162,7 +1401,12 @@ function Write-ExoConnectedOrganization {
 ##  guard -> MODE 1 (generate/provision) or MODE 2 (certificate connect).
 ## ============================================================================
 
-Clear-Host
+try {
+    Clear-Host -ErrorAction Stop
+}
+catch {
+    Write-Verbose "Unable to clear the host display; continuing without clearing it. $($_.Exception.Message)"
+}
 
 ## Enforce TLS 1.2 minimum. Required for .NET Framework / PowerShell 5.1; .NET 6+ (PS7+) defaults to TLS 1.2+ already.
 ## OR (-bor) the flag in rather than overwriting, so newer protocols (e.g. TLS 1.3) stay enabled.
@@ -1185,143 +1429,176 @@ try {
         throw "Specify exactly one mode: -GenerateLocalCertificate or -UseCertificateAuth."
     }
 
-    ## ------------------------------------------------------------------------
-    ## STEP 1: Ensure the ExchangeOnlineManagement module is installed.
-    ## Installation needs an elevated session, so it is delegated to a hidden
-    ## elevated child process running the same PowerShell host (see $elevatedShellPath).
-    ## ------------------------------------------------------------------------
-    if (Get-Module -ListAvailable -Name ExchangeOnlineManagement) {
-        Write-Host -ForegroundColor $Colors.ProcessMessage "Exchange Online PowerShell module installed"
+    $requestedOperation = if ($GenerateLocalCertificate) {
+        if ($ProvisionEntraApp) { 'Generate a certificate and provision Entra ID and Exchange access' }
+        else { 'Generate and export a local Exchange Online certificate' }
     }
     else {
-        Write-Host -ForegroundColor $Colors.WarningMessage -BackgroundColor $Colors.ErrorMessage "[001] - Exchange Online PowerShell module not installed`n"
-        if (-not $noprompt) {
-            do {
-                $response = Read-Host -Prompt "`nDo you wish to install the Exchange Online PowerShell module (Y/N)?"
-            } until (-not [string]::IsNullOrWhiteSpace($response))
-
-            if ($response -ne 'Y' -and $response -ne 'y') {
-                throw "Exchange Online module is required."
-            }
-        }
-
-        ## Pass -Command explicitly: pwsh treats a bare first argument as -File, not -Command.
-        Write-Host -ForegroundColor $Colors.ProcessMessage "Installing PowerShellGet module - Administration escalation required"
-        Start-Process $elevatedShellPath -Verb runAs -ArgumentList '-NoProfile', '-Command', 'Install-Module PowershellGet -Force' -Wait -WindowStyle Hidden
-        Write-Host -ForegroundColor $Colors.ProcessMessage "Installing Exchange Online PowerShell module - Administration escalation required"
-        Start-Process $elevatedShellPath -Verb runAs -ArgumentList '-NoProfile', '-Command', 'Install-Module -Name ExchangeOnlineManagement -Force -Confirm:$false' -Wait -WindowStyle Hidden
-
-        ## The elevated window runs hidden, so verify the outcome rather than trusting it.
-        if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
-            throw "Exchange Online module installation did not complete (module still not found). Install it manually from an elevated session: Install-Module ExchangeOnlineManagement"
-        }
-        Write-Host -ForegroundColor $Colors.ProcessMessage "Exchange Online PowerShell module installed"
+        'Connect to Exchange Online using certificate authentication'
+    }
+    if (-not $PSCmdlet.ShouldProcess($requestedOperation, 'Run selected workflow')) {
+        return
     }
 
     ## ------------------------------------------------------------------------
-    ## STEP 2: Optionally check the PowerShell Gallery for a newer module version
-    ## and offer to update (auto-updates when -noprompt is used).
+    ## STEP 1-3: Ensure, optionally update, and load ExchangeOnlineManagement.
+    ## Pure local certificate generation (-GenerateLocalCertificate without
+    ## -ProvisionEntraApp) uses PKI cmdlets only and does not need the EXO module.
     ## ------------------------------------------------------------------------
-    if (-not $noupdate) {
-        Write-Host -ForegroundColor $Colors.ProcessMessage "Checking whether newer version of Exchange Online module is available"
-        $version         = Get-InstalledModule -Name ExchangeOnlineManagement -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
-        $psgalleryVersion = Find-Module -Name ExchangeOnlineManagement -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
-
-        $localVersion  = if ($null -ne $version)         { $version.Version -as [string] }         else { $null }
-        $onlineVersion = if ($null -ne $psgalleryVersion) { $psgalleryVersion.Version -as [string] } else { $null }
-
-        if ($null -eq $localVersion -or $null -eq $onlineVersion) {
-            Write-Host -ForegroundColor $Colors.WarningMessage "Unable to compare module versions - skipping update check."
-        }
-        elseif ([version]$localVersion -lt [version]$onlineVersion) {
-            Write-Host -ForegroundColor $Colors.WarningMessage "Local module $localVersion is lower than Gallery module $onlineVersion"
-            $doUpdate = $noprompt
-            if (-not $noprompt) {
-                do {
-                    $updateResponse = Read-Host -Prompt "`nDo you wish to update the Exchange Online PowerShell module (Y/N)?"
-                } until (-not [string]::IsNullOrWhiteSpace($updateResponse))
-                $doUpdate = ($updateResponse -eq 'Y')
-            }
-
-            if ($doUpdate) {
-                Write-Host -ForegroundColor $Colors.ProcessMessage "Updating Exchange Online module - Administration escalation required"
-                ## Pass -Command explicitly: pwsh treats a bare first argument as -File, not -Command.
-                Start-Process $elevatedShellPath -Verb runAs -ArgumentList '-NoProfile', '-Command', 'Update-Module -Name ExchangeOnlineManagement -Force -Confirm:$false' -Wait -WindowStyle Hidden
-
-                ## The elevated window runs hidden, so verify the outcome rather than trusting it.
-                $updatedModule = Get-InstalledModule -Name ExchangeOnlineManagement -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
-                if ($null -ne $updatedModule -and [version]($updatedModule.Version -as [string]) -ge [version]$onlineVersion) {
-                    Write-Host -ForegroundColor $Colors.ProcessMessage "Module updated to $($updatedModule.Version)"
-                }
-                else {
-                    Write-Host -ForegroundColor $Colors.WarningMessage "Module update could not be verified - continuing with installed version $localVersion."
-                }
-            }
+    $requiresExoModule = $UseCertificateAuth -or $ProvisionEntraApp
+    if ($requiresExoModule) {
+        if (Get-Module -ListAvailable -Name ExchangeOnlineManagement) {
+            Write-Host -ForegroundColor $Colors.ProcessMessage "Exchange Online PowerShell module installed"
         }
         else {
-            Write-Host -ForegroundColor $Colors.ProcessMessage "Local module $localVersion is current"
+            Write-Host -ForegroundColor $Colors.WarningMessage -BackgroundColor $Colors.ErrorMessage "[001] - Exchange Online PowerShell module not installed`n"
+            if (-not $noprompt) {
+                do {
+                    $response = Read-Host -Prompt "`nDo you wish to install the Exchange Online PowerShell module (Y/N)?"
+                } until (-not [string]::IsNullOrWhiteSpace($response))
+
+                if ($response -ne 'Y' -and $response -ne 'y') {
+                    throw "Exchange Online module is required."
+                }
+            }
+
+            ## Pass -Command explicitly: pwsh treats a bare first argument as -File, not -Command.
+            Write-Host -ForegroundColor $Colors.ProcessMessage "Installing PowerShellGet module - Administration escalation required"
+            Start-Process $elevatedShellPath -Verb runAs -ArgumentList '-NoProfile', '-Command', 'Install-Module PowershellGet -Force' -Wait -WindowStyle Hidden
+            Write-Host -ForegroundColor $Colors.ProcessMessage "Installing Exchange Online PowerShell module - Administration escalation required"
+            Start-Process $elevatedShellPath -Verb runAs -ArgumentList '-NoProfile', '-Command', 'Install-Module -Name ExchangeOnlineManagement -Force -Confirm:$false' -Wait -WindowStyle Hidden
+
+            ## The elevated window runs hidden, so verify the outcome rather than trusting it.
+            if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
+                throw "Exchange Online module installation did not complete (module still not found). Install it manually from an elevated session: Install-Module ExchangeOnlineManagement"
+            }
+            Write-Host -ForegroundColor $Colors.ProcessMessage "Exchange Online PowerShell module installed"
         }
-    }
 
-    Write-Host -ForegroundColor $Colors.ProcessMessage "Loading Exchange Online PowerShell module"
+        if (-not $noupdate) {
+            Write-Host -ForegroundColor $Colors.ProcessMessage "Checking whether newer version of Exchange Online module is available"
+            $version          = Get-InstalledModule -Name ExchangeOnlineManagement -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+            $psgalleryVersion = Find-Module -Name ExchangeOnlineManagement -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
 
-    ## ------------------------------------------------------------------------
-    ## STEP 3: Guard against a known .NET assembly version conflict, and
-    ## auto-relaunch the script in a clean PowerShell window if one is found.
-    ## ------------------------------------------------------------------------
-    ## Fail fast on the Microsoft.IdentityModel.Abstractions version conflict. Modules loaded
-    ## earlier in this session (PnP.PowerShell, Az, Microsoft.Graph) may have loaded an older
-    ## copy, and .NET cannot unload assemblies, so Connect-ExchangeOnline is doomed to fail.
-    $identityAbstractions = [System.AppDomain]::CurrentDomain.GetAssemblies() |
-        Where-Object { $_.GetName().Name -eq 'Microsoft.IdentityModel.Abstractions' } |
-        Select-Object -First 1
-    if ($null -ne $identityAbstractions) {
-        $exoModuleInfo = Get-Module -ListAvailable -Name ExchangeOnlineManagement | Sort-Object Version -Descending | Select-Object -First 1
-        $runtimeFolder = if ($PSVersionTable.PSEdition -eq 'Core') { 'netCore' } else { 'netFramework' }
-        $bundledDllPath = Join-Path (Join-Path $exoModuleInfo.ModuleBase $runtimeFolder) 'Microsoft.IdentityModel.Abstractions.dll'
-        if (Test-Path -Path $bundledDllPath) {
-            $requiredVersion = [System.Reflection.AssemblyName]::GetAssemblyName($bundledDllPath).Version
-            $loadedVersion = $identityAbstractions.GetName().Version
-            if ($loadedVersion -lt $requiredVersion) {
-                Write-Host -ForegroundColor $Colors.WarningMessage "Assembly conflict detected: Microsoft.IdentityModel.Abstractions $loadedVersion is already loaded in this session (typically by PnP.PowerShell, Az, or Microsoft.Graph loaded earlier), but ExchangeOnlineManagement $($exoModuleInfo.Version) requires $requiredVersion."
-                Write-Host -ForegroundColor $Colors.WarningMessage ".NET cannot unload assemblies, so this session cannot connect to Exchange Online."
+            $localVersion  = if ($null -ne $version)          { $version.Version -as [string] }          else { $null }
+            $onlineVersion = if ($null -ne $psgalleryVersion) { $psgalleryVersion.Version -as [string] } else { $null }
 
-                ## Guard against a relaunch loop if the fresh session still hits the conflict.
-                if ($env:EXO_CERT_RELAUNCHED -eq '1') {
-                    throw "Assembly conflict persists after relaunch: Microsoft.IdentityModel.Abstractions $loadedVersion loaded but $requiredVersion required. Something in the new session is still pre-loading an old assembly - investigate manually."
+            if ($null -eq $localVersion -or $null -eq $onlineVersion) {
+                Write-Host -ForegroundColor $Colors.WarningMessage "Unable to compare module versions - skipping update check."
+            }
+            elseif ([version]$localVersion -lt [version]$onlineVersion) {
+                Write-Host -ForegroundColor $Colors.WarningMessage "Local module $localVersion is lower than Gallery module $onlineVersion"
+                $doUpdate = $noprompt
+                if (-not $noprompt) {
+                    do {
+                        $updateResponse = Read-Host -Prompt "`nDo you wish to update the Exchange Online PowerShell module (Y/N)?"
+                    } until (-not [string]::IsNullOrWhiteSpace($updateResponse))
+                    $doUpdate = ($updateResponse -eq 'Y' -or $updateResponse -eq 'y')
                 }
 
-                ## Auto-relaunch in a fresh window, re-passing the original invocation. -NoProfile
-                ## prevents the user's profile from reloading the very modules that caused this conflict.
-                $relaunchArgs = [System.Collections.Generic.List[string]]::new()
-                foreach ($relaunchArg in @('-NoProfile', '-NoExit', '-File', $PSCommandPath)) { $relaunchArgs.Add($relaunchArg) }
-                foreach ($boundParam in $PSBoundParameters.GetEnumerator()) {
-                    if ($boundParam.Value -is [securestring]) { continue }  ## cannot marshal across processes; new session will prompt
-                    if ($boundParam.Value -is [System.Management.Automation.SwitchParameter] -or $boundParam.Value -is [bool]) {
-                        if ($boundParam.Value) { $relaunchArgs.Add("-$($boundParam.Key)") }
+                if ($doUpdate) {
+                    Write-Host -ForegroundColor $Colors.ProcessMessage "Updating Exchange Online module - Administration escalation required"
+                    ## Pass -Command explicitly: pwsh treats a bare first argument as -File, not -Command.
+                    Start-Process $elevatedShellPath -Verb runAs -ArgumentList '-NoProfile', '-Command', 'Update-Module -Name ExchangeOnlineManagement -Force -Confirm:$false' -Wait -WindowStyle Hidden
+
+                    ## The elevated window runs hidden, so verify the outcome rather than trusting it.
+                    $updatedModule = Get-InstalledModule -Name ExchangeOnlineManagement -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+                    if ($null -ne $updatedModule -and [version]($updatedModule.Version -as [string]) -ge [version]$onlineVersion) {
+                        Write-Host -ForegroundColor $Colors.ProcessMessage "Module updated to $($updatedModule.Version)"
                     }
                     else {
-                        $relaunchArgs.Add("-$($boundParam.Key)")
-                        $relaunchValue = "$($boundParam.Value)"
-                        if ($relaunchValue -match '\s') { $relaunchValue = '"' + $relaunchValue + '"' }
-                        $relaunchArgs.Add($relaunchValue)
+                        Write-Host -ForegroundColor $Colors.WarningMessage "Module update could not be verified - continuing with installed version $localVersion."
                     }
                 }
-                $env:EXO_CERT_RELAUNCHED = '1'  ## inherited by the child process
-                try {
-                    Start-Process $elevatedShellPath -ArgumentList $relaunchArgs
-                }
-                finally {
-                    Remove-Item Env:\EXO_CERT_RELAUNCHED -ErrorAction SilentlyContinue
-                }
-                Write-Host -ForegroundColor $Colors.SystemMessage "New PowerShell window launched automatically - continue there. The Exchange Online session will live in that window."
-                exit 0
             }
-            Write-Debug "Microsoft.IdentityModel.Abstractions $loadedVersion already loaded; EXO requires $requiredVersion - compatible."
+            else {
+                Write-Host -ForegroundColor $Colors.ProcessMessage "Local module $localVersion is current"
+            }
+        }
+
+        Write-Host -ForegroundColor $Colors.ProcessMessage "Loading Exchange Online PowerShell module"
+
+        ## Select the module to inspect: if ExchangeOnlineManagement is already imported in this
+        ## session (e.g. an older version from Documents\PowerShell\Modules earlier in PSModulePath),
+        ## inspect THAT loaded module's bundled DLL rather than a newer side-by-side copy on disk.
+        ## Otherwise, explicitly import the highest installed version so older side-by-side copies
+        ## in PSModulePath are not loaded by default.
+        $loadedExoModule = Get-Module -Name ExchangeOnlineManagement | Sort-Object Version -Descending | Select-Object -First 1
+        $highestExoModule = Get-Module -ListAvailable -Name ExchangeOnlineManagement | Sort-Object Version -Descending | Select-Object -First 1
+        $targetExoModule = if ($null -ne $loadedExoModule) { $loadedExoModule } else { $highestExoModule }
+
+        if ($null -ne $loadedExoModule -and $null -ne $highestExoModule -and $loadedExoModule.Version -lt $highestExoModule.Version) {
+            Write-Host -ForegroundColor $Colors.WarningMessage "ExchangeOnlineManagement $($loadedExoModule.Version) is already loaded in this session (from '$($loadedExoModule.ModuleBase)'); newer version $($highestExoModule.Version) is also installed."
+        }
+
+        ## Fail fast on the Microsoft.IdentityModel.Abstractions version conflict. Modules loaded
+        ## earlier in this session (PnP.PowerShell, Az, Microsoft.Graph) may have loaded an older
+        ## copy, and .NET cannot unload assemblies, so Connect-ExchangeOnline would fail.
+        $identityAbstractions = [System.AppDomain]::CurrentDomain.GetAssemblies() |
+            Where-Object { $_.GetName().Name -eq 'Microsoft.IdentityModel.Abstractions' } |
+            Select-Object -First 1
+        if ($null -ne $identityAbstractions -and $null -ne $targetExoModule) {
+            $runtimeFolder = if ($PSVersionTable.PSEdition -eq 'Core') { 'netCore' } else { 'netFramework' }
+            $bundledDllPath = Join-Path (Join-Path $targetExoModule.ModuleBase $runtimeFolder) 'Microsoft.IdentityModel.Abstractions.dll'
+            if (Test-Path -LiteralPath $bundledDllPath) {
+                $requiredVersion = [System.Reflection.AssemblyName]::GetAssemblyName($bundledDllPath).Version
+                $loadedVersion = $identityAbstractions.GetName().Version
+                if ($loadedVersion -lt $requiredVersion) {
+                    $loadedLocation = try { $identityAbstractions.Location } catch { '' }
+                    Write-Host -ForegroundColor $Colors.WarningMessage "Assembly conflict detected: Microsoft.IdentityModel.Abstractions $loadedVersion is already loaded in this session$(if ($loadedLocation) { " ('$loadedLocation')" }), but ExchangeOnlineManagement $($targetExoModule.Version) requires $requiredVersion."
+                    Write-Host -ForegroundColor $Colors.WarningMessage ".NET cannot unload assemblies, so this session cannot connect to Exchange Online."
+
+                    if ($noprompt) {
+                        throw "Assembly conflict in unattended (-noprompt) session: Microsoft.IdentityModel.Abstractions $loadedVersion is loaded, but ExchangeOnlineManagement $($targetExoModule.Version) requires $requiredVersion. Start a clean PowerShell process with -NoProfile and run this script before loading other M365/Azure modules."
+                    }
+
+                    ## Guard against a relaunch loop if the fresh session still hits the conflict.
+                    if ($env:EXO_CERT_RELAUNCHED -eq '1') {
+                        throw "Assembly conflict persists after relaunch: Microsoft.IdentityModel.Abstractions $loadedVersion loaded but $requiredVersion required. Something in the new session is still pre-loading an old assembly - investigate manually."
+                    }
+
+                    ## Auto-relaunch in a fresh window, re-passing the original invocation. -NoProfile
+                    ## prevents the user's profile from reloading the very modules that caused this conflict.
+                    ## Quote paths/values containing spaces because Start-Process joins string[] without quoting on PS 5.1.
+                    $quotedScriptPath = if ($PSCommandPath -match '\s') { '"' + $PSCommandPath + '"' } else { $PSCommandPath }
+                    $relaunchArgs = [System.Collections.Generic.List[string]]::new()
+                    foreach ($relaunchArg in @('-NoProfile', '-NoExit', '-File', $quotedScriptPath)) { $relaunchArgs.Add($relaunchArg) }
+                    foreach ($boundParam in $PSBoundParameters.GetEnumerator()) {
+                        if ($boundParam.Value -is [securestring]) { continue }  ## cannot marshal across processes; new session will prompt
+                        if ($boundParam.Value -is [System.Management.Automation.SwitchParameter] -or $boundParam.Value -is [bool]) {
+                            if ($boundParam.Value) { $relaunchArgs.Add("-$($boundParam.Key)") }
+                        }
+                        else {
+                            $relaunchArgs.Add("-$($boundParam.Key)")
+                            $relaunchValue = "$($boundParam.Value)"
+                            if ($relaunchValue -match '\s') { $relaunchValue = '"' + ($relaunchValue -replace '"', '\"') + '"' }
+                            $relaunchArgs.Add($relaunchValue)
+                        }
+                    }
+                    $env:EXO_CERT_RELAUNCHED = '1'  ## inherited by the child process
+                    try {
+                        Start-Process $elevatedShellPath -ArgumentList $relaunchArgs
+                    }
+                    finally {
+                        Remove-Item Env:\EXO_CERT_RELAUNCHED -ErrorAction SilentlyContinue
+                    }
+                    Write-Host -ForegroundColor $Colors.SystemMessage "New PowerShell window launched automatically - continue there. The Exchange Online session will live in that window."
+                    exit 0
+                }
+                Write-Debug "Microsoft.IdentityModel.Abstractions $loadedVersion already loaded; EXO $($targetExoModule.Version) requires $requiredVersion - compatible."
+            }
+        }
+
+        if ($null -eq $loadedExoModule -and $null -ne $highestExoModule) {
+            Import-Module -Name ExchangeOnlineManagement -RequiredVersion $highestExoModule.Version -ErrorAction Stop | Out-Null
+        }
+        elseif ($null -eq $loadedExoModule) {
+            Import-Module -Name ExchangeOnlineManagement -ErrorAction Stop | Out-Null
         }
     }
-
-    Import-Module ExchangeOnlineManagement -ErrorAction Stop | Out-Null
+    else {
+        Write-Verbose "Skipping ExchangeOnlineManagement module checks for local-only certificate generation."
+    }
 
     ## ------------------------------------------------------------------------
     ## MODE 1: GENERATE CERTIFICATE (+ optional full Entra app provisioning).
@@ -1331,7 +1608,10 @@ try {
         ## Resolve tenant before cert generation so the friendly name can include the tenant domain.
         $provisionTenant = $Tenant
         if ($ProvisionEntraApp) {
-            if ([string]::IsNullOrWhiteSpace($provisionTenant) -and -not $noprompt) {
+            if ($noprompt) {
+                throw "-ProvisionEntraApp requires interactive device-code and Exchange administrator sign-in and cannot be combined with -noprompt."
+            }
+            if ([string]::IsNullOrWhiteSpace($provisionTenant)) {
                 do {
                     $provisionTenant = Read-Host -Prompt "Enter tenant ID or domain for Graph authentication (e.g. contoso.onmicrosoft.com)"
                 } until (-not [string]::IsNullOrWhiteSpace($provisionTenant))
@@ -1342,7 +1622,19 @@ try {
         }
 
         $certFriendlyName = if (-not [string]::IsNullOrWhiteSpace($provisionTenant)) { "$GeneratedCertSubject - $provisionTenant" } else { $GeneratedCertSubject }
-        $generatedCertificate = New-ExoLocalCertificate -SubjectName $GeneratedCertSubject -YearsValid $GeneratedCertYearsValid -OutputPath $GeneratedCertOutputPath -ExportPfx:$ExportGeneratedPfx -PfxPassword $GeneratedPfxPassword -NoPrompt:$noprompt -FriendlyName $certFriendlyName
+        $certGenParams = @{
+            SubjectName  = $GeneratedCertSubject
+            YearsValid   = $GeneratedCertYearsValid
+            OutputPath   = $GeneratedCertOutputPath
+            ExportPfx    = $ExportGeneratedPfx
+            PfxPassword  = $GeneratedPfxPassword
+            NoPrompt     = $noprompt
+            FriendlyName = $certFriendlyName
+        }
+        $generatedCertificate = New-ExoLocalCertificate @certGenParams
+        if ($null -eq $generatedCertificate) {
+            return
+        }
 
         Write-Host -ForegroundColor $Colors.ProcessMessage "Generated certificate thumbprint: $($generatedCertificate.Thumbprint)"
         Write-Host -ForegroundColor $Colors.ProcessMessage "Public certificate exported to: $($generatedCertificate.CerPath)"
@@ -1350,28 +1642,30 @@ try {
             Write-Host -ForegroundColor $Colors.ProcessMessage "PFX exported to: $($generatedCertificate.PfxPath)"
         }
 
+        $provisionedAppId = $null
         if ($ProvisionEntraApp) {
             ## Provisioning sequence:
             ##   (a) device-code Graph sign-in (delegated admin)
             ##   (b) create/reuse Entra app + upload cert + grant app roles (Graph REST)
             ##   (c) save connection profile to the JSON map
             ##   (d) interactive EXO admin sign-in to assign the RBAC role group
-            ## Tenant already resolved above before cert generation.
 
-            ## Display name for the new Entra app - defaults to cert subject
             $resolvedDisplayName = if ([string]::IsNullOrWhiteSpace($AppDisplayName)) { $GeneratedCertSubject } else { $AppDisplayName }
 
             Write-Host -ForegroundColor $Colors.ProcessMessage "`nStarting Graph authentication for app provisioning..."
             $graphToken = Get-DeviceCodeGraphToken -TenantId $provisionTenant -ClientId $SetupClientId -CopyCodeToClipboard:$CopyDeviceCodeToClipboard -Colors $Colors
 
-            $provisionResult = Invoke-EntraAppProvisioning `
-                -AccessToken $graphToken `
-                -DisplayName $resolvedDisplayName `
-                -CerFilePath $generatedCertificate.CerPath `
-                -Thumbprint $generatedCertificate.Thumbprint `
-                -ExoResourceAppId $ExoResourceAppId `
-                -GraphResourceAppId $GraphResourceAppId `
-                -Colors $Colors
+            $provisionParams = @{
+                AccessToken        = $graphToken
+                DisplayName        = $resolvedDisplayName
+                CerFilePath        = $generatedCertificate.CerPath
+                Thumbprint         = $generatedCertificate.Thumbprint
+                ExoResourceAppId   = $ExoResourceAppId
+                GraphResourceAppId = $GraphResourceAppId
+                Colors             = $Colors
+            }
+            $provisionResult = Invoke-EntraAppProvisioning @provisionParams
+            $provisionedAppId = $provisionResult.AppId
 
             ## Update / create profile map entry
             $mapPath = $CertificateMapPath
@@ -1386,74 +1680,79 @@ try {
             Set-ExoProfileMapEntry -MapPath $mapPath -ProfileEntry $profileEntry -Colors $Colors
 
             ## Assign Exchange RBAC role using delegated admin auth.
-            ## This avoids bootstrapping EXO with the brand-new app certificate during provisioning.
+            ## Wrap in try/finally so the interactive admin session is always torn down even on RBAC failure.
             Write-Host -ForegroundColor $Colors.ProcessMessage "`nConnecting to Exchange Online (admin sign-in) to assign management role..."
             Write-Host -ForegroundColor $Colors.ProcessMessage "A sign-in prompt may open in your browser."
             Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
             Connect-ExchangeOnline -Organization $provisionTenant -ShowBanner:$false -ShowProgress:$false -ErrorAction Stop | Out-Null
-            Write-ExoConnectedOrganization -RequestedOrganization $provisionTenant -Colors $Colors
-
-            ## Ensure we are operating in the requested tenant before making RBAC changes.
-            ## The admin may have signed in with an account from a different tenant, and
-            ## granting 'Organization Management' in the wrong tenant would be a serious mistake.
-            ## A match on either the reported organization or any accepted domain is sufficient.
-            $activeConnection = Get-ConnectionInformation -ErrorAction SilentlyContinue | Select-Object -First 1
-            $activeOrganization = if ($null -ne $activeConnection) { $activeConnection.Organization } else { $null }
-            $requestedOrganizationNormalized = if ([string]::IsNullOrWhiteSpace($provisionTenant)) { "" } else { $provisionTenant.ToLowerInvariant() }
-            $activeOrganizationNormalized = if ([string]::IsNullOrWhiteSpace($activeOrganization)) { "" } else { $activeOrganization.ToLowerInvariant() }
-            $acceptedDomains = @(
-                Get-AcceptedDomain -ErrorAction SilentlyContinue |
-                    ForEach-Object { $_.DomainName.ToString().ToLowerInvariant() }
-            )
-            $organizationMatches = ($requestedOrganizationNormalized -eq $activeOrganizationNormalized) -or ($acceptedDomains -contains $requestedOrganizationNormalized)
-            if (-not $organizationMatches) {
-                Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
-                throw "Connected to unexpected tenant while assigning RBAC. Requested '$provisionTenant' but active session is '$activeOrganization'. Sign in with an admin account from the requested tenant and retry."
-            }
-
-            Write-Host -ForegroundColor $Colors.ProcessMessage "Ensuring Exchange service principal object exists..."
-            ## Exchange keeps its own copy of the service principal (distinct from the Entra
-            ## one) - it must exist before the app can be added to an Exchange role group.
-            $exoSpDisplayName = "EXO-App-$($provisionResult.AppId)"
-            $roleGroupMemberIdentity = $exoSpDisplayName
             try {
-                New-ServicePrincipal -AppId $provisionResult.AppId -ObjectId $provisionResult.SpObjId -DisplayName $exoSpDisplayName -ErrorAction Stop | Out-Null
-                Write-Host -ForegroundColor $Colors.ProcessMessage "Exchange service principal created."
-            }
-            catch {
-                if ($_.Exception.Message -like "*already exists*" -or $_.Exception.Message -like "*duplicate*" -or $_.Exception.Message -like "*is already present*" -or $_.Exception.Message -like "*ExternalDirectoryObjectId*already used*") {
-                    $existingExoSp = Get-ServicePrincipal -ErrorAction SilentlyContinue |
-                        Where-Object { $_.ExternalDirectoryObjectId -eq $provisionResult.SpObjId -or $_.AppId -eq $provisionResult.AppId } |
-                        Select-Object -First 1
+                Write-ExoConnectedOrganization -RequestedOrganization $provisionTenant -Colors $Colors
 
-                    if ($null -eq $existingExoSp) {
-                        throw "Exchange service principal appears to already exist, but it could not be resolved in the current tenant. $($_.Exception.Message)"
+                ## Ensure we are operating in the requested tenant before making RBAC changes.
+                ## The admin may have signed in with an account from a different tenant, and
+                ## granting 'Organization Management' in the wrong tenant would be a serious mistake.
+                ## A match on either the reported organization, tenant ID, or any accepted domain is sufficient.
+                $activeConnection = Get-ConnectionInformation -ErrorAction SilentlyContinue | Select-Object -First 1
+                $activeOrganization = if ($null -ne $activeConnection) { [string](Get-ObjectPropertyValue $activeConnection 'Organization') } else { "" }
+                $activeTenantId     = if ($null -ne $activeConnection) { [string](Get-ObjectPropertyValue $activeConnection 'TenantID') } else { "" }
+                $requestedOrganizationNormalized = $provisionTenant.Trim().ToLowerInvariant()
+                $activeOrganizationNormalized    = $activeOrganization.Trim().ToLowerInvariant()
+                $activeTenantIdNormalized        = $activeTenantId.Trim().ToLowerInvariant()
+                $acceptedDomains = @(
+                    Get-AcceptedDomain -ErrorAction SilentlyContinue |
+                        ForEach-Object { $_.DomainName.ToString().ToLowerInvariant() }
+                )
+                $organizationMatches = ($requestedOrganizationNormalized -eq $activeOrganizationNormalized) -or
+                    ($requestedOrganizationNormalized -eq $activeTenantIdNormalized) -or
+                    ($acceptedDomains -contains $requestedOrganizationNormalized)
+                if (-not $organizationMatches) {
+                    throw "Connected to unexpected tenant while assigning RBAC. Requested '$provisionTenant' but active session is '$activeOrganization'. Sign in with an admin account from the requested tenant and retry."
+                }
+
+                Write-Host -ForegroundColor $Colors.ProcessMessage "Ensuring Exchange service principal object exists..."
+                ## Exchange keeps its own copy of the service principal (distinct from the Entra
+                ## one) - it must exist before the app can be added to an Exchange role group.
+                $exoSpDisplayName = "EXO-App-$($provisionResult.AppId)"
+                $roleGroupMemberIdentity = $exoSpDisplayName
+                try {
+                    New-ServicePrincipal -AppId $provisionResult.AppId -ObjectId $provisionResult.SpObjId -DisplayName $exoSpDisplayName -ErrorAction Stop | Out-Null
+                    Write-Host -ForegroundColor $Colors.ProcessMessage "Exchange service principal created."
+                }
+                catch {
+                    if ($_.Exception.Message -like "*already exists*" -or $_.Exception.Message -like "*duplicate*" -or $_.Exception.Message -like "*is already present*" -or $_.Exception.Message -like "*ExternalDirectoryObjectId*already used*") {
+                        $existingExoSp = Get-ServicePrincipal -ErrorAction SilentlyContinue |
+                            Where-Object { $_.ExternalDirectoryObjectId -eq $provisionResult.SpObjId -or $_.AppId -eq $provisionResult.AppId } |
+                            Select-Object -First 1
+
+                        if ($null -eq $existingExoSp) {
+                            throw "Exchange service principal appears to already exist, but it could not be resolved in the current tenant. $($_.Exception.Message)"
+                        }
+
+                        $roleGroupMemberIdentity = if ([string]::IsNullOrWhiteSpace($existingExoSp.DisplayName)) { $exoSpDisplayName } else { $existingExoSp.DisplayName }
+                        Write-Host -ForegroundColor $Colors.ProcessMessage "Exchange service principal already exists as '$roleGroupMemberIdentity' - skipping create."
                     }
+                    else {
+                        throw "Failed to create Exchange service principal: $($_.Exception.Message)"
+                    }
+                }
 
-                    $roleGroupMemberIdentity = if ([string]::IsNullOrWhiteSpace($existingExoSp.DisplayName)) { $exoSpDisplayName } else { $existingExoSp.DisplayName }
-                    Write-Host -ForegroundColor $Colors.ProcessMessage "Exchange service principal already exists as '$roleGroupMemberIdentity' - skipping create."
+                Write-Host -ForegroundColor $Colors.ProcessMessage "Adding app to 'Organization Management' role group..."
+                try {
+                    Add-RoleGroupMember -Identity "Organization Management" -Member $roleGroupMemberIdentity -ErrorAction Stop | Out-Null
+                    Write-Host -ForegroundColor $Colors.ProcessMessage "Role group membership assigned successfully."
                 }
-                else {
-                    throw "Failed to create Exchange service principal: $($_.Exception.Message)"
-                }
-            }
-
-            Write-Host -ForegroundColor $Colors.ProcessMessage "Adding app to 'Organization Management' role group..."
-            ## This role group grants full Exchange admin rights - it is what actually
-            ## authorises the app to run EXO cmdlets once connected with the certificate.
-            try {
-                Add-RoleGroupMember -Identity "Organization Management" -Member $roleGroupMemberIdentity -ErrorAction Stop | Out-Null
-                Write-Host -ForegroundColor $Colors.ProcessMessage "Role group membership assigned successfully."
-            }
-            catch {
-                if ($_.Exception.Message -like "*already a member*" -or $_.Exception.Message -like "*already exists*" -or $_.Exception.Message -like "*is already present*") {
-                    Write-Host -ForegroundColor $Colors.ProcessMessage "Role group membership already exists - skipping."
-                }
-                else {
-                    throw "Failed to add app to Exchange role group: $($_.Exception.Message)"
+                catch {
+                    if ($_.Exception.Message -like "*already a member*" -or $_.Exception.Message -like "*already exists*" -or $_.Exception.Message -like "*is already present*") {
+                        Write-Host -ForegroundColor $Colors.ProcessMessage "Role group membership already exists - skipping."
+                    }
+                    else {
+                        throw "Failed to add app to Exchange role group: $($_.Exception.Message)"
+                    }
                 }
             }
-            Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+            finally {
+                Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+            }
 
             Write-Host -ForegroundColor $Colors.SystemMessage "`n=== Provisioning complete ==="
             Write-Host -ForegroundColor $Colors.ProcessMessage "App ID:          $($provisionResult.AppId)"
@@ -1465,7 +1764,23 @@ try {
             Write-Host -ForegroundColor $Colors.ProcessMessage "  .\o365-connect-exo-cert.ps1 -UseCertificateAuth -Tenant '$provisionTenant'"
         }
 
-        Write-Host -ForegroundColor $Colors.SystemMessage "`nCertificate generation finished`n"
+        if ($PassThru) {
+            Write-Output ([PSCustomObject]@{
+                Mode                  = if ($ProvisionEntraApp) { 'GenerateAndProvision' } else { 'GenerateCertificate' }
+                Status                = 'Completed'
+                Tenant                = $provisionTenant
+                Organization          = $provisionTenant
+                AppId                 = $provisionedAppId
+                CertificateThumbprint = $generatedCertificate.Thumbprint
+                Subject               = $generatedCertificate.Subject
+                NotAfter              = $generatedCertificate.NotAfter
+                CerPath               = $generatedCertificate.CerPath
+                PfxPath               = $generatedCertificate.PfxPath
+                ProfileMapPath        = if ($ProvisionEntraApp) { $CertificateMapPath } else { $null }
+            })
+        }
+
+        Write-Host -ForegroundColor $Colors.SystemMessage "`nCertificate generation finished (Processed: 1, Skipped: 0, Failed: 0)`n"
         exit 0
     }
 
@@ -1475,17 +1790,31 @@ try {
     ## parameters), validate the local certificate, then connect unattended.
     ## ------------------------------------------------------------------------
     Write-Debug "Resolving profile and certificate auth inputs."
-    $resolvedProfile = Resolve-ExoCertificateProfile -Path $CertificateMapPath -TenantFilter $Tenant -ProfileFilter $ProfileName -OrganizationFilter $Organization -NoPrompt:$noprompt -Colors $Colors
+    $hasAllExplicitAuthParams = (-not [string]::IsNullOrWhiteSpace($Organization)) -and
+        (-not [string]::IsNullOrWhiteSpace($AppId)) -and
+        (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) -and
+        [string]::IsNullOrWhiteSpace($ProfileName)
+
+    $resolvedProfile = if (-not $hasAllExplicitAuthParams) {
+        Resolve-ExoCertificateProfile -Path $CertificateMapPath -TenantFilter $Tenant -ProfileFilter $ProfileName -OrganizationFilter $Organization -NoPrompt:$noprompt -Colors $Colors
+    }
+    else {
+        Write-Verbose "Explicit -Organization, -AppId, and -CertificateThumbprint supplied; bypassing profile map lookup."
+        $null
+    }
     if ($null -ne $resolvedProfile) {
         ## Explicit parameters always win; the profile map only fills in blanks.
         if ([string]::IsNullOrWhiteSpace($Organization)) {
-            $Organization = $resolvedProfile.organization
+            $Organization = [string](Get-ObjectPropertyValue $resolvedProfile 'organization')
+            if ([string]::IsNullOrWhiteSpace($Organization)) {
+                $Organization = [string](Get-ObjectPropertyValue $resolvedProfile 'tenant')
+            }
         }
         if ([string]::IsNullOrWhiteSpace($AppId)) {
-            $AppId = $resolvedProfile.appId
+            $AppId = [string](Get-ObjectPropertyValue $resolvedProfile 'appId')
         }
         if ([string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
-            $CertificateThumbprint = $resolvedProfile.certificateThumbprint
+            $CertificateThumbprint = [string](Get-ObjectPropertyValue $resolvedProfile 'certificateThumbprint')
         }
     }
 
@@ -1500,7 +1829,7 @@ try {
     }
 
     ## Verify the certificate is present in the local store before attempting to connect.
-    $localCert = Get-Item "Cert:\CurrentUser\My\$CertificateThumbprint" -ErrorAction SilentlyContinue
+    $localCert = Get-Item -LiteralPath "Cert:\CurrentUser\My\$CertificateThumbprint" -ErrorAction SilentlyContinue
     if ($null -eq $localCert) {
         throw "Certificate with thumbprint '$CertificateThumbprint' not found in Cert:\CurrentUser\My. Import the PFX or run -GenerateLocalCertificate -ProvisionEntraApp on this machine first."
     }
@@ -1508,16 +1837,17 @@ try {
         throw "Certificate '$CertificateThumbprint' is in the store but has no private key (was the .cer imported instead of the .pfx?). Import the PFX with its private key and retry."
     }
 
-    ## Warn if the cert expires within 30 days.
-    $daysUntilExpiry = ($localCert.NotAfter - (Get-Date)).Days
-    if ($daysUntilExpiry -le 0) {
-        throw "Certificate '$CertificateThumbprint' expired on $($localCert.NotAfter.ToString('yyyy-MM-dd')). Provision a new certificate."
+    ## Warn if the cert expires within 30 days; use TotalDays so certs expiring later today aren't flagged as expired.
+    $timeUntilExpiry = $localCert.NotAfter - (Get-Date)
+    if ($timeUntilExpiry.TotalSeconds -le 0) {
+        throw "Certificate '$CertificateThumbprint' expired on $($localCert.NotAfter.ToString('yyyy-MM-dd HH:mm:ss')). Provision a new certificate."
     }
-    elseif ($daysUntilExpiry -le 30) {
-        Write-Host -ForegroundColor $Colors.WarningMessage "Warning: Certificate expires in $daysUntilExpiry day(s) on $($localCert.NotAfter.ToString('yyyy-MM-dd'))."
+    elseif ($timeUntilExpiry.TotalDays -le 30) {
+        $remainingDays = [int][math]::Ceiling($timeUntilExpiry.TotalDays)
+        Write-Host -ForegroundColor $Colors.WarningMessage "Warning: Certificate expires in $remainingDays day(s) on $($localCert.NotAfter.ToString('yyyy-MM-dd'))."
     }
     else {
-        Write-Debug "Certificate valid for $daysUntilExpiry more day(s)."
+        Write-Debug ("Certificate valid for {0:N1} more day(s)." -f $timeUntilExpiry.TotalDays)
     }
 
     ## Check all existing Exchange Online connections, not just the first, so a
@@ -1527,7 +1857,17 @@ try {
     if ($null -ne $matchingConnection) {
         Write-Host -ForegroundColor $Colors.ProcessMessage "Already connected to $Organization - skipping reconnect."
         Write-ExoConnectedOrganization -RequestedOrganization $Organization -Colors $Colors
-        Write-Host -ForegroundColor $Colors.SystemMessage "Exchange Online certificate auth flow finished`n"
+        if ($PassThru) {
+            Write-Output ([PSCustomObject]@{
+                Mode                  = 'CertificateAuth'
+                Status                = 'ReusedExistingSession'
+                Organization          = $Organization
+                AppId                 = $AppId
+                CertificateThumbprint = $CertificateThumbprint
+                NotAfter              = $localCert.NotAfter
+            })
+        }
+        Write-Host -ForegroundColor $Colors.SystemMessage "Exchange Online certificate auth flow finished (Processed: 0, Skipped: 1, Failed: 0)`n"
         exit 0
     }
     elseif ($existingConnections.Count -gt 0) {
@@ -1538,25 +1878,45 @@ try {
     }
 
     Write-Host -ForegroundColor $Colors.ProcessMessage "Connecting to Exchange Online with certificate authentication"
-    Connect-ExchangeOnline -Organization $Organization -AppId $AppId -CertificateThumbprint $CertificateThumbprint -ShowBanner:$false -ShowProgress:$false -ErrorAction Stop | Out-Null
+    $connectParams = @{
+        Organization          = $Organization
+        AppId                 = $AppId
+        CertificateThumbprint = $CertificateThumbprint
+        ShowBanner            = $false
+        ShowProgress          = $false
+        ErrorAction           = 'Stop'
+    }
+    Connect-ExchangeOnline @connectParams | Out-Null
     ## From here until the details are printed, an error should tear down the new
     ## session (see catch block) so a half-verified connection is not left behind.
     $disconnectCertificateAuthOnError = $true
     Write-ExoConnectedOrganization -RequestedOrganization $Organization -Colors $Colors
-    Write-ExoCertConnectionDetails -TenantId $Organization -AppId $AppId -LocalCert $localCert -Colors $Colors
+    Write-ExoCertConnectionDetail -TenantId $Organization -AppId $AppId -LocalCert $localCert -Colors $Colors
     $disconnectCertificateAuthOnError = $false
 
+    if ($PassThru) {
+        Write-Output ([PSCustomObject]@{
+            Mode                  = 'CertificateAuth'
+            Status                = 'Connected'
+            Organization          = $Organization
+            AppId                 = $AppId
+            CertificateThumbprint = $CertificateThumbprint
+            NotAfter              = $localCert.NotAfter
+        })
+    }
+
     Write-Host -ForegroundColor $Colors.ProcessMessage "Connected to Exchange Online`n"
-    Write-Host -ForegroundColor $Colors.SystemMessage "Exchange Online certificate auth flow finished`n"
+    Write-Host -ForegroundColor $Colors.SystemMessage "Exchange Online certificate auth flow finished (Processed: 1, Skipped: 0, Failed: 0)`n"
+    exit 0
 }
 catch {
-    ## Central error handler: tear down any half-established EXO session, report the
-    ## failure, and add targeted hints for the two most common failure classes
-    ## (RBAC replication lag and assembly version conflicts).
+    ## ========================================================================
+    ##  ERROR HANDLING & CLEANUP
+    ## ========================================================================
     if ($disconnectCertificateAuthOnError) {
         Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
     }
-    Write-Host -ForegroundColor $Colors.ErrorMessage "Script failed: $($_.Exception.Message)"
+    Write-Host -ForegroundColor $Colors.ErrorMessage "Script failed (Processed: 0, Skipped: 0, Failed: 1): $($_.Exception.Message)"
     if ($UseCertificateAuth -and $_.Exception.Message -match '(?i)access denied|forbidden|unauthorized|insufficient privileges|aadsts|permission|not authorized') {
         Write-Host -ForegroundColor $Colors.WarningMessage "If this app/certificate was just provisioned, wait 15-30 minutes and retry due to RBAC replication lag."
     }
@@ -1568,7 +1928,7 @@ catch {
 }
 finally {
     if ($enableLog) {
-        Stop-Transcript | Out-Null
+        try { Stop-Transcript | Out-Null } catch { Write-Debug "Transcript was not active." }
     }
 }
 
