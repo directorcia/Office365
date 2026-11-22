@@ -1069,6 +1069,97 @@ Assert-True ($labelAdvanced.LabelPoliciesPublished -ne 0) 'A missing label count
             Assert-Equal (Get-ExportExitCode -FailedCollectorCount 2 -ProcessedSectionCount 0 -FailOnCollectorError $true) 2 'The switch keeps exit 2 when no section was processed.'
             Assert-Equal (Get-ExportExitCode -FailedCollectorCount 0 -ProcessedSectionCount 8 -FailOnCollectorError $true) 0 'The switch does not fail a run that recorded no collector errors.'
         }
+
+        It 'retries an empty label policy read and does not score a second empty result as zero' {
+            $script:Report = [ordered]@{ Errors = [System.Collections.Generic.List[object]]::new() }
+            $script:GraphReportDiagnostics = [System.Collections.Generic.List[object]]::new()
+            $script:LabelPolicyRetryDelaySeconds = 0
+            $script:LabelPolicyCalls = 0
+            $script:ComplianceConnectionStatus = 'connected'
+            $script:ComplianceConnectionError = ''
+            $script:GraphLastHttpStatus = 403
+            function Get-ConnectionInformation {
+                [CmdletBinding()] param()
+                [pscustomobject]@{ Name = 'IPPSSession' }
+            }
+            function Get-GraphRestAll {
+                param([string]$Uri, [hashtable]$Query = @{}, [switch]$BypassCache)
+                $script:GraphLastHttpStatus = 403
+                return @()
+            }
+            function Get-Label {
+                [CmdletBinding()] param()
+                [pscustomobject]@{ Name = 'Public' }
+                [pscustomobject]@{ Name = 'Confidential' }
+            }
+            function Get-LabelPolicy {
+                [CmdletBinding()] param()
+                $script:LabelPolicyCalls++
+            }
+            function Get-AutoSensitivityLabelPolicy { [CmdletBinding()] param() }
+            function Get-DlpCompliancePolicy {
+                [CmdletBinding()] param()
+                [pscustomobject]@{ Name = 'DLP baseline'; Mode = 'Enable'; Workload = 'Exchange' }
+            }
+            function Get-RetentionCompliancePolicy {
+                [CmdletBinding()] param()
+                [pscustomobject]@{ Name = 'Finance hold'; Enabled = $true; Mode = 'Enforce'; Workload = 'SharePoint' }
+            }
+
+            $governance = Get-DataGovernanceReadiness
+            Assert-Equal $script:LabelPolicyCalls 2 'Get-LabelPolicy is retried once when labels exist and the first read is empty.'
+            Assert-Equal @($script:Report.Errors).Count 0 'An empty policy read is a diagnostic, not a collector error.'
+            Assert-Equal $governance.SensitivityLabelsTotal 2 'Labels returned by Get-Label are kept.'
+            Assert-Equal $governance.SensitivityLabelsPublished $null 'Published label count is not collected when policies stay empty.'
+            Assert-Equal $governance.LabelPoliciesTotal $null 'Label policy total is not collected instead of zero.'
+            Assert-Equal $governance.LabelPoliciesPublished $null 'Label policies published is not collected instead of zero.'
+            Assert-True ($governance.LabelCollectionReason -match 'after one retry') 'The diagnostic note says the policy read was retried.'
+            Assert-True ($governance.Status -eq 'partial') 'A withheld policy count makes the section partial.'
+            $policyDiagnostics = @(Get-GraphReportDiagnosticsForUri -UriPattern 'Get-LabelPolicy')
+            Assert-True ((@($policyDiagnostics | ForEach-Object { $_.Message }) -join ' ') -match 'after one retry') 'The empty retry is recorded in diagnostics.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $false) 0 'The default exit code stays 0 when the empty read is only a diagnostic.'
+
+            $script:Report = [ordered]@{
+                Metadata = [ordered]@{ TotalUsers = 10 }
+                Licensing = [ordered]@{ PrereqReadyDenominator = 10; PrereqReadyPercent = 'not collected' }
+                Identity = [ordered]@{}
+                ConditionalAccess = [ordered]@{}
+                DataGovernance = $governance
+                SharePointOneDrive = [ordered]@{}
+                AdoptionSignals = [ordered]@{ ActiveUsers30Days = 'not collected' }
+            }
+            $flags = Get-ReadinessFlags
+            Assert-Equal $flags.SensitivityLabelsPublished 'not collected' 'Scoring does not treat the missing policy count as zero published labels.'
+            $script:Report.ReadinessFlags = $flags
+            $script:Report.IdentityAccessAdvanced = [ordered]@{ Status = 'reported'; PhishingResistantMfaCoverage = 'not collected' }
+            $script:Report.DataProtectionAdvanced = Get-DataProtectionAdvanced
+            $script:Report.SharePointExposureAdvanced = [ordered]@{ Status = 'reported' }
+            $script:Report.AppGovernanceAdvanced = [ordered]@{ Status = 'reported' }
+            $script:Report.EndpointAppAdvanced = [ordered]@{ Status = 'reported' }
+            $script:Report.AdoptionAdvanced = [ordered]@{ Status = 'not collected'; TrendSignal = 'not collected' }
+            $script:ScoringModel = $null
+            $evidence = Get-ReadinessEvidence
+            Assert-Equal $evidence.DomainScores.DataGovernance 100 'DLP and retention still score when label publication was not collected.'
+            Assert-Equal $evidence.DataCompleteness.MeasuredMetricWeight 66 'The label-publication weight is left out of completeness.'
+            Assert-True ($evidence.DomainScores.DataGovernance -ne 66) 'A missing policy list is not scored as labels unpublished.'
+
+            $script:Report = [ordered]@{ Errors = [System.Collections.Generic.List[object]]::new() }
+            $script:GraphReportDiagnostics = [System.Collections.Generic.List[object]]::new()
+            $script:LabelPolicyCalls = 0
+            function Get-LabelPolicy {
+                [CmdletBinding()] param()
+                $script:LabelPolicyCalls++
+                throw 'Label policy service timed out.'
+            }
+            $failed = Get-DataGovernanceReadiness
+            Assert-Equal $script:LabelPolicyCalls 1 'A failing Get-LabelPolicy is not retried as an empty result.'
+            Assert-Equal @($script:Report.Errors).Count 1 'The label policy failure is a collector error.'
+            Assert-Equal $script:Report.Errors[0].Section 'DataGovernance' 'The error is recorded on Data governance.'
+            Assert-True ($script:Report.Errors[0].Message -match 'Label policy service timed out') 'The cmdlet error is kept.'
+            Assert-Equal $failed.LabelPoliciesTotal $null 'A failed policy read is not collected.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $true) 3 'FailOnCollectorError exits 3 when the label policy error is counted.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $false) 0 'The default exit code stays 0 for the same error.'
+        }
     }
 }
 
