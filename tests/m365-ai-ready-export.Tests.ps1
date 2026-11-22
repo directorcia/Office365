@@ -1157,8 +1157,163 @@ Assert-True ($labelAdvanced.LabelPoliciesPublished -ne 0) 'A missing label count
             Assert-Equal $script:Report.Errors[0].Section 'DataGovernance' 'The error is recorded on Data governance.'
             Assert-True ($script:Report.Errors[0].Message -match 'Label policy service timed out') 'The cmdlet error is kept.'
             Assert-Equal $failed.LabelPoliciesTotal $null 'A failed policy read is not collected.'
+            Assert-Equal $failed.Status 'partial' 'A failed Get-LabelPolicy with labels present is partial.'
+            Assert-True ($failed.Reason -match 'Get-LabelPolicy failed; label policy counts are not collected\.') 'The failed policy read explains why the section is partial.'
             Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $true) 3 'FailOnCollectorError exits 3 when the label policy error is counted.'
             Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $false) 0 'The default exit code stays 0 for the same error.'
+
+            $script:Report = [ordered]@{ Errors = [System.Collections.Generic.List[object]]::new() }
+            $script:GraphReportDiagnostics = [System.Collections.Generic.List[object]]::new()
+            $script:LabelPolicyCalls = 0
+            function Get-LabelPolicy {
+                [CmdletBinding()] param()
+                $script:LabelPolicyCalls++
+                if ($script:LabelPolicyCalls -eq 1) { return }
+                throw 'Label policy retry failed.'
+            }
+            $retryFailed = Get-DataGovernanceReadiness
+            Assert-Equal $script:LabelPolicyCalls 2 'An empty first policy read still retries once.'
+            Assert-Equal $retryFailed.Status 'partial' 'A failed policy retry with labels present is partial.'
+            Assert-True ($retryFailed.Reason -match 'Get-LabelPolicy failed; label policy counts are not collected\.') 'The failed retry explains why the section is partial.'
+            Assert-Equal @($script:Report.Errors).Count 1 'The failed retry is one collector error.'
+        }
+
+        It 'records DLP and retention cmdlet failures as collector errors' {
+            $script:Report = [ordered]@{ Errors = [System.Collections.Generic.List[object]]::new() }
+            $script:GraphReportDiagnostics = [System.Collections.Generic.List[object]]::new()
+            $script:GraphLastHttpStatus = 200
+            function Get-ConnectionInformation {
+                [CmdletBinding()] param()
+                [pscustomobject]@{ Name = 'IPPSSession' }
+            }
+            function Get-GraphRestAll {
+                param([string]$Uri, [hashtable]$Query = @{}, [switch]$BypassCache)
+                $script:GraphLastHttpStatus = 200
+                return @([pscustomobject]@{ name = 'Public'; isPublished = $true })
+            }
+            function Get-DlpCompliancePolicy {
+                [CmdletBinding()] param()
+                throw 'DLP query failed.'
+            }
+            function Get-RetentionCompliancePolicy {
+                [CmdletBinding()] param()
+                throw 'Retention query failed.'
+            }
+
+            $governance = Get-DataGovernanceReadiness
+            Assert-Equal $governance.DlpPolicies 'not collected' 'A failed DLP read stays not collected.'
+            Assert-Equal $governance.RetentionPolicies 'not collected' 'A failed retention read stays not collected.'
+            Assert-Equal @($script:Report.Errors).Count 2 'DLP and retention failures are collector errors.'
+            $dlpError = @($script:Report.Errors | Where-Object { $_.Detail -eq 'Get-DlpCompliancePolicy' }) | Select-Object -First 1
+            $retentionError = @($script:Report.Errors | Where-Object { $_.Detail -eq 'Get-RetentionCompliancePolicy' }) | Select-Object -First 1
+            Assert-Equal $dlpError.Section 'DataGovernance' 'The DLP error is recorded on Data governance.'
+            Assert-Equal $dlpError.Message 'DLP query failed.' 'The DLP exception message is kept.'
+            Assert-Equal $retentionError.Section 'DataGovernance' 'The retention error is recorded on Data governance.'
+            Assert-Equal $retentionError.Message 'Retention query failed.' 'The retention exception message is kept.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $true) 3 'FailOnCollectorError exits 3 when DLP and retention errors are counted.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $false) 0 'The default exit code stays 0 for the same DLP and retention errors.'
+        }
+
+        It 'marks Data governance partial when only one compliance policy read fails' {
+            $script:Report = [ordered]@{ Errors = [System.Collections.Generic.List[object]]::new() }
+            $script:GraphReportDiagnostics = [System.Collections.Generic.List[object]]::new()
+            function Get-ConnectionInformation {
+                [CmdletBinding()] param()
+                [pscustomobject]@{ Name = 'IPPSSession' }
+            }
+            function Get-GraphRestAll {
+                param([string]$Uri, [hashtable]$Query = @{}, [switch]$BypassCache)
+                $script:GraphLastHttpStatus = 200
+                return @([pscustomobject]@{ name = 'Public'; isPublished = $true })
+            }
+            function Get-DlpCompliancePolicy {
+                [CmdletBinding()] param()
+                throw 'DLP query failed.'
+            }
+            function Get-RetentionCompliancePolicy {
+                [CmdletBinding()] param()
+                [pscustomobject]@{ Name = 'Finance hold'; Enabled = $true; Mode = 'Enforce'; Workload = 'SharePoint' }
+            }
+
+            $dlpFailed = Get-DataGovernanceReadiness
+            Assert-Equal $dlpFailed.Status 'partial' 'A failed DLP read with retention collected is partial.'
+            Assert-True ($dlpFailed.Reason -match 'DLP policy read failed: DLP query failed\.') 'The reason names the failed DLP read.'
+            Assert-Equal $dlpFailed.DlpPolicies 'not collected' 'The failed DLP list stays not collected.'
+            Assert-True ($dlpFailed.RetentionPolicies -is [System.Array]) 'The successful retention list is kept.'
+            Assert-Equal @($script:Report.Errors).Count 1 'The DLP failure is still a collector error.'
+            Assert-Equal $script:Report.Errors[0].Message 'DLP query failed.' 'The D1 DLP error message is kept.'
+
+            $script:Report = [ordered]@{ Errors = [System.Collections.Generic.List[object]]::new() }
+            function Get-DlpCompliancePolicy {
+                [CmdletBinding()] param()
+                [pscustomobject]@{ Name = 'DLP baseline'; Mode = 'Enable'; Workload = 'Exchange' }
+            }
+            function Get-RetentionCompliancePolicy {
+                [CmdletBinding()] param()
+                throw 'Retention query failed.'
+            }
+            $retentionFailed = Get-DataGovernanceReadiness
+            Assert-Equal $retentionFailed.Status 'partial' 'A failed retention read with DLP collected is partial.'
+            Assert-True ($retentionFailed.Reason -match 'Retention policy read failed: Retention query failed\.') 'The reason names the failed retention read.'
+            Assert-Equal @($script:Report.Errors).Count 1 'The retention failure is still a collector error.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $true) 3 'FailOnCollectorError still exits 3 for the retention error.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $false) 0 'The default exit code stays 0.'
+        }
+
+        It 'gives full anyone-link credit when tenant settings block them and sites were not collected' {
+            $script:Report = [ordered]@{
+                SharePointOneDrive = [ordered]@{
+                    Status = 'partial'
+                    ExternalSharingLevel = 'ExternalUserSharingOnly'
+                    SiteInventoryStatus = 'not collected'
+                    SiteInventoryReason = 'Site inventory was not collected.'
+                    TotalSiteCount = 'not collected'
+                    Sites = @()
+                }
+            }
+            $blocked = Get-SharePointExposureAdvanced
+            Assert-Equal $blocked.AnyoneLinkSites 'not collected' 'Blocked tenant settings do not invent a zero site count.'
+            Assert-Equal $blocked.AnyoneLinksPossible $false 'ExternalUserSharingOnly means anyone links are not possible.'
+            Assert-Equal $blocked.AnyoneLinkMeasurement 'tenant-settings' 'The blocked signal is still tenant settings.'
+
+            $script:Report = [ordered]@{
+                ReadinessFlags = [ordered]@{
+                    MfaRegisteredPercent = 'not collected'
+                    CaPoliciesEnabled = 'not collected'
+                    SensitivityLabelsPublished = 'not collected'
+                    OneDrivePersonalSiteSharePercent = 'not collected'
+                    RestrictedSearchEnabled = 'not collected'
+                    ActiveUsersInReportPeriodPercent = 'not collected'
+                    ExternalSharingLevel = 'ExternalUserSharingOnly'
+                }
+                Identity = [ordered]@{ Status = 'reported' }
+                ConditionalAccess = [ordered]@{ Status = 'reported' }
+                DataGovernance = [ordered]@{ Status = 'reported' }
+                SharePointOneDrive = [ordered]@{ Status = 'reported' }
+                AdoptionSignals = [ordered]@{ Status = 'reported' }
+                IdentityAccessAdvanced = [ordered]@{ Status = 'reported' }
+                DataProtectionAdvanced = [ordered]@{ Status = 'reported' }
+                SharePointExposureAdvanced = $blocked
+                AppGovernanceAdvanced = [ordered]@{ Status = 'reported' }
+                EndpointAppAdvanced = [ordered]@{ Status = 'reported' }
+                AdoptionAdvanced = [ordered]@{ Status = 'reported' }
+            }
+            $script:ScoringModel = $null
+            $blockedEvidence = Get-ReadinessEvidence
+            Assert-Equal $blockedEvidence.DomainScores.ContentExposure 100 'Tenant settings that block anyone links earn the full factor.'
+            Assert-Equal $blockedEvidence.DataCompleteness.AnyoneLinkConfidence 'reduced' 'Tenant-only evidence keeps reduced confidence.'
+            Assert-Equal $blockedEvidence.DataCompleteness.AnyoneLinkMeasurement 'tenant-settings' 'Completeness records the tenant-settings measurement.'
+            Assert-Equal $blockedEvidence.DataCompleteness.CompletenessPercent 3.3 'The anyone-link weight is scaled by the tenant-only factor.'
+            Assert-Equal $blockedEvidence.RiskSignals.AnyoneLinkSites 'not collected' 'Risk signals do not turn the missing site count into zero.'
+
+            $script:Report.SharePointExposureAdvanced = [ordered]@{
+                AnyoneLinkSites = 'not collected'
+                AnyoneLinksPossible = $true
+                AnyoneLinkMeasurement = 'tenant-settings'
+            }
+            $script:Report.ReadinessFlags.ExternalSharingLevel = 'ExternalUserAndGuestSharing'
+            $possibleEvidence = Get-ReadinessEvidence
+            Assert-Equal $possibleEvidence.DomainScores.ContentExposure 0 'Tenant settings that allow anyone links still score as present.'
         }
     }
 }

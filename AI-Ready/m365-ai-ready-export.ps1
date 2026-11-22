@@ -186,6 +186,13 @@
        FailedCollectors is greater than zero.
 
     Change log:
+    - 2026-11-22: A failed DLP or retention read marks Data governance partial
+      and names the failed cmdlet. Tenant settings that block anyone links
+      earn the no-anyone-links score, with the same reduced completeness as
+      other tenant-only sharing evidence.
+    - 2026-11-22: DLP and retention cmdlet failures are recorded on Errors.
+      A failed Get-LabelPolicy, including a failed retry, marks Data governance
+      partial when labels were returned.
     - 2026-11-22: Purview label cmdlets use -ErrorAction Stop. A failure is
       not collected and is recorded on Errors. Get-LabelPolicy is retried once
       when labels exist and the first policy read is empty; a second empty
@@ -4227,9 +4234,14 @@ function Get-DataGovernanceReadiness {
         $complianceLabels = Get-PurviewLabelCommandResult -CommandName 'Get-Label'
         $compliancePolicies = Get-PurviewLabelCommandResult -CommandName 'Get-LabelPolicy'
         $labelCount = if ($null -eq $complianceLabels) { 0 } else { @($complianceLabels).Count }
+        $labelPolicyFailureNote = 'Get-LabelPolicy failed; label policy counts are not collected.'
         # A live run returned labels and then an empty policy list. The next run
         # returned the policies. Do not score that first empty list as zero.
-        if ($labelCount -gt 0 -and $null -ne $compliancePolicies -and @($compliancePolicies).Count -eq 0) {
+        # A thrown read is $null. With labels present, that is partial, not a clean report.
+        if ($labelCount -gt 0 -and $null -eq $compliancePolicies) {
+            $labelPolicyNote = $labelPolicyFailureNote
+        }
+        elseif ($labelCount -gt 0 -and @($compliancePolicies).Count -eq 0) {
             $retryDelaySeconds = 2
             $retryDelayVariable = Get-Variable -Name LabelPolicyRetryDelaySeconds -Scope Script -ErrorAction SilentlyContinue
             if ($null -ne $retryDelayVariable -and $null -ne $retryDelayVariable.Value) {
@@ -4239,6 +4251,7 @@ function Get-DataGovernanceReadiness {
             $retriedPolicies = Get-PurviewLabelCommandResult -CommandName 'Get-LabelPolicy'
             if ($null -eq $retriedPolicies) {
                 $compliancePolicies = $null
+                $labelPolicyNote = $labelPolicyFailureNote
             }
             elseif (@($retriedPolicies).Count -eq 0) {
                 $compliancePolicies = $null
@@ -4261,24 +4274,32 @@ function Get-DataGovernanceReadiness {
     $autoLabel = $labelSnapshot.AutoLabel
 
     $dlp = 'not collected'
+    $dlpFailureMessage = ''
     if ($hasIppsSession -and (Get-Command Get-DlpCompliancePolicy -ErrorAction SilentlyContinue)) {
         try {
             $dlp = ConvertTo-CompliancePolicyList -Policies @(Get-DlpCompliancePolicy -ErrorAction Stop)
         }
         catch {
             $dlp = 'not collected'
+            $dlpFailureMessage = [string]$_.Exception.Message
+            Register-GraphReportDiagnostic -Uri 'Get-DlpCompliancePolicy' -Message $dlpFailureMessage -Section 'DataGovernance'
         }
     }
     $retention = 'not collected'
+    $retentionFailureMessage = ''
     if ($hasIppsSession -and (Get-Command Get-RetentionCompliancePolicy -ErrorAction SilentlyContinue)) {
         try {
             $retention = ConvertTo-CompliancePolicyList -Policies @(Get-RetentionCompliancePolicy -ErrorAction Stop)
         }
         catch {
             $retention = 'not collected'
+            $retentionFailureMessage = [string]$_.Exception.Message
+            Register-GraphReportDiagnostic -Uri 'Get-RetentionCompliancePolicy' -Message $retentionFailureMessage -Section 'DataGovernance'
         }
     }
-    $hasComplianceData = (Test-ValueCollected -Value $dlp) -or (Test-ValueCollected -Value $retention)
+    $dlpCollected = Test-ValueCollected -Value $dlp
+    $retentionCollected = Test-ValueCollected -Value $retention
+    $hasComplianceData = $dlpCollected -or $retentionCollected
 
     $labelsCollected = [bool]$labelSnapshot.Collected
     $status = 'reported'
@@ -4302,6 +4323,18 @@ function Get-DataGovernanceReadiness {
     if (-not [string]::IsNullOrWhiteSpace($labelPolicyNote) -and $reason -notlike "*$labelPolicyNote*") {
         if ($status -eq 'reported') { $status = 'partial' }
         $reason = ("$reason $labelPolicyNote").Trim()
+    }
+    # One successful compliance read must not hide the other read's failure.
+    $complianceReadFailures = [System.Collections.Generic.List[string]]::new()
+    if (-not $dlpCollected -and -not [string]::IsNullOrWhiteSpace($dlpFailureMessage)) {
+        $complianceReadFailures.Add("DLP policy read failed: $dlpFailureMessage")
+    }
+    if (-not $retentionCollected -and -not [string]::IsNullOrWhiteSpace($retentionFailureMessage)) {
+        $complianceReadFailures.Add("Retention policy read failed: $retentionFailureMessage")
+    }
+    if ($complianceReadFailures.Count -gt 0) {
+        if ($status -eq 'reported') { $status = 'partial' }
+        $reason = ("$reason $($complianceReadFailures -join ' ')").Trim()
     }
 
     return [ordered]@{
@@ -6035,6 +6068,13 @@ function Get-ReadinessEvidence {
         # Site counts were not collected. ExternalUserAndGuestSharing means anyone links are possible.
         $anyoneLinksScored = $true
         $anyoneLinksPresent = $true
+        $anyoneLinksTenantOnly = $true
+    }
+    elseif ($null -eq $anyoneLinkSites -and $anyoneLinkMeasurement -eq 'tenant-settings' -and $anyoneLinksPossibleValue -eq $false) {
+        # Tenant settings block anyone links. Full credit for this factor.
+        # Completeness stays scaled by TenantOnlyAnyoneLinkCompletenessFactor.
+        $anyoneLinksScored = $true
+        $anyoneLinksPresent = $false
         $anyoneLinksTenantOnly = $true
     }
     $restrictedSearchEnabledValue = Get-ObjectPropertyValue -InputObject $flags -Name 'RestrictedSearchEnabled' -Default 'not collected'
