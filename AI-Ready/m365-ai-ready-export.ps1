@@ -1,62 +1,183 @@
 <#
-================================================================================
-GITHUB COPILOT — IMPLEMENTATION BRIEF (read before completing this file)
-================================================================================
-GOAL: A READ-ONLY PowerShell script that extracts Microsoft 365 tenant
-configuration and posture data to assess "AI / Copilot readiness", and writes
-ONE consolidated JSON file for downstream analysis.
+.SYNOPSIS
+    Collects read-only Microsoft 365 AI readiness signals into one JSON report.
 
-HARD RULES:
-  - READ-ONLY. Use only Get-* / Connect-* / Disconnect-* cmdlets.
-    NEVER emit Set-, New-, Remove-, Update-, Add-, Grant-, or Revoke- cmdlets.
-  - RESILIENT. Wrap every collector in try/catch. On failure, record the error
-    in $script:Report.Errors and CONTINUE. Never hard-fail the whole run.
-  - NO SECRETS. Output config/IDs only — never tokens, passwords, or keys.
-  - DETERMINISTIC JSON. Use stable, ordered key names across all tenants.
-  - SAMPLING-AWARE. Honour -IncludeSampling / -SampleSize on heavy collectors
-    (SharePoint sites, permissions). Note truncation in the output.
-  - Prefer Microsoft Graph cmdlets; use ExchangeOnlineManagement, PnP.PowerShell,
-    and SharePoint Online Management Shell only where Graph is insufficient.
-  - PowerShell 7+. Use [ordered] hashtables for all JSON sections.
-================================================================================
+.DESCRIPTION
+    Connects interactively to Microsoft Graph and any available Microsoft 365
+    services, collects tenant configuration and posture signals, records
+    collector failures as partial or unavailable data, and writes one ordered
+    JSON report. Tenant configuration is never changed. The report file is
+    written only after ShouldProcess approval.
 
-Documentation - https://github.com/directorcia/Office365/wiki/Microsoft-365-AI-Readiness-Export-%E2%80%90-Execution-and-Operations-Guide
+.PARAMETER TenantId
+    Tenant ID or domain to use for authentication. When omitted, the current
+    account's organization context or the identity provider's organizations
+    endpoint is used.
 
+.PARAMETER OutputPath
+    Destination for the consolidated JSON report. Relative paths are resolved
+    from the current location. Parent directories are created when approved.
+
+.PARAMETER GraphClientId
+    Entra application client ID used for Microsoft Graph device-code login.
+
+.PARAMETER PnPClientId
+    Optional Entra application client ID for PnP.PowerShell authentication.
+    Environment variables ENTRAID_APP_ID, ENTRAID_CLIENT_ID, and PNP_CLIENT_ID
+    are checked when this parameter is omitted.
+
+.PARAMETER GraphScopes
+    Optional delegated Graph scopes to request during authentication.
+
+.PARAMETER RequestRequiredGraphScopesUpFront
+    Requests the exporter's full delegated Graph scope set before collection.
+
+.PARAMETER ForceInteractiveTeamsPnPLogin
+    Forces a new Teams sign-in instead of reusing an existing Teams session.
+
+.PARAMETER SharePointCollectionChild
+    Internal mode used by the script's isolated SharePoint collection process.
+
+.PARAMETER SharePointAdminUrl
+    SharePoint admin center URL required by the internal child collection mode.
+
+.PARAMETER IncludeSampling
+    Enables sampling for supported large SharePoint collections.
+
+.PARAMETER IncludeDiagnostics
+    Includes collector timing details in the JSON report.
+
+.PARAMETER IncludeDetailedData
+    Includes detailed Secure Score control-profile data and a longer score history.
+
+.PARAMETER SampleSize
+    Maximum number of SharePoint sites to include when sampling is enabled.
+    Valid values are 1 through 5000; the default is 200.
+
+.EXAMPLE
+    .\m365-ai-ready-export.ps1
+    Collects available signals and writes a timestamped report in the current folder.
+
+.EXAMPLE
+    .\m365-ai-ready-export.ps1 -TenantId contoso.onmicrosoft.com -OutputPath 'C:\Reports\Contoso readiness.json'
+    Collects for the specified tenant and writes the report at the supplied path.
+
+.EXAMPLE
+    .\m365-ai-ready-export.ps1 -IncludeSampling -SampleSize 500 -IncludeDiagnostics -WhatIf
+    Collects using a 500-site sample and previews, but does not write, the report.
+
+.INPUTS
+    None. The script does not accept pipeline input.
+
+.OUTPUTS
+    System.Management.Automation.PSCustomObject
+    Writes a consolidated JSON file and emits a summary object with OutputPath,
+    ReportWritten, OverallScore, OverallReadiness, ProcessedSections,
+    PartialSections, SkippedSections, FailedCollectors, and ExitCode.
+
+.NOTES
+    Requires PowerShell 7.0 or later. Microsoft Graph authentication is
+    interactive. Optional MicrosoftTeams, PnP.PowerShell, and
+    ExchangeOnlineManagement modules enable additional signals. Graph delegated
+    permissions depend on the collectors; unavailable permissions are recorded
+    as data gaps. The script does not support unattended authentication.
+
+    Change log: Adds write confirmation support and distinguishes failed
+    SharePoint/Exchange collection from successful empty results.
+    Documentation:
+    https://github.com/directorcia/Office365/wiki/Microsoft-365-AI-Readiness-Export-%E2%80%90-Execution-and-Operations-Guide
 #>
 
-[CmdletBinding()]
+#requires -Version 7.0
+
+# ============================================================================
+# PARAMETERS
+# ============================================================================
+[CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'Standard')]
+[OutputType([PSCustomObject])]
 param(
+    [Parameter(ParameterSetName = 'Standard')]
+    [Parameter(ParameterSetName = 'Child')]
     [string]$TenantId,
+
+    [Parameter(ParameterSetName = 'Standard')]
+    [ValidateNotNullOrEmpty()]
     [string]$OutputPath = ".\AIReadiness_$(Get-Date -Format 'yyyyMMdd_HHmmss').json",
+
+    [Parameter(ParameterSetName = 'Standard')]
+    [Parameter(ParameterSetName = 'Child')]
+    [ValidateNotNullOrEmpty()]
     [string]$GraphClientId = '04b07795-8ddb-461a-bbee-02f9e1bf7b46',
+
+    [Parameter(ParameterSetName = 'Standard')]
+    [Parameter(ParameterSetName = 'Child')]
     [string]$PnPClientId,
+
+    [Parameter(ParameterSetName = 'Standard')]
     [string[]]$GraphScopes,
+
+    [Parameter(ParameterSetName = 'Standard')]
     [switch]$RequestRequiredGraphScopesUpFront,
+
+    [Parameter(ParameterSetName = 'Standard')]
     [switch]$ForceInteractiveTeamsPnPLogin,
+
+    [Parameter(ParameterSetName = 'Child', Mandatory = $true, HelpMessage = 'Internal switch used by the isolated SharePoint child process.')]
     [switch]$SharePointCollectionChild,
+
+    [Parameter(ParameterSetName = 'Child', Mandatory = $true, HelpMessage = 'SharePoint admin URL (e.g. https://contoso-admin.sharepoint.com) for child collection mode.')]
+    [ValidateNotNullOrEmpty()]
     [string]$SharePointAdminUrl,
+
+    [Parameter(ParameterSetName = 'Standard')]
+    [Parameter(ParameterSetName = 'Child')]
     [switch]$IncludeSampling,
+
+    [Parameter(ParameterSetName = 'Standard')]
     [switch]$IncludeDiagnostics,
+
+    [Parameter(ParameterSetName = 'Standard')]
     [switch]$IncludeDetailedData,
+
+    [Parameter(ParameterSetName = 'Standard')]
+    [Parameter(ParameterSetName = 'Child')]
     [ValidateRange(1, 5000)]
     [int]$SampleSize = 200
 )
 
+# ============================================================================
+# CONFIGURATION & RUNTIME STATE
+# ============================================================================
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$script:ExitCode = 0
+$script:ExportOptions = [ordered]@{
+    TenantId                         = $TenantId
+    PnPClientId                      = $PnPClientId
+    GraphScopes                      = $GraphScopes
+    RequestRequiredGraphScopesUpFront = [bool]$RequestRequiredGraphScopesUpFront
+    ForceInteractiveTeamsPnPLogin    = [bool]$ForceInteractiveTeamsPnPLogin
+    IncludeDetailedData              = [bool]$IncludeDetailedData
+}
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
 function Write-Step {
     param(
         [Parameter(Mandatory)][string]$Message,
         [string]$Color = 'Cyan'
     )
-    Write-Host $Message -ForegroundColor $Color
+    Write-Information -MessageData $Message -Tags @('AIReadiness', $Color) -InformationAction Continue
+    Write-Verbose $Message
 }
 
 function Write-Phase {
     param([Parameter(Mandatory)][string]$Title)
 
-    Write-Host ''
-    Write-Host "===== $Title =====" -ForegroundColor Magenta
+    Write-Information -MessageData '' -Tags @('AIReadiness') -InformationAction Continue
+    Write-Information -MessageData "===== $Title =====" -Tags @('AIReadiness', 'Magenta') -InformationAction Continue
+    Write-Verbose "Phase: $Title"
 }
 
 function Write-Reassurance {
@@ -73,11 +194,6 @@ function Resolve-OutputFilePath {
     }
     else {
         [System.IO.Path]::GetFullPath((Join-Path -Path $currentLocation -ChildPath $Path))
-    }
-
-    $directory = Split-Path -Path $resolvedPath -Parent
-    if (-not [string]::IsNullOrWhiteSpace($directory) -and -not (Test-Path -LiteralPath $directory)) {
-        $null = New-Item -ItemType Directory -Path $directory -Force
     }
 
     return $resolvedPath
@@ -151,8 +267,8 @@ function Get-SharePointAdminUrl {
 }
 
 function Get-PnPClientIdForConnection {
-    if (-not [string]::IsNullOrWhiteSpace($PnPClientId)) {
-        return $PnPClientId
+    if (-not [string]::IsNullOrWhiteSpace($script:PnPClientId)) {
+        return $script:PnPClientId
     }
 
     foreach ($envName in @('ENTRAID_APP_ID', 'ENTRAID_CLIENT_ID', 'PNP_CLIENT_ID')) {
@@ -167,13 +283,14 @@ function Get-PnPClientIdForConnection {
 
 function Connect-PnPForSharePointCollection {
     [CmdletBinding()]
+    [OutputType([System.Collections.Specialized.OrderedDictionary])]
     param(
         [Parameter(Mandatory = $true)]
         [string]$AdminUrl
     )
 
     $effectivePnPClientId = Get-PnPClientIdForConnection
-    $effectiveTenant = if (-not [string]::IsNullOrWhiteSpace($TenantId)) { $TenantId } else { $null }
+    $effectiveTenant = if (-not [string]::IsNullOrWhiteSpace($script:TenantId)) { $script:TenantId } else { $null }
     $attemptErrors = [System.Collections.Generic.List[string]]::new()
 
     $baseParams = @{
@@ -237,6 +354,7 @@ function Connect-PnPForSharePointCollection {
 
 function Invoke-SharePointChildCollector {
     [CmdletBinding()]
+    [OutputType([System.Collections.Specialized.OrderedDictionary])]
     param(
         [Parameter(Mandatory = $true)]
         [string]$AdminUrl,
@@ -331,12 +449,7 @@ function Import-SilentPnPModule {
 
     $preferredModule = $candidateModules | Where-Object { $_.Path -notlike '*WindowsPowerShell\Modules*' } | Select-Object -First 1
     if ($null -eq $preferredModule) {
-        Install-Module -Name PnP.PowerShell -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop | Out-Null
-        $candidateModules = @(Get-Module -ListAvailable -Name PnP.PowerShell | Sort-Object Version -Descending)
-        $preferredModule = $candidateModules | Where-Object { $_.Path -notlike '*WindowsPowerShell\Modules*' } | Select-Object -First 1
-        if ($null -eq $preferredModule) {
-            throw 'Unable to locate a PowerShell 7 compatible PnP.PowerShell installation.'
-        }
+        throw 'PnP.PowerShell for PowerShell 7+ was not found (only a Windows PowerShell module path was detected). Install it manually in pwsh with: Install-Module -Name PnP.PowerShell -Scope CurrentUser'
     }
 
     Import-Module -Name $preferredModule.Path -ErrorAction Stop | Out-Null
@@ -361,7 +474,13 @@ function Get-PnPAssemblyConflictState {
 
     $loadedVersion = [string]$tenantAssemblies[0].GetName().Version
     $location = ''
-    try { $location = [string]$tenantAssemblies[0].Location } catch {}
+    try {
+        $location = [string]$tenantAssemblies[0].Location
+    }
+    catch {
+        # Dynamic or in-memory assemblies throw NotSupportedException on .Location.
+        Write-Debug "Assembly location unavailable: $($_.Exception.Message)"
+    }
 
     $conflictDetected = ($loadedVersion -ne '16.1.0.0')
 
@@ -884,9 +1003,9 @@ function Get-GraphClientServicePrincipalId {
 function Confirm-GraphConsent {
     param([string[]]$RequiredScopes)
 
-    if ([string]::IsNullOrWhiteSpace($GraphClientId)) { return $false }
+    if ([string]::IsNullOrWhiteSpace($script:GraphClientId)) { return $false }
 
-    $clientServicePrincipalId = Get-GraphClientServicePrincipalId -ClientAppId $GraphClientId
+    $clientServicePrincipalId = Get-GraphClientServicePrincipalId -ClientAppId $script:GraphClientId
     if ([string]::IsNullOrWhiteSpace($clientServicePrincipalId)) {
         Write-Step 'No client service principal exists in this tenant for the selected Graph client ID, so consent grant creation is skipped.' -Color DarkYellow
         return $false
@@ -914,7 +1033,7 @@ function Confirm-GraphConsent {
             return $true
         }
 
-        $consentUrl = Get-GraphAdminConsentUrl -TenantId $TenantId -ClientId $GraphClientId
+        $consentUrl = Get-GraphAdminConsentUrl -TenantId $script:TenantId -ClientId $script:GraphClientId
         Write-Step 'Missing Graph consent was detected. Read-only mode prevents tenant consent changes.' -Color DarkYellow
         Write-Step "Admin action required: grant consent manually here, then rerun this script: $consentUrl" -Color DarkYellow
         return $false
@@ -956,6 +1075,14 @@ function Invoke-Collector {
     )
     $script:CollectorStepIndex++
     if ($script:CollectorStepTotal -gt 0) {
+        $percentComplete = [math]::Min(100, [int][math]::Round(($script:CollectorStepIndex / $script:CollectorStepTotal) * 100, 0))
+        $progressParams = @{
+            Id              = 1
+            Activity        = 'Microsoft 365 AI Readiness Export'
+            Status          = ("[{0}/{1}] Reading section '{2}'" -f $script:CollectorStepIndex, $script:CollectorStepTotal, $Section)
+            PercentComplete = $percentComplete
+        }
+        Write-Progress @progressParams
         Write-Step ("[{0}/{1}] Reading section '{2}'..." -f $script:CollectorStepIndex, $script:CollectorStepTotal, $Section) -Color Cyan
     }
     else {
@@ -1231,36 +1358,39 @@ function Get-CachedGraphUsers {
 
     $signInUsers = @((Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/users' -Query @{ '$select' = 'id,signInActivity' }))
     $signInById = @{}
-    foreach ($user in @($signInUsers)) {
+    foreach ($user in $signInUsers) {
         if ($null -eq $user) { continue }
-        if (-not ($user.PSObject.Properties.Name -contains 'Id')) { continue }
-        if ([string]::IsNullOrWhiteSpace([string]$user.Id)) { continue }
+        $idProp = $user.PSObject.Properties['Id']
+        if ($null -eq $idProp -or [string]::IsNullOrWhiteSpace([string]$idProp.Value)) { continue }
 
-        $signInById[[string]$user.Id] = $user
+        $signInActProp = $user.PSObject.Properties['SignInActivity']
+        $signInById[[string]$idProp.Value] = if ($null -ne $signInActProp) { $signInActProp.Value } else { $null }
     }
 
-    $mergedUsers = foreach ($baseUser in @($script:GraphUsersCache[$baseCacheKey])) {
-        $mergedUser = [pscustomobject]([ordered]@{})
-        foreach ($property in @($baseUser.PSObject.Properties)) {
-            $mergedUser | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value
-        }
-
-        $signInUser = $null
-        if ($baseUser.PSObject.Properties.Name -contains 'Id' -and $signInById.ContainsKey([string]$baseUser.Id)) {
-            $signInUser = $signInById[[string]$baseUser.Id]
+    $baseList = $script:GraphUsersCache[$baseCacheKey]
+    $mergedUsers = [System.Collections.Generic.List[object]]::new($baseList.Count)
+    foreach ($baseUser in $baseList) {
+        $mergedMap = [ordered]@{}
+        foreach ($property in $baseUser.PSObject.Properties) {
+            $mergedMap[$property.Name] = $property.Value
         }
 
         $signInActivityValue = $null
-        if ($signInUser -and $signInUser.PSObject.Properties.Name -contains 'SignInActivity') {
-            $signInActivityValue = $signInUser.SignInActivity
+        $baseIdProp = $baseUser.PSObject.Properties['Id']
+        if ($null -ne $baseIdProp -and $null -ne $baseIdProp.Value) {
+            $baseIdText = [string]$baseIdProp.Value
+            if ($signInById.ContainsKey($baseIdText)) {
+                $signInActivityValue = $signInById[$baseIdText]
+            }
         }
 
-        $mergedUser | Add-Member -NotePropertyName 'SignInActivity' -NotePropertyValue $signInActivityValue
-        $mergedUser
+        $mergedMap['SignInActivity'] = $signInActivityValue
+        $mergedUsers.Add([pscustomobject]$mergedMap)
     }
 
-    $script:GraphUsersCache[$signInCacheKey] = @($mergedUsers)
-    return @($script:GraphUsersCache[$signInCacheKey])
+    $mergedArray = $mergedUsers.ToArray()
+    $script:GraphUsersCache[$signInCacheKey] = $mergedArray
+    return $mergedArray
 }
 
 function Get-GraphReportRows {
@@ -1547,12 +1677,13 @@ function Get-GraphRestAll {
             }
         }
         else {
-            $props = @($response.PSObject.Properties | ForEach-Object { $_.Name })
-            if ($props -contains 'value') {
-                foreach ($item in @($response.value)) {
+            $valueProp = $response.PSObject.Properties['value']
+            if ($null -ne $valueProp) {
+                foreach ($item in @($valueProp.Value)) {
                     if ($null -ne $item) { $items.Add([pscustomobject]$item) }
                 }
-                $nextUri = if ($props -contains '@odata.nextLink') { [string]$response.'@odata.nextLink' } else { $null }
+                $nextProp = $response.PSObject.Properties['@odata.nextLink']
+                $nextUri = if ($null -ne $nextProp -and $null -ne $nextProp.Value) { [string]$nextProp.Value } else { $null }
             }
             else {
                 if ($null -ne $response) { $items.Add([pscustomobject]$response) }
@@ -1615,15 +1746,15 @@ function Connect-Services {
 
     $teamsImportError = $null
     try { Import-Module MicrosoftTeams -ErrorAction Stop } catch { $teamsImportError = $_.Exception.Message }
-    try { Import-Module PnP.PowerShell -ErrorAction Stop } catch {}
-    try { Import-Module ExchangeOnlineManagement -ErrorAction SilentlyContinue } catch {}
+    try { Import-Module PnP.PowerShell -ErrorAction Stop } catch { Write-Debug "PnP.PowerShell optional import skipped: $($_.Exception.Message)" }
+    try { Import-Module ExchangeOnlineManagement -ErrorAction SilentlyContinue } catch { Write-Debug "ExchangeOnlineManagement optional import skipped: $($_.Exception.Message)" }
 
     try {
-        $isDefaultMsClient = ($GraphClientId -eq '04b07795-8ddb-461a-bbee-02f9e1bf7b46')
-        $graphScopes = if ($GraphScopes -and $GraphScopes.Count -gt 0) {
-            @($GraphScopes)
+        $isDefaultMsClient = ($script:GraphClientId -eq '04b07795-8ddb-461a-bbee-02f9e1bf7b46')
+        $graphScopes = if ($script:GraphScopes -and $script:GraphScopes.Count -gt 0) {
+            @($script:GraphScopes)
         }
-        elseif ($RequestRequiredGraphScopesUpFront) {
+        elseif ($script:RequestRequiredGraphScopesUpFront) {
             Get-DefaultGraphScopes
         }
         elseif ($isDefaultMsClient) {
@@ -1653,7 +1784,7 @@ function Connect-Services {
             $existingTokenExpiresAt = Get-GraphTokenExpirationUtc -AccessToken $existingToken
         }
 
-        if ($RequestRequiredGraphScopesUpFront) {
+        if ($script:RequestRequiredGraphScopesUpFront) {
             $existingToken = $null
             $existingTokenExpiresAt = $null
             $script:GraphAccessToken = $null
@@ -1688,7 +1819,7 @@ function Connect-Services {
             }
         }
         else {
-            if ($RequestRequiredGraphScopesUpFront -and $isDefaultMsClient) {
+            if ($script:RequestRequiredGraphScopesUpFront -and $isDefaultMsClient) {
                 Write-Warning 'Upfront Graph scope mode works best with a custom app registration. The default Microsoft public client cannot reliably request this tenant-specific delegated scope set directly, so a custom GraphClientId is recommended.'
                 Write-Step 'Rerun for full delegated consent with: -GraphClientId <your-app-id> -RequestRequiredGraphScopesUpFront' -Color DarkYellow
             }
@@ -1706,8 +1837,8 @@ function Connect-Services {
                 }
             }
             else {
-                $consentUrl = Get-GraphAdminConsentUrl -TenantId $TenantId -ClientId $GraphClientId
-                if ($RequestRequiredGraphScopesUpFront) {
+                $consentUrl = Get-GraphAdminConsentUrl -TenantId $script:TenantId -ClientId $script:GraphClientId
+                if ($script:RequestRequiredGraphScopesUpFront) {
                     Write-Step 'Requesting the exporter''s full delegated Graph scope set up front so consent can be granted before collection starts.' -Color DarkYellow
                 }
                 else {
@@ -1718,7 +1849,7 @@ function Connect-Services {
             }
 
             Write-Step 'Starting device-code sign-in and opening the login page automatically...' -Color DarkYellow
-            $null = Get-GraphAccessToken -TenantId $TenantId -ClientId $GraphClientId -Scopes $graphScopes
+            $null = Get-GraphAccessToken -TenantId $script:TenantId -ClientId $script:GraphClientId -Scopes $graphScopes
             Write-Step 'Connected to Microsoft Graph.' -Color Green
         }
     }
@@ -1735,7 +1866,7 @@ function Connect-Services {
 
         if ($teamsCmdletAvailable) {
             $existingTeamsSession = $false
-            if (-not $ForceInteractiveTeamsPnPLogin) {
+            if (-not $script:ForceInteractiveTeamsPnPLogin) {
                 try {
                     if (Get-Command Get-CsTenant -ErrorAction SilentlyContinue) {
                         $null = Get-CsTenant -ErrorAction Stop
@@ -1752,24 +1883,24 @@ function Connect-Services {
                 Write-Step 'Reusing existing Microsoft Teams session.' -Color Green
             }
             else {
-                if ($ForceInteractiveTeamsPnPLogin) {
+                if ($script:ForceInteractiveTeamsPnPLogin) {
                     Write-Step 'Force interactive mode enabled: starting a fresh Microsoft Teams sign-in attempt.' -Color DarkYellow
                 }
 
-            try {
-                $teamsParams = @{ ErrorAction = 'Stop' }
-                if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
-                    $teamsParams['TenantId'] = $TenantId
-                }
+                try {
+                    $teamsParams = @{ ErrorAction = 'Stop' }
+                    if (-not [string]::IsNullOrWhiteSpace($script:TenantId)) {
+                        $teamsParams['TenantId'] = $script:TenantId
+                    }
 
-                $null = Connect-MicrosoftTeams @teamsParams -WarningAction SilentlyContinue -InformationAction SilentlyContinue 3>$null 6>$null
-                $script:TeamsConnected = $true
-                Write-Step 'Connected to Microsoft Teams for policy metadata.' -Color Green
-            }
-            catch {
-                $script:TeamsConnected = $false
-                Write-Warning "Teams sign-in was not available during startup: $($_.Exception.Message)"
-            }
+                    $null = Connect-MicrosoftTeams @teamsParams -WarningAction SilentlyContinue -InformationAction SilentlyContinue 3>$null 6>$null
+                    $script:TeamsConnected = $true
+                    Write-Step 'Connected to Microsoft Teams for policy metadata.' -Color Green
+                }
+                catch {
+                    $script:TeamsConnected = $false
+                    Write-Warning "Teams sign-in was not available during startup: $($_.Exception.Message)"
+                }
             }
         }
         else {
@@ -1806,8 +1937,8 @@ function Connect-Services {
         if (-not $exoConnected -and (Get-Command Connect-ExchangeOnline -ErrorAction SilentlyContinue)) {
             Write-Step 'Connecting to Exchange Online for mailbox and compliance signals...' -Color Cyan
             $exoParams = @{ ShowBanner = $false; ErrorAction = 'Stop' }
-            if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
-                $exoParams['Organization'] = $TenantId
+            if (-not [string]::IsNullOrWhiteSpace($script:TenantId)) {
+                $exoParams['Organization'] = $script:TenantId
             }
             Connect-ExchangeOnline @exoParams -WarningAction SilentlyContinue -InformationAction SilentlyContinue 3>$null 6>$null | Out-Null
             $exoConnected = $true
@@ -1841,8 +1972,8 @@ function Connect-Services {
             if ($ippsCommand -and $ippsCommand.Parameters.ContainsKey('ShowBanner')) {
                 $ippsParams['ShowBanner'] = $false
             }
-            if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
-                $ippsParams['Organization'] = $TenantId
+            if (-not [string]::IsNullOrWhiteSpace($script:TenantId)) {
+                $ippsParams['Organization'] = $script:TenantId
             }
             Connect-IPPSSession @ippsParams -WarningAction SilentlyContinue -InformationAction SilentlyContinue 3>$null 6>$null | Out-Null
             $ippsConnected = $true
@@ -1868,36 +1999,54 @@ function Disconnect-Services {
         if (Get-Command Disconnect-MgGraph -ErrorAction SilentlyContinue) {
             $null = Disconnect-MgGraph -ErrorAction SilentlyContinue -InformationAction SilentlyContinue 6>$null
         }
-    } catch {}
+    }
+    catch {
+        Write-Debug "Disconnect-MgGraph cleanup ignored: $($_.Exception.Message)"
+    }
     try {
         if (Get-Command Disconnect-ExchangeOnline -ErrorAction SilentlyContinue) {
             $null = Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue -InformationAction SilentlyContinue 6>$null
         }
-    } catch {}
+    }
+    catch {
+        Write-Debug "Disconnect-ExchangeOnline cleanup ignored: $($_.Exception.Message)"
+    }
     try {
         if (Get-Command Disconnect-IPPSSession -ErrorAction SilentlyContinue) {
             $null = Disconnect-IPPSSession -Confirm:$false -ErrorAction SilentlyContinue -InformationAction SilentlyContinue 6>$null
         }
-    } catch {}
+    }
+    catch {
+        Write-Debug "Disconnect-IPPSSession cleanup ignored: $($_.Exception.Message)"
+    }
     try {
         if (Get-Command Disconnect-MicrosoftTeams -ErrorAction SilentlyContinue) {
             $null = Disconnect-MicrosoftTeams -ErrorAction SilentlyContinue -InformationAction SilentlyContinue 6>$null
         }
-    } catch {}
+    }
+    catch {
+        Write-Debug "Disconnect-MicrosoftTeams cleanup ignored: $($_.Exception.Message)"
+    }
     try {
         if (Get-Command Disconnect-PnPOnline -ErrorAction SilentlyContinue) {
             $null = Disconnect-PnPOnline -ErrorAction SilentlyContinue -InformationAction SilentlyContinue 6>$null
         }
-    } catch {}
+    }
+    catch {
+        Write-Debug "Disconnect-PnPOnline cleanup ignored: $($_.Exception.Message)"
+    }
     try {
         if (Get-Command Disconnect-SPOService -ErrorAction SilentlyContinue) {
             $null = Disconnect-SPOService -ErrorAction SilentlyContinue -InformationAction SilentlyContinue 6>$null
         }
-    } catch {}
+    }
+    catch {
+        Write-Debug "Disconnect-SPOService cleanup ignored: $($_.Exception.Message)"
+    }
 }
 
 # ============================================================================
-# COLLECTORS — each returns an [ordered] hashtable; no side effects.
+# COLLECTORS - each returns an [ordered] hashtable; no side effects.
 # ============================================================================
 
 function Get-TenantMetadata {
@@ -1948,8 +2097,8 @@ function Get-TenantMetadata {
     $contextTenantId = Get-ObjectPropertyValue -InputObject $script:MgContext -Name 'TenantId' -Default 'not collected'
     $tenantIdValue = Get-ObjectPropertyValue -InputObject $org -Name 'Id' -Default 'not collected'
     if (-not (Test-ValueCollected -Value $tenantIdValue)) {
-        if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
-            $tenantIdValue = $TenantId
+        if (-not [string]::IsNullOrWhiteSpace($script:TenantId)) {
+            $tenantIdValue = $script:TenantId
         }
         elseif (Test-ValueCollected -Value $contextTenantId) {
             $tenantIdValue = $contextTenantId
@@ -2007,9 +2156,9 @@ function Get-TenantMetadata {
         TotalUsers         = $userCount
         MemberUsers        = $memberCount
         GuestUsers         = $guestCount
-        IncludeSampling    = [bool]$IncludeSampling
-        IncludeDetailedData = [bool]$IncludeDetailedData
-        SampleSize         = [int]$SampleSize
+        IncludeSampling    = [bool]$script:IncludeSampling
+        IncludeDetailedData = [bool]$script:IncludeDetailedData
+        SampleSize         = [int]$script:SampleSize
     }
 }
 
@@ -2074,24 +2223,43 @@ function Get-LicensingReadiness {
     $users = @(Get-DirectoryUsersForReadiness)
     $ready = 0
     foreach ($u in $users) {
-        $plans = @(Get-ObjectPropertyValue -InputObject $u -Name 'assignedPlans' -Default @())
+        if ($null -eq $u) { continue }
+        $plansProp = $u.PSObject.Properties['assignedPlans']
+        if ($null -eq $plansProp -or $null -eq $plansProp.Value) { continue }
+
         # Graph assignedPlans expose capabilityStatus + service (not provisioningStatus/servicePlanName).
-        $enabledServices = @($plans |
-            ForEach-Object {
-                $capability = [string](Get-ObjectPropertyValue -InputObject $_ -Name 'capabilityStatus' -Default '')
-                if ($capability -eq 'Enabled') {
-                    [string](Get-ObjectPropertyValue -InputObject $_ -Name 'service' -Default '')
-                }
-            } |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        $hasApps = $false
+        $hasExchange = $false
+        $hasSharePoint = $false
+        $hasTeams = $false
 
-        $hasApps = @($enabledServices | Where-Object { $_ -match '^(MicrosoftOffice|OfficeForWeb)$' }).Count -gt 0
-        $hasExchange = @($enabledServices | Where-Object { $_ -match '^exchange$' }).Count -gt 0
-        $hasSharePoint = @($enabledServices | Where-Object { $_ -match '^SharePoint' }).Count -gt 0
-        $hasTeams = @($enabledServices | Where-Object { $_ -match '^(TeamspaceAPI|MicrosoftTeams)' }).Count -gt 0
+        foreach ($plan in $plansProp.Value) {
+            if ($null -eq $plan) { continue }
+            $capProp = $plan.PSObject.Properties['capabilityStatus']
+            if ($null -eq $capProp -or [string]$capProp.Value -ne 'Enabled') { continue }
 
-        if ($hasApps -and $hasExchange -and $hasSharePoint -and $hasTeams) {
-            $ready++
+            $svcProp = $plan.PSObject.Properties['service']
+            if ($null -eq $svcProp) { continue }
+            $svc = [string]$svcProp.Value
+            if ([string]::IsNullOrWhiteSpace($svc)) { continue }
+
+            if (-not $hasApps -and ($svc -eq 'MicrosoftOffice' -or $svc -eq 'OfficeForWeb')) {
+                $hasApps = $true
+            }
+            elseif (-not $hasExchange -and $svc -eq 'exchange') {
+                $hasExchange = $true
+            }
+            elseif (-not $hasSharePoint -and $svc.StartsWith('SharePoint', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $hasSharePoint = $true
+            }
+            elseif (-not $hasTeams -and ($svc.StartsWith('TeamspaceAPI', [System.StringComparison]::OrdinalIgnoreCase) -or $svc.StartsWith('MicrosoftTeams', [System.StringComparison]::OrdinalIgnoreCase))) {
+                $hasTeams = $true
+            }
+
+            if ($hasApps -and $hasExchange -and $hasSharePoint -and $hasTeams) {
+                $ready++
+                break
+            }
         }
     }
 
@@ -2423,6 +2591,7 @@ function Get-DataGovernanceReadiness {
 
 function Get-SharePointOneDriveReadiness {
     [CmdletBinding()]
+    [OutputType([System.Collections.Specialized.OrderedDictionary])]
     param([switch]$Sample, [int]$Max = 200)
 
     if ($script:SharePointChildCollectionSucceeded) {
@@ -2485,21 +2654,25 @@ function Get-SharePointOneDriveReadiness {
         }
     }
 
-    $childArgs = @(
+    $childArgs = [System.Collections.Generic.List[string]]::new()
+    foreach ($arg in @(
         '-NoProfile',
         '-NoLogo',
         '-ExecutionPolicy', 'Bypass',
         '-File', $PSCommandPath,
         '-SharePointCollectionChild',
         '-SharePointAdminUrl', $adminUrl
-    )
-    if (-not [string]::IsNullOrWhiteSpace($TenantId)) { $childArgs += @('-TenantId', $TenantId) }
-    if (-not [string]::IsNullOrWhiteSpace($PnPClientId)) { $childArgs += @('-PnPClientId', $PnPClientId) }
-    if (-not [string]::IsNullOrWhiteSpace($GraphClientId)) { $childArgs += @('-GraphClientId', $GraphClientId) }
-    if ($Sample) { $childArgs += '-IncludeSampling' }
-    if ($Max -ne 200) { $childArgs += @('-SampleSize', [string]$Max) }
+    )) {
+        $childArgs.Add($arg)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($script:TenantId)) { $childArgs.Add('-TenantId'); $childArgs.Add($script:TenantId) }
+    if (-not [string]::IsNullOrWhiteSpace($script:PnPClientId)) { $childArgs.Add('-PnPClientId'); $childArgs.Add($script:PnPClientId) }
+    if (-not [string]::IsNullOrWhiteSpace($script:GraphClientId)) { $childArgs.Add('-GraphClientId'); $childArgs.Add($script:GraphClientId) }
+    if ($Sample) { $childArgs.Add('-IncludeSampling') }
+    if ($Max -ne 200) { $childArgs.Add('-SampleSize'); $childArgs.Add([string]$Max) }
 
-    $childOutput = & $pwshPath @childArgs 2>&1 | Out-String
+    $childArgArray = $childArgs.ToArray()
+    $childOutput = & $pwshPath @childArgArray 2>&1 | Out-String
     if ([string]::IsNullOrWhiteSpace($childOutput)) {
         return [ordered]@{
             Status                  = 'not collected'
@@ -2572,18 +2745,44 @@ function Get-SharePointOneDriveReadinessLocal {
 
     $tenant = $null
     $sites = @()
+    $tenantCollectionError = $null
+    $siteCollectionError = $null
 
-    try {
-        if (Get-Command Get-PnPTenant -ErrorAction SilentlyContinue) { $tenant = Get-PnPTenant -ErrorAction Stop }
-    } catch {}
-    try {
-        if (Get-Command Get-PnPTenantSite -ErrorAction SilentlyContinue) { $sites = @(Get-PnPTenantSite -IncludeOneDriveSites -ErrorAction Stop) }
-    } catch {}
+    if (Get-Command Get-PnPTenant -ErrorAction SilentlyContinue) {
+        try {
+            $tenant = Get-PnPTenant -ErrorAction Stop
+        }
+        catch {
+            $tenantCollectionError = "Tenant settings could not be collected: $($_.Exception.Message)"
+        }
+    }
+    else {
+        $tenantCollectionError = 'Tenant settings could not be collected because Get-PnPTenant is unavailable.'
+    }
+    if ($null -eq $tenant -and [string]::IsNullOrWhiteSpace($tenantCollectionError)) {
+        $tenantCollectionError = 'Tenant settings could not be collected because Get-PnPTenant returned no data.'
+    }
 
-    if ($null -eq $tenant -and @($sites).Count -eq 0) {
+    if (Get-Command Get-PnPTenantSite -ErrorAction SilentlyContinue) {
+        try {
+            $sites = @(Get-PnPTenantSite -IncludeOneDriveSites -ErrorAction Stop)
+        }
+        catch {
+            $siteCollectionError = "Site inventory could not be collected: $($_.Exception.Message)"
+        }
+    }
+    else {
+        $siteCollectionError = 'Site inventory could not be collected because Get-PnPTenantSite is unavailable.'
+    }
+
+    $siteInventoryCollected = $null -eq $siteCollectionError
+    if ($null -eq $tenant -and -not $siteInventoryCollected) {
+        $collectionErrors = @(@($tenantCollectionError, $siteCollectionError) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
         return [ordered]@{
             Status                = 'not collected'
-            Reason                = 'SharePoint / PnP tenant session was unavailable or returned no data.'
+            Reason                = $collectionErrors -join ' '
+            SiteInventoryStatus   = 'not collected'
+            SiteInventoryReason   = $siteCollectionError
             ExternalSharingLevel  = 'not collected'
             DefaultSharingLinkType = 'not collected'
             RestrictedSearchEnabled = 'not collected'
@@ -2607,10 +2806,10 @@ function Get-SharePointOneDriveReadinessLocal {
         }
     }
 
-    $totalCount = @($sites).Count
-    $siteList = @($sites)
+    $totalCount = if ($siteInventoryCollected) { @($sites).Count } else { 'not collected' }
+    $siteList = if ($siteInventoryCollected) { @($sites) } else { @() }
 
-    if ($Sample -and $totalCount -gt $Max) {
+    if ($Sample -and $siteInventoryCollected -and $totalCount -gt $Max) {
         $siteList = @($siteList | Select-Object -First $Max)
     }
 
@@ -2672,51 +2871,66 @@ function Get-SharePointOneDriveReadinessLocal {
         }
     }
 
+    $collectionErrors = @(@($tenantCollectionError, $siteCollectionError) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     return [ordered]@{
-        Status                = 'reported'
-        Reason                = ''
+        Status                = if ($collectionErrors.Count -gt 0) { 'partial' } else { 'reported' }
+        Reason                = $collectionErrors -join ' '
+        SiteInventoryStatus   = if ($siteInventoryCollected) { 'reported' } else { 'not collected' }
+        SiteInventoryReason   = if ($siteInventoryCollected) { '' } else { $siteCollectionError }
         ExternalSharingLevel   = $externalSharingLevel
         DefaultSharingLinkType = if ($tenant) { [string](Get-ObjectPropertyValue -InputObject $tenant -Name 'DefaultSharingLinkType' -Default 'not collected') } else { 'not collected' }
         RestrictedSearchEnabled = if ($tenant -and $null -ne (Get-ObjectPropertyValue -InputObject $tenant -Name 'RestrictedSharePointSearch')) { [bool](Get-ObjectPropertyValue -InputObject $tenant -Name 'RestrictedSharePointSearch') } else { 'not collected' }
         TotalSiteCount         = $totalCount
-        Truncated              = [bool]($Sample -and $totalCount -gt $Max)
+        Truncated              = if ($siteInventoryCollected) { [bool]($Sample -and $totalCount -gt $Max) } else { 'not collected' }
         Sites                  = @($siteSummaries)
-        OneDrivePersonalSiteCount = $oneDriveCoverage
-        OneDrivePersonalSiteSharePercent = if (@($siteList).Count -gt 0) { [math]::Round(($oneDriveCoverage / @($siteList).Count) * 100, 2) } else { 0 }
+        OneDrivePersonalSiteCount = if ($siteInventoryCollected) { $oneDriveCoverage } else { 'not collected' }
+        OneDrivePersonalSiteSharePercent = if (-not $siteInventoryCollected) { 'not collected' } elseif (@($siteList).Count -gt 0) { [math]::Round(($oneDriveCoverage / @($siteList).Count) * 100, 2) } else { 0 }
         OneDriveCoverageMetric = 'Deprecated alias: OneDriveCoveragePercent reflects the share of sampled SharePoint/PnP tenant sites whose URL is a OneDrive personal site, not licensed-user OneDrive provisioning coverage.'
-        OneDriveCoveragePercent = if (@($siteList).Count -gt 0) { [math]::Round(($oneDriveCoverage / @($siteList).Count) * 100, 2) } else { 0 }
-        InactiveSiteCount      = $inactive
+        OneDriveCoveragePercent = if (-not $siteInventoryCollected) { 'not collected' } elseif (@($siteList).Count -gt 0) { [math]::Round(($oneDriveCoverage / @($siteList).Count) * 100, 2) } else { 0 }
+        InactiveSiteCount      = if ($siteInventoryCollected) { $inactive } else { 'not collected' }
         OversharingSignals     = [ordered]@{
-            Status                     = if ($oversharingSignalAvailable) { 'reported' } else { 'not collected' }
-            CollectionMethod           = if ($oversharingSignalAvailable) {
+            Status                     = if (-not $siteInventoryCollected) { 'not collected' } elseif ($oversharingSignalAvailable) { 'reported' } else { 'not collected' }
+            CollectionMethod           = if (-not $siteInventoryCollected) {
+                'Site inventory could not be collected.'
+            }
+            elseif ($oversharingSignalAvailable) {
                 'Best-effort from PnP tenant site metadata counters exposed by current cmdlet/runtime.'
             }
             else {
                 'No oversharing counters collected from standard Get-PnPTenantSite output.'
             }
-            CollectionScope            = if ($oversharingSignalAvailable) { 'sampled site metadata counters only (not guaranteed tenant-wide)' } else { 'standard PnP tenant site metadata only' }
-            CollectionPathUsed         = if ($oversharingSignalAvailable) { $oversharingPropertySource } else { 'none' }
-            CollectionReason           = if ($oversharingSignalAvailable) {
+            CollectionScope            = if (-not $siteInventoryCollected) { 'not collected' } elseif ($oversharingSignalAvailable) { 'sampled site metadata counters only (not guaranteed tenant-wide)' } else { 'standard PnP tenant site metadata only' }
+            CollectionPathUsed         = if (-not $siteInventoryCollected) { 'not collected' } elseif ($oversharingSignalAvailable) { $oversharingPropertySource } else { 'none' }
+            CollectionReason           = if (-not $siteInventoryCollected) {
+                $siteCollectionError
+            }
+            elseif ($oversharingSignalAvailable) {
                 'reported from tenant site metadata counters exposed by current cmdlet/runtime'
             }
             else {
                 'standard Get-PnPTenantSite output does not normally include per-site sharing-link counters'
             }
-            RequiredForReliableCollection = if ($oversharingSignalAvailable) {
+            RequiredForReliableCollection = if (-not $siteInventoryCollected) {
+                'A successful Get-PnPTenantSite collection is required.'
+            }
+            elseif ($oversharingSignalAvailable) {
                 'SharePoint Advanced Management oversharing telemetry is still recommended for reliable tenant-wide results'
             }
             else {
                 'SharePoint Advanced Management oversharing telemetry (recommended), or costly per-site sharing-link enumeration'
             }
-            DocumentationNote          = if ($oversharingSignalAvailable) {
+            DocumentationNote          = if (-not $siteInventoryCollected) {
+                'Unknown site inventory is not evidence of low oversharing risk.'
+            }
+            elseif ($oversharingSignalAvailable) {
                 'Counters were exposed in this run, but this is not guaranteed in standard PnP output across tenants.'
             }
             else {
                 'This run did not collect oversharing link counters; absence here does not imply low oversharing risk.'
             }
-            SampledAnyoneLinkCount     = if ($oversharingSignalAvailable) { $anyoneLinkCount } else { 'not collected' }
-            SampledOrgWideLinkCount    = if ($oversharingSignalAvailable) { $orgWideLinkCount } else { 'not collected' }
-            SitesWithAnyoneLinksCount  = if ($oversharingSignalAvailable) { $sitesWithAnyoneLinks } else { 'not collected' }
+            SampledAnyoneLinkCount     = if ($siteInventoryCollected -and $oversharingSignalAvailable) { $anyoneLinkCount } else { 'not collected' }
+            SampledOrgWideLinkCount    = if ($siteInventoryCollected -and $oversharingSignalAvailable) { $orgWideLinkCount } else { 'not collected' }
+            SitesWithAnyoneLinksCount  = if ($siteInventoryCollected -and $oversharingSignalAvailable) { $sitesWithAnyoneLinks } else { 'not collected' }
         }
     }
 }
@@ -2725,6 +2939,7 @@ function Get-ExchangeReadiness {
     try {
         $mailboxes = @()
         $hasExoSession = $false
+        $exoCollectionError = $null
 
         if (Get-Command Get-ConnectionInformation -ErrorAction SilentlyContinue) {
             $hasExoSession = @((Get-ConnectionInformation -ErrorAction SilentlyContinue)).Count -gt 0
@@ -2732,27 +2947,38 @@ function Get-ExchangeReadiness {
 
         if ($hasExoSession -and (Get-Command Get-EXOMailbox -ErrorAction SilentlyContinue)) {
             # ArchiveStatus and LitigationHoldEnabled are not in the default EXO minimum property set.
-            $mailboxes = @(Get-EXOMailbox -ResultSize Unlimited -Properties RecipientTypeDetails, ArchiveStatus, LitigationHoldEnabled -ErrorAction SilentlyContinue)
-            $shared = @($mailboxes | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'RecipientTypeDetails' -Default '')) -eq 'SharedMailbox' }).Count
-            $archive = @($mailboxes | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'ArchiveStatus' -Default '')) -eq 'Active' }).Count
-            $litigation = @($mailboxes | Where-Object { (Get-ObjectPropertyValue -InputObject $_ -Name 'LitigationHoldEnabled') -eq $true }).Count
+            try {
+                $mailboxes = @(Get-EXOMailbox -ResultSize Unlimited -Properties RecipientTypeDetails, ArchiveStatus, LitigationHoldEnabled -ErrorAction Stop)
+                $shared = @($mailboxes | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'RecipientTypeDetails' -Default '')) -eq 'SharedMailbox' }).Count
+                $archive = @($mailboxes | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'ArchiveStatus' -Default '')) -eq 'Active' }).Count
+                $litigation = @($mailboxes | Where-Object { (Get-ObjectPropertyValue -InputObject $_ -Name 'LitigationHoldEnabled') -eq $true }).Count
 
-            return [ordered]@{
-                Status               = 'reported'
-                Reason               = ''
-                TotalMailboxes       = @($mailboxes).Count
-                UserMailboxes        = @($mailboxes | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'RecipientTypeDetails' -Default '')) -in @('UserMailbox', 'SharedMailbox') }).Count
-                SharedMailboxes      = $shared
-                ArchiveEnabledCount  = $archive
-                LitigationHoldCount  = $litigation
-                ExchangeOnlineReady  = @($mailboxes).Count -gt 0
+                return [ordered]@{
+                    Status               = 'reported'
+                    Reason               = ''
+                    TotalMailboxes       = @($mailboxes).Count
+                    UserMailboxes        = @($mailboxes | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'RecipientTypeDetails' -Default '')) -in @('UserMailbox', 'SharedMailbox') }).Count
+                    SharedMailboxes      = $shared
+                    ArchiveEnabledCount  = $archive
+                    LitigationHoldCount  = $litigation
+                    ExchangeOnlineReady  = @($mailboxes).Count -gt 0
+                }
             }
+            catch {
+                $exoCollectionError = "Exchange Online mailbox collection failed: $($_.Exception.Message)"
+            }
+        }
+        elseif ($hasExoSession) {
+            $exoCollectionError = 'Exchange Online mailbox collection failed because Get-EXOMailbox is unavailable.'
+        }
+        else {
+            $exoCollectionError = 'Exchange Online session was unavailable.'
         }
 
         if (-not (Test-GraphPermissionsAvailable -RequiredPermissions @('Directory.Read.All'))) {
             return [ordered]@{
                 Status               = 'not collected'
-                Reason               = 'Exchange Online session was unavailable and Graph directory read access is missing.'
+                Reason               = "$exoCollectionError Graph directory read access is also missing, so mailbox data could not be collected."
                 TotalMailboxes       = 'not collected'
                 UserMailboxes        = 'not collected'
                 SharedMailboxes      = 'not collected'
@@ -2768,7 +2994,7 @@ function Get-ExchangeReadiness {
 
         return [ordered]@{
             Status               = 'partial'
-            Reason               = 'Mailbox count was estimated from Graph users because Exchange Online session details were unavailable.'
+            Reason               = "$exoCollectionError Mailbox count was estimated from Graph users because Exchange Online mailbox data was unavailable."
             TotalMailboxes       = $mailboxCount
             UserMailboxes        = $mailboxCount
             SharedMailboxes      = 'not collected'
@@ -2780,7 +3006,7 @@ function Get-ExchangeReadiness {
     catch {
         return [ordered]@{
             Status               = 'not collected'
-            Reason               = 'Exchange mailbox data could not be collected.'
+            Reason               = "Exchange mailbox data could not be collected: $($_.Exception.Message)"
             TotalMailboxes       = 'not collected'
             UserMailboxes        = 'not collected'
             SharedMailboxes      = 'not collected'
@@ -2949,12 +3175,12 @@ function Get-SecureScoreReadiness {
                 OpenProfiles = 'not collected'
                 TopOpenProfiles = @()
             }
-            ControlProfilesDetailedIncluded = [bool]$IncludeDetailedData
+            ControlProfilesDetailedIncluded = [bool]$script:IncludeDetailedData
             ControlProfiles = @()
         }
     }
 
-    $historyCount = if ($IncludeDetailedData) { 10 } else { 5 }
+    $historyCount = if ($script:IncludeDetailedData) { 10 } else { 5 }
     $scores = @(
         Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/security/secureScores' -Query @{ '$top' = [string]$historyCount; '$orderby' = 'createdDateTime desc' }
     )
@@ -2981,7 +3207,7 @@ function Get-SecureScoreReadiness {
                 OpenProfiles = 'not collected'
                 TopOpenProfiles = @()
             }
-            ControlProfilesDetailedIncluded = [bool]$IncludeDetailedData
+            ControlProfilesDetailedIncluded = [bool]$script:IncludeDetailedData
             ControlProfiles = @()
         }
     }
@@ -3056,7 +3282,7 @@ function Get-SecureScoreReadiness {
         }
     })
 
-    $controlProfilesPayload = if ($IncludeDetailedData) {
+    $controlProfilesPayload = if ($script:IncludeDetailedData) {
         @($controlProfiles | ForEach-Object {
             [ordered]@{
                 Id = Get-ObjectPropertyValue -InputObject $_ -Name 'id' -Default 'not collected'
@@ -3108,7 +3334,7 @@ function Get-SecureScoreReadiness {
             OpenProfiles = @($openControlProfiles).Count
             TopOpenProfiles = $topOpenProfiles
         }
-        ControlProfilesDetailedIncluded = [bool]$IncludeDetailedData
+        ControlProfilesDetailedIncluded = [bool]$script:IncludeDetailedData
         ControlProfiles = $controlProfilesPayload
     }
 }
@@ -3314,6 +3540,23 @@ function Get-SharePointExposureAdvanced {
         return [ordered]@{
             Status = 'not collected'
             Reason = 'SharePoint / OneDrive baseline data was not collected.'
+            SampledSites = 'not collected'
+            ExternalSharingSites = 'not collected'
+            AnyoneLinkSites = 'not collected'
+            InactiveSites = 'not collected'
+            OversharedContentSignal = 'not collected'
+            SampledAnyoneLinkCount = 'not collected'
+            SampledOrgWideLinkCount = 'not collected'
+            UnlabeledContentSignal = 'not collected'
+            Truncated = 'not collected'
+        }
+    }
+
+    $siteInventoryStatus = [string](Get-ObjectPropertyValue -InputObject $sharePoint -Name 'SiteInventoryStatus' -Default 'reported')
+    if ($siteInventoryStatus -ne 'reported') {
+        return [ordered]@{
+            Status = 'not collected'
+            Reason = [string](Get-ObjectPropertyValue -InputObject $sharePoint -Name 'SiteInventoryReason' -Default 'SharePoint site inventory was not collected.')
             SampledSites = 'not collected'
             ExternalSharingSites = 'not collected'
             AnyoneLinkSites = 'not collected'
@@ -4079,7 +4322,9 @@ function Get-PrerequisitesAndGaps {
             }).Count -gt 0
         }
     }
-    catch {}
+    catch {
+        Write-Debug "Connection inspection skipped: $($_.Exception.Message)"
+    }
 
     $groupMap = @{}
     $excludedSections = @('CollectorTimings', 'Errors', 'PrerequisitesAndGaps')
@@ -4314,7 +4559,7 @@ try {
         Invoke-Collector -Section ([string]$collector.Section) -Action $collector.Action
     }
 
-    # ReadinessFlags runs last — it summarises the sections above.
+    # ReadinessFlags runs last - it summarises the sections above.
     Write-Phase 'Summary'
     Write-Step 'Generating readiness summary flags...' -Color Cyan
     # Run summary builders through Invoke-Collector so a summary failure never blocks the JSON export.
@@ -4323,19 +4568,37 @@ try {
     Invoke-Collector -Section 'ReadinessEvidence' -Action { Get-ReadinessEvidence }
     Invoke-Collector -Section 'Recommendations' -Action { Get-Recommendations }
     Invoke-Collector -Section 'PrerequisitesAndGaps' -Action { Get-PrerequisitesAndGaps }
+    Write-Progress -Id 1 -Activity 'Microsoft 365 AI Readiness Export' -Completed
 
+    # ========================================================================
+    # OUTPUT & SUMMARY
+    # ========================================================================
     Write-Phase 'Output'
-    Write-Step "Writing JSON export to '$resolvedOutputPath'..." -Color Cyan
-    $exportReport = [ordered]@{}
-    foreach ($key in @($script:Report.Keys)) {
-        if (-not $IncludeDiagnostics -and $key -eq 'CollectorTimings') {
-            continue
+    $reportWritten = $false
+    if ($PSCmdlet.ShouldProcess($resolvedOutputPath, 'Write AI readiness JSON report')) {
+        $outputDirectory = Split-Path -Path $resolvedOutputPath -Parent
+        if (-not [string]::IsNullOrWhiteSpace($outputDirectory) -and -not (Test-Path -LiteralPath $outputDirectory)) {
+            [void][System.IO.Directory]::CreateDirectory($outputDirectory)
         }
 
-        $exportReport[$key] = $script:Report[$key]
+        Write-Step "Writing JSON export to '$resolvedOutputPath'..." -Color Cyan
+        $exportReport = [ordered]@{}
+        foreach ($key in @($script:Report.Keys)) {
+            if (-not $IncludeDiagnostics -and $key -eq 'CollectorTimings') {
+                continue
+            }
+
+            $exportReport[$key] = $script:Report[$key]
+        }
+
+        $exportReport | ConvertTo-Json -Depth 15 | Out-File -LiteralPath $resolvedOutputPath -Encoding utf8NoBOM -ErrorAction Stop
+        $reportWritten = $true
+        Write-Step "AI readiness export complete: $resolvedOutputPath" -Color Green
     }
-    $exportReport | ConvertTo-Json -Depth 15 | Out-File -FilePath $resolvedOutputPath -Encoding utf8NoBOM
-    Write-Step "AI readiness export complete: $resolvedOutputPath" -Color Green
+    else {
+        Write-Step "Report file was not written: $resolvedOutputPath" -Color DarkYellow
+    }
+
     $timingRows = @($script:Report.CollectorTimings.GetEnumerator() |
         Sort-Object { $_.Value.DurationMs } -Descending |
         Select-Object -First 5 |
@@ -4348,34 +4611,77 @@ try {
         })
 
     if ($timingRows.Count -gt 0) {
-        Write-Host ''
-        Write-Host 'Top collector durations (ms):' -ForegroundColor Cyan
-        $timingRows | Format-Table -AutoSize
+        Write-Information -MessageData '' -Tags @('AIReadiness') -InformationAction Continue
+        Write-Step 'Top collector durations (ms):' -Color Cyan
+        $timingTable = ($timingRows | Format-Table -AutoSize | Out-String).TrimEnd()
+        Write-Information -MessageData $timingTable -Tags @('AIReadiness') -InformationAction Continue
     }
 
+    $overallScoreSummary = Get-ObjectPropertyValue -InputObject $script:Report.ReadinessEvidence -Name 'OverallScore' -Default 'not collected'
+    $overallReadinessSummary = Get-ObjectPropertyValue -InputObject $script:Report.Recommendations -Name 'OverallReadiness' -Default 'unknown'
     if ($script:Report.ReadinessEvidence) {
-        Write-Host ''
-        Write-Host ("Overall AI readiness score: {0}" -f (Get-ObjectPropertyValue -InputObject $script:Report.ReadinessEvidence -Name 'OverallScore' -Default 'not collected')) -ForegroundColor Cyan
+        Write-Information -MessageData '' -Tags @('AIReadiness') -InformationAction Continue
+        Write-Step ("Overall AI readiness score: {0}" -f $overallScoreSummary) -Color Cyan
     }
     $reportTopRisks = @(Get-ObjectPropertyValue -InputObject $script:Report.Recommendations -Name 'TopRisks' -Default @())
     if (@($reportTopRisks).Count -gt 0) {
-        Write-Host 'Top risk:' -ForegroundColor Yellow
-        Write-Host (" - {0}" -f $reportTopRisks[0]) -ForegroundColor Yellow
+        Write-Step 'Top risk:' -Color Yellow
+        Write-Step (" - {0}" -f $reportTopRisks[0]) -Color Yellow
     }
     $reportQuickWins = @(Get-ObjectPropertyValue -InputObject $script:Report.Recommendations -Name 'QuickWins' -Default @())
     if (@($reportQuickWins).Count -gt 0) {
-        Write-Host 'Top quick win:' -ForegroundColor Green
-        Write-Host (" - {0}" -f $reportQuickWins[0]) -ForegroundColor Green
+        Write-Step 'Top quick win:' -Color Green
+        Write-Step (" - {0}" -f $reportQuickWins[0]) -Color Green
     }
 
-    Write-Host ("Sections collected: {0} | Errors: {1}" -f `
-        (($script:Report.Keys | Where-Object { $script:Report[$_] -and $_ -ne 'Errors' }).Count), `
-        $script:Report.Errors.Count)
+    $evaluatableSectionKeys = @($script:Report.Keys | Where-Object { $_ -notin @('CollectorTimings', 'Errors') })
+    $processedSectionCount = 0
+    $partialSectionCount = 0
+    $skippedSectionCount = 0
+    foreach ($sectionKey in $evaluatableSectionKeys) {
+        $sectionValue = $script:Report[$sectionKey]
+        if (Test-SectionCollected -SectionData $sectionValue) {
+            $processedSectionCount++
+            $sectionStatus = [string](Get-ObjectPropertyValue -InputObject $sectionValue -Name 'Status' -Default 'reported')
+            if ($sectionStatus -eq 'partial') {
+                $partialSectionCount++
+            }
+        }
+        else {
+            $skippedSectionCount++
+        }
+    }
+    $failedCollectorCount = $script:Report.Errors.Count
+    $script:ExitCode = if ($failedCollectorCount -gt 0 -and $processedSectionCount -eq 0) { 2 } else { 0 }
+
+    Write-Step ("Summary - Processed: {0} (Partial: {1}) | Skipped/NotCollected: {2} | Errors: {3}" -f $processedSectionCount, $partialSectionCount, $skippedSectionCount, $failedCollectorCount) -Color Cyan
     Write-Step 'Run complete. Reminder: tenant settings were read-only throughout this export.' -Color Green
+
+    Write-Output ([PSCustomObject][ordered]@{
+        OutputPath        = $resolvedOutputPath
+        ReportWritten     = $reportWritten
+        OverallScore      = $overallScoreSummary
+        OverallReadiness  = $overallReadinessSummary
+        ProcessedSections = $processedSectionCount
+        PartialSections   = $partialSectionCount
+        SkippedSections   = $skippedSectionCount
+        FailedCollectors  = $failedCollectorCount
+        ExitCode          = $script:ExitCode
+    })
 }
 catch {
+    $script:ExitCode = 1
+    Write-Progress -Id 1 -Activity 'Microsoft 365 AI Readiness Export' -Completed
     Write-Error "Fatal: $($_.Exception.Message)"
 }
 finally {
+    # ========================================================================
+    # CLEANUP
+    # ========================================================================
     Disconnect-Services
+}
+
+$global:LASTEXITCODE = $script:ExitCode
+if ($MyInvocation.InvocationName -ne '.') {
+    exit $script:ExitCode
 }
