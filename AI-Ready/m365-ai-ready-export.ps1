@@ -53,6 +53,12 @@
 .PARAMETER IncludeDetailedData
     Includes detailed Secure Score control-profile data and a longer score history.
 
+.PARAMETER FailOnCollectorError
+    Opt-in for schedulers. When at least one section was processed and
+    FailedCollectors is greater than zero, the process exits 3. Without this
+    switch that run still exits 0, which is the result existing schedules
+    already receive. Exit 2 is unchanged when no section was processed.
+
 .PARAMETER SampleSize
     Maximum number of SharePoint sites to include when sampling is enabled.
     Valid values are 1 through 5000; the default is 200.
@@ -171,7 +177,18 @@
     additional signals. Graph permissions depend on the collectors; unavailable
     permissions are recorded as data gaps.
 
+    Exit codes:
+    0  The run finished. Collector errors stay in FailedCollectors and do not
+       change this code unless -FailOnCollectorError is set.
+    1  A fatal error stopped the run before the normal summary.
+    2  FailedCollectors is greater than zero and no section was processed.
+    3  -FailOnCollectorError was set, at least one section was processed, and
+       FailedCollectors is greater than zero.
+
     Change log:
+    - 2026-11-22: A Data governance section that collected neither labels nor
+      compliance data keeps the Purview connection failure in its reason.
+      -FailOnCollectorError exits 3 when the run finished with collector errors.
     - 2026-11-22: Exchange Online and Purview connect before MicrosoftTeams
       is imported, so Exchange Online Management 3.10.1 can load
       Microsoft.Identity.Client 4.83.1. A failed Exchange or Purview
@@ -254,6 +271,9 @@ param(
 
     [Parameter(ParameterSetName = 'Standard')]
     [switch]$IncludeDetailedData,
+
+    [Parameter(ParameterSetName = 'Standard')]
+    [switch]$FailOnCollectorError,
 
     [Parameter(ParameterSetName = 'Standard')]
     [Parameter(ParameterSetName = 'Child')]
@@ -4118,6 +4138,34 @@ function ConvertTo-CompliancePolicyList {
     return ,$list.ToArray()
 }
 
+function Get-MissingComplianceDataReason {
+    # Shared by the not-collected and partial Data governance paths so a failed
+    # Purview connect is not dropped when Graph labels are also unavailable.
+    param([bool]$HasIppsSession)
+
+    $purviewConnectionError = Get-ScriptStringParameter -Name 'ComplianceConnectionError'
+    $purviewConnectionStatus = Get-ScriptStringParameter -Name 'ComplianceConnectionStatus'
+    if (-not $HasIppsSession -and $purviewConnectionStatus -eq 'failed' -and -not [string]::IsNullOrWhiteSpace($purviewConnectionError)) {
+        return "Purview connection failed: $purviewConnectionError"
+    }
+    if (-not $HasIppsSession) {
+        return 'DLP and retention were not collected because no Purview compliance session was available.'
+    }
+    return 'DLP or retention policy data was not collected.'
+}
+
+function Get-ExportExitCode {
+    param(
+        [int]$FailedCollectorCount,
+        [int]$ProcessedSectionCount,
+        [bool]$FailOnCollectorError
+    )
+
+    if ($FailedCollectorCount -gt 0 -and $ProcessedSectionCount -eq 0) { return 2 }
+    if ($FailOnCollectorError -and $FailedCollectorCount -gt 0) { return 3 }
+    return 0
+}
+
 function Get-DataGovernanceReadiness {
     $labels = @()
     $graphCollected = $false
@@ -4192,23 +4240,20 @@ function Get-DataGovernanceReadiness {
     $labelsCollected = [bool]$labelSnapshot.Collected
     $status = 'reported'
     $reason = ''
+    $complianceGapReason = if ($hasComplianceData) { '' } else { Get-MissingComplianceDataReason -HasIppsSession $hasIppsSession }
     if (-not $labelsCollected -and -not $hasComplianceData) {
         $status = 'not collected'
-        $reason = if (-not [string]::IsNullOrWhiteSpace([string]$labelSnapshot.Reason)) { [string]$labelSnapshot.Reason } else { 'Neither labels nor compliance policy data could be collected.' }
+        $reasonParts = [System.Collections.Generic.List[string]]::new()
+        if (-not [string]::IsNullOrWhiteSpace([string]$labelSnapshot.Reason)) { $reasonParts.Add([string]$labelSnapshot.Reason) }
+        else { $reasonParts.Add('Neither labels nor compliance policy data could be collected.') }
+        if (-not [string]::IsNullOrWhiteSpace($complianceGapReason)) { $reasonParts.Add($complianceGapReason) }
+        $reason = $reasonParts -join ' '
     }
     elseif (-not $labelsCollected -or -not $hasComplianceData) {
         $status = 'partial'
         $reasonParts = [System.Collections.Generic.List[string]]::new()
         if (-not $labelsCollected -and -not [string]::IsNullOrWhiteSpace([string]$labelSnapshot.Reason)) { $reasonParts.Add([string]$labelSnapshot.Reason) }
-        if (-not $hasComplianceData) {
-            $purviewConnectionError = Get-ScriptStringParameter -Name 'ComplianceConnectionError'
-            $purviewConnectionStatus = Get-ScriptStringParameter -Name 'ComplianceConnectionStatus'
-            if (-not $hasIppsSession -and $purviewConnectionStatus -eq 'failed' -and -not [string]::IsNullOrWhiteSpace($purviewConnectionError)) {
-                $reasonParts.Add("Purview connection failed: $purviewConnectionError")
-            }
-            elseif (-not $hasIppsSession) { $reasonParts.Add('DLP and retention were not collected because no Purview compliance session was available.') }
-            else { $reasonParts.Add('DLP or retention policy data was not collected.') }
-        }
+        if (-not $hasComplianceData -and -not [string]::IsNullOrWhiteSpace($complianceGapReason)) { $reasonParts.Add($complianceGapReason) }
         $reason = $reasonParts -join ' '
     }
 
@@ -6654,7 +6699,7 @@ try {
         }
     }
     $failedCollectorCount = $script:Report.Errors.Count
-    $script:ExitCode = if ($failedCollectorCount -gt 0 -and $processedSectionCount -eq 0) { 2 } else { 0 }
+    $script:ExitCode = Get-ExportExitCode -FailedCollectorCount $failedCollectorCount -ProcessedSectionCount $processedSectionCount -FailOnCollectorError:([bool]$FailOnCollectorError)
 
     Write-Step ("Summary - Processed: {0} (Partial: {1}) | Skipped/NotCollected: {2} | Errors: {3}" -f $processedSectionCount, $partialSectionCount, $skippedSectionCount, $failedCollectorCount) -Color Cyan
     Write-Step 'Run complete. Reminder: tenant settings were read-only throughout this export.' -Color Green

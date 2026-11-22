@@ -1026,6 +1026,49 @@ Assert-True ($labelAdvanced.LabelPoliciesPublished -ne 0) 'A missing label count
             Assert-True ($gaps.CurrentPrerequisites.SessionAvailability.ExchangeConnectionError -match 'Microsoft\.Identity\.Client') 'The Exchange connection error is kept.'
             Assert-True ($gaps.CurrentPrerequisites.SessionAvailability.ComplianceConnectionError -match 'Microsoft\.Identity\.Client') 'The Purview connection error is kept.'
         }
+
+        It 'keeps the Purview connection failure on a not-collected data governance section' {
+            $script:ComplianceConnectionStatus = 'failed'
+            $script:ComplianceConnectionError = 'Could not load file or assembly Microsoft.Identity.Client.dll'
+            function Get-ConnectionInformation {
+                [CmdletBinding()]
+                param()
+            }
+            function Get-GraphRestAll {
+                param([string]$Uri, [hashtable]$Query = @{}, [switch]$BypassCache)
+                $script:GraphLastHttpStatus = 403
+                return @()
+            }
+
+            $governance = Get-DataGovernanceReadiness
+            Assert-Equal $governance.Status 'not collected' 'Missing labels and a failed Purview connect are not collected.'
+            Assert-True ($governance.Reason -match 'HTTP 403') 'The Graph label error stays in the reason.'
+            Assert-True ($governance.Reason -match 'Purview connection failed: Could not load file or assembly Microsoft\.Identity\.Client\.dll') 'The Purview connection failure is included with the Graph label error.'
+
+            $script:GraphLastHttpStatus = 200
+            function Get-GraphRestAll {
+                param([string]$Uri, [hashtable]$Query = @{}, [switch]$BypassCache)
+                $script:GraphLastHttpStatus = 200
+                return @([pscustomobject]@{ name = 'Public'; isPublished = $true })
+            }
+            $partial = Get-DataGovernanceReadiness
+            Assert-Equal $partial.Status 'partial' 'Collected labels with a failed Purview connect stay partial.'
+            Assert-True ($partial.Reason -match 'Purview connection failed: Could not load file or assembly Microsoft\.Identity\.Client\.dll') 'The partial path still records the Purview connection failure.'
+        }
+
+        It 'exits 3 for finished runs with collector errors only when requested' {
+            $failOnCollectorError = @($ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'FailOnCollectorError' })
+            Assert-Equal @($failOnCollectorError).Count 1 'FailOnCollectorError is a script parameter.'
+            $helpText = Get-Content -LiteralPath $scriptPath -Raw
+            Assert-True ($helpText -match 'Exit codes:') 'The help documents the exit codes.'
+            Assert-True ($helpText -match 'exits 3') 'The help documents exit code 3.'
+
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount 2 -ProcessedSectionCount 8 -FailOnCollectorError $false) 0 'Without the switch, a finished run with collector errors still exits 0.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount 2 -ProcessedSectionCount 0 -FailOnCollectorError $false) 2 'No processed section still exits 2.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount 2 -ProcessedSectionCount 8 -FailOnCollectorError $true) 3 'The switch exits 3 when the run finished with collector errors.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount 2 -ProcessedSectionCount 0 -FailOnCollectorError $true) 2 'The switch keeps exit 2 when no section was processed.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount 0 -ProcessedSectionCount 8 -FailOnCollectorError $true) 0 'The switch does not fail a run that recorded no collector errors.'
+        }
     }
 }
 
