@@ -15,7 +15,14 @@ $tokens = $null
 $parseErrors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
-foreach ($functionName in @('Resolve-ExoCertificateProfile', 'Set-ExoProfileMapEntry', 'New-ExoLocalCertificate')) {
+foreach ($functionName in @(
+    'Get-ObjectPropertyValue',
+    'Resolve-ExoCertificateProfile',
+    'Set-ExoProfileMapEntry',
+    'New-ExoLocalCertificate',
+    'Get-OrCreateExoEntraApplication',
+    'Set-ExoEntraAppRoleAssignment'
+)) {
     $definition = $ast.Find({
         param($node)
         $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName
@@ -178,5 +185,83 @@ Describe 'o365-connect-exo-cert profile and export behavior' {
         } '*partial export files were removed*'
         Assert-True ($script:removedCertificate -eq 'Cert:\CurrentUser\My\ABCDEF0123456789ABCDEF0123456789ABCDEF01') 'The generated certificate must be removed after export failure.'
         Assert-True (@(Get-ChildItem -LiteralPath $outputPath -Force).Count -eq 0) 'Partial CER/PFX files must be removed after export failure.'
+    }
+
+    It 'resolves profiles safely under StrictMode when optional JSON fields are omitted' {
+        $colors = @{ ProcessMessage = 'Green' }
+        $sparseMapPath = Join-Path $script:testRoot 'sparse-map.json'
+        $sparseProfiles = @(
+            [pscustomobject]@{ tenant = 'alpha.onmicrosoft.com'; appId = 'app-alpha'; certificateThumbprint = 'thumb-alpha' },
+            [pscustomobject]@{ name = 'TargetProfile'; organization = 'beta.onmicrosoft.com'; appId = 'app-beta'; certificateThumbprint = 'thumb-beta' }
+        )
+        ConvertTo-Json -InputObject @{ profiles = $sparseProfiles } -Depth 4 | Set-Content -LiteralPath $sparseMapPath -Encoding UTF8
+
+        $resolvedByTenant = Resolve-ExoCertificateProfile -Path $sparseMapPath -TenantFilter 'beta.onmicrosoft.com' -NoPrompt -Colors $colors
+        Assert-True ($resolvedByTenant.appId -eq 'app-beta') 'Tenant filter must match organization even when tenant and name properties are missing on other entries.'
+
+        Assert-Throws {
+            Resolve-ExoCertificateProfile -Path $sparseMapPath -ProfileFilter 'Missing' -NoPrompt -Colors $colors
+        } '*No matching certificate profile found*'
+    }
+
+    It 'rejects empty SecureString PFX passwords and duplicate Entra app display names' {
+        $emptyPassword = New-Object System.Security.SecureString
+        $outputPath = Join-Path $script:testRoot 'empty-pwd-cert'
+        Assert-Throws {
+            New-ExoLocalCertificate -SubjectName 'test' -YearsValid 1 -OutputPath $outputPath -ExportPfx -PfxPassword $emptyPassword -NoPrompt
+        } '*non-empty GeneratedPfxPassword*'
+
+        function Invoke-ExoGraphRequest {
+            [CmdletBinding()]
+            param([string]$AccessToken, [string]$Method, [string]$Uri, [object]$Body)
+            return [pscustomobject]@{
+                value = @(
+                    [pscustomobject]@{ id = 'obj-1'; appId = 'app-1'; displayName = 'DupApp' },
+                    [pscustomobject]@{ id = 'obj-2'; appId = 'app-2'; displayName = 'DupApp' }
+                )
+            }
+        }
+        $colors = @{ ProcessMessage = 'Green'; WarningMessage = 'Yellow' }
+        Assert-Throws {
+            Get-OrCreateExoEntraApplication -AccessToken 'tok' -DisplayName 'DupApp' -ExoManageAsAppRoleId 'r1' -GraphReadAllRoleId 'r2' -ExoResourceAppId 'e1' -GraphResourceAppId 'g1' -Colors $colors
+        } '*Multiple Entra app registrations match display name*'
+    }
+
+    It 'fetches existing appRoleAssignments once and skips already-granted roles' {
+        $script:graphCalls = [System.Collections.Generic.List[string]]::new()
+        function Invoke-ExoGraphRequest {
+            [CmdletBinding()]
+            param([string]$AccessToken, [string]$Method, [string]$Uri, [object]$Body)
+            $script:graphCalls.Add("$Method $Uri")
+            if ($Method -eq 'Get') {
+                return [pscustomobject]@{
+                    value = @(
+                        [pscustomobject]@{ appRoleId = 'exo-role'; resourceId = 'exo-sp' }
+                    )
+                }
+            }
+            return [pscustomobject]@{ id = 'new-assignment' }
+        }
+        $colors = @{ ProcessMessage = 'Green' }
+        Set-ExoEntraAppRoleAssignment -AccessToken 'tok' -ServicePrincipalId 'sp-1' -ExoServicePrincipalId 'exo-sp' -ExoManageAsAppRoleId 'exo-role' -GraphServicePrincipalId 'graph-sp' -GraphReadAllRoleId 'graph-role' -Colors $colors
+        $getCalls  = @($script:graphCalls | Where-Object { $_ -like 'Get *' })
+        $postCalls = @($script:graphCalls | Where-Object { $_ -like 'Post *' })
+        Assert-True ($getCalls.Count -eq 1) 'Existing appRoleAssignments should be queried once.'
+        Assert-True ($postCalls.Count -eq 1) 'Only the missing Graph role should be posted.'
+    }
+
+    It 'rejects mutually exclusive parameter combinations via parameter sets' {
+        $powerShellPath = (Get-Process -Id $PID).MainModule.FileName
+        $previousErrorAction = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $output = & $powerShellPath -NoProfile -ExecutionPolicy Bypass -File $scriptPath -GenerateLocalCertificate -UseCertificateAuth 2>&1 | Out-String
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorAction
+        }
+        Assert-True ($exitCode -ne 0) 'Passing both mode switches must fail.'
+        Assert-True ($output -like '*Parameter set cannot be resolved*') 'PowerShell parameter set binding must reject combining both modes.'
     }
 }
