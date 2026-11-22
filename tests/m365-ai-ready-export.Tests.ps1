@@ -358,6 +358,157 @@ Describe 'm365-ai-ready-export' {
             Assert-Equal $installCommands.Count 0 'Script does not invoke Install-Module during read-only collection.'
         }
     }
+
+    Context 'Permission implication, CSV reports, Copilot activity, Secure Score, gap walk, and labels' {
+        It 'keeps broader Graph permissions, decoded CSV rows, active Copilot users, scored gaps, date walks, and null label counts' {
+# Permission implication: Directory.Read.All and *.ReadWrite.All satisfy narrower reads.
+Assert-True (Test-GraphPermissionSatisfied -GrantedPermission 'Directory.Read.All' -RequiredPermission 'Organization.Read.All') 'Directory.Read.All covers Organization.Read.All.'
+Assert-True (Test-GraphPermissionSatisfied -GrantedPermission 'Directory.Read.All' -RequiredPermission 'Group.Read.All') 'Directory.Read.All covers Group.Read.All.'
+Assert-True (Test-GraphPermissionSatisfied -GrantedPermission 'Directory.Read.All' -RequiredPermission 'User.Read.All') 'Directory.Read.All covers User.Read.All.'
+Assert-True (Test-GraphPermissionSatisfied -GrantedPermission 'Directory.Read.All' -RequiredPermission 'GroupMember.Read.All') 'Directory.Read.All covers GroupMember.Read.All.'
+Assert-True (Test-GraphPermissionSatisfied -GrantedPermission 'Directory.Read.All' -RequiredPermission 'Application.Read.All') 'Directory.Read.All covers Application.Read.All.'
+Assert-True (Test-GraphPermissionSatisfied -GrantedPermission 'Directory.ReadWrite.All' -RequiredPermission 'Directory.Read.All') 'Directory.ReadWrite.All covers Directory.Read.All.'
+Assert-True (Test-GraphPermissionSatisfied -GrantedPermission 'Directory.ReadWrite.All' -RequiredPermission 'Organization.Read.All') 'Directory.ReadWrite.All covers Organization.Read.All.'
+Assert-True (Test-GraphPermissionSatisfied -GrantedPermission 'Group.ReadWrite.All' -RequiredPermission 'Group.Read.All') 'Group.ReadWrite.All covers Group.Read.All.'
+Assert-True (Test-GraphPermissionSatisfied -GrantedPermission 'https://graph.microsoft.com/Reports.ReadWrite.All' -RequiredPermission 'Reports.Read.All') 'A full Graph URL ReadWrite permission covers Read.'
+Assert-True (-not (Test-GraphPermissionSatisfied -GrantedPermission 'Group.ReadWrite.All' -RequiredPermission 'GroupMember.Read.All')) 'Group.ReadWrite.All does not cover GroupMember.Read.All.'
+Assert-True (-not (Test-GraphPermissionSatisfied -GrantedPermission 'Reports.Read.All' -RequiredPermission 'Group.Read.All')) 'Reports.Read.All does not cover Group.Read.All.'
+
+function Get-MgContext { return $null }
+function New-UnsignedTestJwt {
+    param([hashtable]$ClaimSet)
+    $json = $ClaimSet | ConvertTo-Json -Compress -Depth 6
+    $encodedClaimSet = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($json)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+    return ('e30.{0}.sig' -f $encodedClaimSet)
+}
+$script:GraphAccessToken = New-UnsignedTestJwt @{ roles = @('Directory.Read.All', 'Reports.Read.All'); scp = '' }
+$missingDirectory = @(Get-GraphMissingScopes -RequiredScopes @(
+    'Directory.Read.All', 'Organization.Read.All', 'Group.Read.All', 'User.Read.All', 'GroupMember.Read.All', 'Application.Read.All', 'Reports.Read.All'
+))
+Assert-Equal @($missingDirectory).Count 0 'A Directory.Read.All app role satisfies the narrower directory reads.'
+$script:GraphAccessToken = New-UnsignedTestJwt @{ roles = @('Group.ReadWrite.All'); scp = '' }
+$missingGroup = @(Get-GraphMissingScopes -RequiredScopes @('Group.Read.All', 'Organization.Read.All'))
+Assert-Equal @($missingGroup).Count 1 'Group.ReadWrite.All leaves Organization.Read.All missing.'
+Assert-Equal $missingGroup[0] 'organization.read.all' 'The remaining missing scope is organization.read.all.'
+
+# CSV bytes with a UTF-8 BOM decode to rows instead of an empty report.
+$csvText = "Report Refresh Date,Office 365`r`n2026-11-22,42`r`n"
+$csvBytes = [byte[]]((0xEF, 0xBB, 0xBF) + [System.Text.Encoding]::UTF8.GetBytes($csvText))
+$decodedRows = @(ConvertFrom-GraphReportContent -Content $csvBytes)
+Assert-Equal @($decodedRows).Count 1 'BOM-prefixed CSV bytes produce one row.'
+Assert-Equal (Get-RowValueNormalized -Row $decodedRows[0] -CandidateNames @('office365', 'office 365')) '42' 'The Office 365 column survives BOM removal.'
+Assert-Equal (Get-RowValueNormalized -Row $decodedRows[0] -CandidateNames @('reportRefreshDate', 'report refresh date')) '2026-11-22' 'The report date header is not BOM-prefixed.'
+
+# Copilot active users are lastActivityDate within the period, not licensed-user row counts.
+$copilotDetail = @(
+    [pscustomobject]@{ 'Report Refresh Date' = '2026-11-22'; 'User Principal Name' = 'active@contoso.com'; 'Last Activity Date' = '2026-11-20' }
+    [pscustomobject]@{ 'Report Refresh Date' = '2026-11-22'; 'User Principal Name' = 'stale@contoso.com'; 'Last Activity Date' = '2026-01-01' }
+    [pscustomobject]@{ 'Report Refresh Date' = '2026-11-22'; 'User Principal Name' = 'licensed-only@contoso.com'; 'Last Activity Date' = '' }
+)
+$copilotActive = Get-CopilotActiveUserCount -Rows $copilotDetail -Period 'D30' -ReportDate ([datetime]'2026-11-22T00:00:00Z')
+Assert-Equal $copilotActive 1 'Only the user active inside D30 is counted.'
+$summaryRow = [pscustomobject]@{ 'Any App Enabled Users' = 100; 'Any App Active Users' = 5; 'Report Period' = 30 }
+Assert-Equal (Get-CopilotSummaryActiveUserCount -Rows @($summaryRow) -Period 'D30') 5 'Summary active users are not the enabled/licensed count.'
+$nestedSummary = [pscustomobject]@{
+    reportRefreshDate = '2026-11-22'
+    adoptionByProduct = @([pscustomobject]@{ reportPeriod = 30; anyAppEnabledUsers = 100; anyAppActiveUsers = 4 })
+}
+Assert-Equal (Get-CopilotSummaryActiveUserCount -Rows @($nestedSummary) -Period 'D30') 4 'Nested summary JSON uses anyAppActiveUsers.'
+$candidateUris = @(Get-CopilotReportCandidateUris -Period 'D30' | ForEach-Object { [string]$_.Uri })
+Assert-True (($candidateUris -join "`n") -match 'getMicrosoft365CopilotUserCountSummary') 'D30 candidates include getMicrosoft365CopilotUserCountSummary.'
+Assert-True (($candidateUris -join "`n") -match 'getMicrosoft365CopilotUsageUserDetail') 'D30 candidates include getMicrosoft365CopilotUsageUserDetail.'
+Assert-True (-not (($candidateUris -join "`n") -match 'getMicrosoft365CopilotUsageUserCounts')) 'The non-existent UsageUserCounts report is not requested.'
+Assert-True (($candidateUris -join "`n") -match "period='D30'") 'The beta reports path keeps D30.'
+Assert-True (($candidateUris -join "`n") -match "period='D28'") 'The copilot reports path maps D30 to the documented D28 period.'
+foreach ($periodName in @('D7', 'D90', 'D180')) {
+    $periodUris = @(Get-CopilotReportCandidateUris -Period $periodName | ForEach-Object { [string]$_.Uri })
+    Assert-True (($periodUris -join "`n") -match "period='$periodName'") "$periodName is sent to the documented Copilot report endpoints."
+}
+
+# Secure Score open controls are scored gaps, not the whole catalog.
+$secureProfiles = @(
+    [pscustomobject]@{ id = 'mfa'; title = 'Require MFA'; maxScore = 9; rank = 5; controlCategory = 'Identity'; controlStateUpdates = @() }
+    [pscustomobject]@{ id = 'legacy'; title = 'Block legacy'; maxScore = 8; rank = 1; controlCategory = 'Identity'; controlStateUpdates = @([pscustomobject]@{ state = 'ThirdParty' }) }
+    [pscustomobject]@{ id = 'done'; title = 'Fully achieved'; maxScore = 10; rank = 2; controlCategory = 'Data'; controlStateUpdates = @() }
+    [pscustomobject]@{ id = 'bigger'; title = 'Larger gap'; maxScore = 20; rank = 9; controlCategory = 'Apps'; controlStateUpdates = @() }
+    [pscustomobject]@{ id = 'catalog-only'; title = 'Not scored'; maxScore = 50; rank = 1; controlCategory = 'Device'; controlStateUpdates = @() }
+)
+$secureScores = @(
+    [pscustomobject]@{ controlName = 'mfa'; score = 3 }
+    [pscustomobject]@{ controlName = 'legacy'; score = 1 }
+    [pscustomobject]@{ controlName = 'done'; score = 10 }
+    [pscustomobject]@{ controlName = 'bigger'; score = 2 }
+)
+$secureAssessment = Get-SecureScoreOpenControlAssessment -ControlProfiles $secureProfiles -ControlScores $secureScores
+Assert-Equal $secureAssessment.OpenControlCount 2 'Open controls are scored, have points available, and are not addressed.'
+Assert-Equal $secureAssessment.NotApplicableCount 1 'Catalog profiles absent from controlScores are not applicable.'
+Assert-Equal $secureAssessment.AddressedWithPointsRemaining 1 'Addressed controls with a remaining gap are counted separately.'
+Assert-Equal $secureAssessment.FullyAchievedCount 1 'A scored control at max score is fully achieved.'
+Assert-Equal $secureAssessment.TotalPointsAvailable 31 'Points available sum the scored gaps, including addressed ones (6 + 7 + 0 + 18).'
+Assert-Equal $secureAssessment.Open[0].id 'bigger' 'Open controls sort by pointsAvailable descending.'
+Assert-Equal $secureAssessment.Open[0].pointsAvailable 18 'The larger gap is maxScore minus the current control score.'
+Assert-Equal $secureAssessment.Open[1].pointsAvailable 6 'The MFA gap uses the profile max score when the controlScore has no maxScore.'
+Assert-True ($secureAssessment.OpenControlCount -ne @($secureProfiles).Count) 'Open is not the whole control catalog.'
+
+# DateTime values stop the not-collected walk instead of recursing through Date.
+$dateWalk = [pscustomobject]@{
+    Status = 'reported'
+    When = [datetime]'2026-11-22T00:00:00Z'
+    Nested = [ordered]@{
+        Note = 'not collected'
+        Stamp = [datetimeoffset]::UtcNow
+    }
+}
+$dateWatch = [System.Diagnostics.Stopwatch]::StartNew()
+$datePaths = @(Get-NotCollectedFieldPaths -InputObject $dateWalk)
+$directDatePaths = @(Get-NotCollectedFieldPaths -InputObject ([datetime]::UtcNow))
+$enumPaths = @(Get-NotCollectedFieldPaths -InputObject ([SharingCapabilities]::ExternalUserAndGuestSharing))
+$dateWatch.Stop()
+Assert-Equal @($datePaths).Count 1 'Only the nested not-collected string is reported.'
+Assert-Equal $datePaths[0] 'Nested.Note' 'The not-collected path keeps its field name.'
+Assert-Equal @($directDatePaths).Count 0 'A DateTime value produces no paths.'
+Assert-Equal @($enumPaths).Count 0 'An enum value produces no paths.'
+Assert-True ($dateWatch.ElapsedMilliseconds -lt 2000) 'DateTime recursion returns immediately.'
+
+# Labels that were not collected stay null. A collected zero stays zero.
+$emptyLabels = Get-SensitivityLabelSnapshot -GraphCollected $false -ComplianceSessionConnected $false
+Assert-Equal $emptyLabels.Collected $false 'Labels without Graph or Purview are not collected.'
+Assert-Equal $emptyLabels.Published $null 'A missing published-label count is null.'
+Assert-Equal $emptyLabels.Total $null 'A missing label total is null.'
+Assert-True (-not [string]::IsNullOrWhiteSpace([string]$emptyLabels.Reason)) 'The null label count includes a reason.'
+
+$zeroLabels = Get-SensitivityLabelSnapshot -GraphCollected $true -GraphLabels @()
+Assert-Equal $zeroLabels.Published 0 'A successful empty Graph label response remains zero.'
+
+$purviewLabels = Get-SensitivityLabelSnapshot -GraphCollected $false -ComplianceSessionConnected $true -ComplianceLabels @(
+    [pscustomobject]@{ Name = 'Public' }
+    [pscustomobject]@{ Name = 'Confidential' }
+) -ComplianceLabelPolicies @(
+    [pscustomobject]@{ Name = 'Default'; Labels = @('Public', 'Confidential', 'Public') }
+) -AutoSensitivityLabelPolicies @(
+    [pscustomobject]@{ Name = 'Auto finance' }
+)
+Assert-Equal $purviewLabels.Total 2 'Purview Get-Label supplies the label total when Graph is unavailable.'
+Assert-Equal $purviewLabels.Published 2 'Published labels come from Get-LabelPolicy, with duplicates removed.'
+Assert-Equal $purviewLabels.AutoLabel 1 'Get-AutoSensitivityLabelPolicy supplies the auto-label count.'
+
+$script:Report = [ordered]@{
+    DataGovernance = [ordered]@{
+        Status = 'partial'
+        Reason = 'Sensitivity labels were not collected.'
+        SensitivityLabelsPublished = $null
+        SensitivityLabelsTotal = $null
+        LabelCollectionReason = 'Sensitivity labels were not collected.'
+        DlpPolicies = 'not collected'
+        RetentionPolicies = 'not collected'
+    }
+}
+$labelAdvanced = Get-DataProtectionAdvanced
+Assert-Equal $labelAdvanced.LabelPoliciesPublished $null 'Advanced label publication is null when labels were not collected.'
+Assert-Equal $labelAdvanced.LabelPoliciesTotal $null 'Advanced label total is null when labels were not collected.'
+Assert-True ($labelAdvanced.LabelPoliciesPublished -ne 0) 'A missing label count is not reported as zero.'
+        }
+    }
 }
 
 Write-Output 'm365-ai-ready-export collector tests passed.'
