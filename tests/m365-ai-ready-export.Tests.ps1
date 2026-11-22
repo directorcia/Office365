@@ -329,7 +329,8 @@ Describe 'm365-ai-ready-export' {
 
             $licensing = Get-LicensingReadiness
             Assert-Equal $licensing.PrereqReadyUserCount 1 'Only the user with all four enabled workload services is counted ready.'
-            Assert-Equal $licensing.PrereqReadyPercent 50 'PrereqReadyPercent is 50% for 1 of 2 users.'
+            Assert-Equal $licensing.PrereqReadyDenominator 1 'Guests are excluded from the licence-readiness denominator.'
+            Assert-Equal $licensing.PrereqReadyPercent 100 'PrereqReadyPercent uses enabled member users, so 1 of 1 members is 100%.'
         }
 
         It 'resolves output paths with spaces without creating directories prematurely and enforces Child parameter set' {
@@ -507,6 +508,387 @@ $labelAdvanced = Get-DataProtectionAdvanced
 Assert-Equal $labelAdvanced.LabelPoliciesPublished $null 'Advanced label publication is null when labels were not collected.'
 Assert-Equal $labelAdvanced.LabelPoliciesTotal $null 'Advanced label total is null when labels were not collected.'
 Assert-True ($labelAdvanced.LabelPoliciesPublished -ne 0) 'A missing label count is not reported as zero.'
+        }
+    }
+
+    Context 'Remaining headless collection bugs' {
+        It 'does not import PnP.PowerShell on the parent connection path' {
+            $importCommands = @($ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Import-Module'
+            }, $true))
+            $pnpImports = @($importCommands | Where-Object { $_.Extent.Text -match 'PnP\.PowerShell' })
+            Assert-Equal @($pnpImports).Count 0 'The parent script has no Import-Module PnP.PowerShell command.'
+
+            $connectServices = @($ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Connect-Services'
+            }, $false)) | Select-Object -First 1
+            Assert-True ($null -ne $connectServices) 'Connect-Services is defined.'
+            Assert-True ($connectServices.Body.Extent.Text -notmatch 'Import-Module PnP') 'Connect-Services does not import PnP.'
+            Assert-True ($connectServices.Body.Extent.Text -notmatch 'Import-SilentPnPModule') 'Connect-Services does not load the SharePoint child module helper.'
+            $exchangeIndex = $connectServices.Body.Extent.Text.IndexOf('Connect-ExchangeOnline')
+            $ippsIndex = $connectServices.Body.Extent.Text.IndexOf('Connect-IPPSSession')
+            $teamsIndex = $connectServices.Body.Extent.Text.IndexOf('Connect-MicrosoftTeams')
+            Assert-True ($exchangeIndex -ge 0 -and $ippsIndex -ge 0 -and $teamsIndex -ge 0) 'Exchange, Purview, and Teams connections are present.'
+            Assert-True ($exchangeIndex -lt $teamsIndex -and $ippsIndex -lt $teamsIndex) 'Exchange and Purview connect before Teams, and before any SharePoint child work.'
+
+            $silentImport = @($ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Import-SilentPnPModule'
+            }, $false)) | Select-Object -First 1
+            Assert-True ($silentImport.Body.Extent.Text -match 'PnP\.PowerShell') 'The SharePoint child helper still loads PnP.PowerShell.'
+        }
+
+        It 'emits not-collected site counts and scores tenant anyone-link capability with lower confidence' {
+            $script:Report = [ordered]@{
+                SharePointOneDrive = [ordered]@{
+                    Status = 'partial'
+                    ExternalSharingLevel = 'ExternalUserAndGuestSharing'
+                    SiteInventoryStatus = 'not collected'
+                    SiteInventoryReason = 'Site inventory was not collected.'
+                    TotalSiteCount = 'not collected'
+                    Sites = @()
+                    RestrictedSearchEnabled = 'not collected'
+                    OneDrivePersonalSiteSharePercent = 'not collected'
+                }
+            }
+            $exposure = Get-SharePointExposureAdvanced
+            Assert-Equal $exposure.AnyoneLinkSites 'not collected' 'Missing site inventory does not emit zero anyone-link sites.'
+            Assert-Equal $exposure.ExternalSharingSites 'not collected' 'Missing site inventory does not emit zero external-sharing sites.'
+            Assert-Equal $exposure.AnyoneLinksPossible $true 'ExternalUserAndGuestSharing means anyone links are possible.'
+            Assert-Equal $exposure.AnyoneLinkMeasurement 'tenant-settings' 'The anyone-link signal is marked as tenant settings.'
+            Assert-True ($exposure.Reason -match 'not collected') 'The exposure reason says the site counts were not collected.'
+
+            $script:Report = [ordered]@{
+                ReadinessFlags = [ordered]@{
+                    MfaRegisteredPercent = 'not collected'
+                    CaPoliciesEnabled = 'not collected'
+                    SensitivityLabelsPublished = 'not collected'
+                    OneDrivePersonalSiteSharePercent = 'not collected'
+                    RestrictedSearchEnabled = 'not collected'
+                    ActiveUsersInReportPeriodPercent = 'not collected'
+                    ExternalSharingLevel = 'ExternalUserAndGuestSharing'
+                }
+                Identity = [ordered]@{ Status = 'reported' }
+                ConditionalAccess = [ordered]@{ Status = 'reported' }
+                DataGovernance = [ordered]@{ Status = 'reported' }
+                SharePointOneDrive = [ordered]@{ Status = 'reported' }
+                AdoptionSignals = [ordered]@{ Status = 'reported' }
+                IdentityAccessAdvanced = [ordered]@{ Status = 'reported' }
+                DataProtectionAdvanced = [ordered]@{ Status = 'reported' }
+                SharePointExposureAdvanced = $exposure
+                AppGovernanceAdvanced = [ordered]@{ Status = 'reported' }
+                EndpointAppAdvanced = [ordered]@{ Status = 'reported' }
+                AdoptionAdvanced = [ordered]@{ Status = 'reported' }
+            }
+            $script:ScoringModel = $null
+            $tenantEvidence = Get-ReadinessEvidence
+            Assert-Equal $tenantEvidence.DomainScores.ContentExposure 0 'Tenant anyone-link capability scores as anyone links present.'
+            Assert-Equal $tenantEvidence.DataCompleteness.AnyoneLinkConfidence 'reduced' 'Tenant-only anyone-link scoring lowers confidence.'
+            Assert-Equal $tenantEvidence.DataCompleteness.CompletenessPercent 3.3 'Tenant-only anyone links contribute half of that metric weight.'
+            Assert-True ($tenantEvidence.RiskSignals.AnyoneLinkSites -eq 'not collected') 'Risk signals do not turn a missing site count into zero.'
+
+            $script:Report.SharePointExposureAdvanced = [ordered]@{
+                AnyoneLinkSites = 0
+                AnyoneLinksPossible = $false
+                AnyoneLinkMeasurement = 'site-inventory'
+            }
+            $siteEvidence = Get-ReadinessEvidence
+            Assert-Equal $siteEvidence.DomainScores.ContentExposure 100 'A collected zero anyone-link count still receives the full weight.'
+            Assert-Equal $siteEvidence.DataCompleteness.CompletenessPercent 6.6 'A measured site count contributes the full anyone-link weight.'
+            Assert-True ($tenantEvidence.DataCompleteness.CompletenessPercent -lt $siteEvidence.DataCompleteness.CompletenessPercent) 'Tenant-only evidence is a lower completeness percent than a site inventory.'
+        }
+
+        It 'reads Office 365 Active from the services report and keeps blanks null' {
+            $blankDaily = [pscustomobject]@{ 'Report Date' = '2026-11-22'; 'Office 365' = ''; Teams = '9' }
+            Assert-Equal (Get-ActiveUserCountFromRow -Row $blankDaily -CandidateNames @('Office 365', 'office365')) $null 'A blank Office 365 cell is null.'
+            Assert-True ($null -eq (Get-ActiveUserCountFromRow -Row $blankDaily -CandidateNames @('Office 365', 'office365'))) 'A blank Office 365 cell is not zero.'
+            Assert-Equal (Get-ActiveUserCountFromRow -Row ([pscustomobject]@{ 'Office 365 Active' = '0' }) -CandidateNames @('Office 365 Active')) 0 'A real zero stays zero.'
+
+            $script:ServicesUserCountRow = [pscustomobject]@{
+                'Report Refresh Date' = '2026-11-22'
+                'Office 365 Active' = '120'
+                'Office 365 Inactive' = '30'
+                'Teams Active' = '80'
+                'SharePoint Active' = '70'
+                'OneDrive Active' = '60'
+                'Exchange Active' = '90'
+            }
+            function Get-GraphReportRows {
+                param([Parameter(Mandatory)][string]$Uri, [hashtable]$Query = @{}, [switch]$DiagnosticOnly)
+                if ($Uri -match "getOffice365ServicesUserCounts\(period='D30'\)") { return @($script:ServicesUserCountRow) }
+                if ($Uri -match 'getOffice365ActiveUserCounts') {
+                    return @([pscustomobject]@{ 'Report Date' = '2026-11-22'; 'Office 365' = '' })
+                }
+                return @()
+            }
+            function Get-CopilotUsageSnapshot {
+                param([string]$Period = 'D30')
+                return [ordered]@{ Status = 'not collected'; ActiveUsers = 'not collected'; Reason = ''; Source = 'not collected'; ReportDate = 'not collected' }
+            }
+
+            $adoption = Get-AdoptionSignals
+            Assert-Equal $adoption.ActiveUsers30Days 120 'D30 Office 365 Active comes from getOffice365ServicesUserCounts.'
+            Assert-Equal $adoption.TeamsActiveUsers 80 'Teams Active comes from the services report.'
+            Assert-Equal $adoption.SharePointActiveUsers 70 'SharePoint Active comes from the services report.'
+            Assert-Equal $adoption.OneDriveActiveUsers 60 'OneDrive Active comes from the services report.'
+            Assert-Equal $adoption.OutlookActiveUsers 90 'Exchange Active comes from the services report.'
+            Assert-Equal $adoption.ReportSource 'office365ServicesUserCounts' 'The report source names the services user count report.'
+            Assert-True ($adoption.ActiveUsers30Days -ne 0) 'The services count is not the blank daily cell coerced to zero.'
+        }
+
+        It 'tries a supported Copilot period first and records fallback probes as diagnostics' {
+            $candidates = @(Get-CopilotReportCandidateUris -Period 'D30')
+            Assert-True ($candidates[0].Uri -match "period='D28'") 'The first Copilot candidate uses D28.'
+            Assert-True ($candidates[0].Uri -match '/copilot/reports/') 'The first Copilot candidate uses the copilot reports path.'
+            Assert-True ($candidates[0].Uri -notmatch "period='D30'") 'The first Copilot candidate does not send the rejected D30 period.'
+
+            $script:Report = [ordered]@{ Errors = [System.Collections.Generic.List[object]]::new() }
+            $script:GraphReportDiagnostics = [System.Collections.Generic.List[object]]::new()
+            $script:GraphReportRowsCache = @{}
+            $script:CopilotUsageCache = @{}
+            $script:CopilotReportCalls = 0
+            function Test-GraphPermissionsAvailable { param([string[]]$RequiredPermissions) return $true }
+            function Get-GraphReportRows {
+                param([Parameter(Mandatory)][string]$Uri, [hashtable]$Query = @{}, [switch]$DiagnosticOnly)
+                $script:CopilotReportCalls++
+                if ($script:CopilotReportCalls -eq 1) {
+                    Register-GraphReportDiagnostic -Uri $Uri -Message 'Response status code does not indicate success: 400 (Bad Request).' -StatusCode 400 -DiagnosticOnly:$DiagnosticOnly
+                    return @()
+                }
+                return @([pscustomobject]@{
+                    'Report Refresh Date' = '2026-11-22'
+                    'User Principal Name' = 'active@contoso.com'
+                    'Last Activity Date' = '2026-11-20'
+                })
+            }
+
+            $snapshot = Get-CopilotUsageSnapshot -Period 'D30'
+            Assert-Equal $snapshot.Status 'reported' 'A later Copilot candidate can still succeed.'
+            Assert-Equal @($script:Report.Errors).Count 0 'The failed first probe is not a collector error.'
+            Assert-True ((@($snapshot.ReportDiagnostics) -join ' ') -match '400') 'The failed probe is retained as a diagnostic.'
+        }
+
+        It 'applies the app-only certificate fallback when the mode condition is parenthesized' {
+            $script:NonInteractive = $false
+            $script:Headless = $false
+            $script:GraphAuthenticationMode = 'AppOnlyCertificate'
+            $script:GraphCertificateThumbprint = 'DEADBEEF'
+            $script:GraphCertificatePath = ''
+            $script:GraphCertificatePasswordEnvironmentVariable = 'GRAPH_CERT_PASSWORD'
+            $script:GraphClientId = '11111111-2222-3333-4444-555555555555'
+            $script:TenantId = 'contoso.onmicrosoft.com'
+
+            $selection = Get-WorkloadCertificateSelection -AppId '' -Organization 'contoso.onmicrosoft.com' -Thumbprint '' -Path '' -SecretVariableName '' -AllowGraphFallback
+            Assert-Equal $selection.Thumbprint 'DEADBEEF' 'App-only mode falls back to the Graph certificate.'
+            Assert-Equal $selection.AppId '11111111-2222-3333-4444-555555555555' 'App-only mode falls back to the Graph client id.'
+
+            $script:GraphAuthenticationMode = 'DeviceCode'
+            $noFallback = Get-WorkloadCertificateSelection -AppId '' -Organization 'contoso.onmicrosoft.com' -Thumbprint '' -Path '' -SecretVariableName '' -AllowGraphFallback
+            Assert-Equal $noFallback $null 'Device-code mode without non-interactive execution does not take the certificate fallback.'
+        }
+
+        It 'keeps addressed Secure Score controls with remaining points on the gap list' {
+            $profiles = @(
+                [pscustomobject]@{ id = 'MFARegistrationV2'; title = 'MFA registration'; maxScore = 8.93; rank = 4; controlCategory = 'Identity'; controlStateUpdates = @([pscustomobject]@{ state = 'ignored' }) }
+                [pscustomobject]@{ id = 'done'; title = 'Fully achieved'; maxScore = 5; rank = 1; controlCategory = 'Data'; controlStateUpdates = @() }
+            )
+            $scores = @(
+                [pscustomobject]@{ controlName = 'MFARegistrationV2'; score = 0 }
+                [pscustomobject]@{ controlName = 'done'; score = 5 }
+            )
+            $assessment = Get-SecureScoreOpenControlAssessment -ControlProfiles $profiles -ControlScores $scores
+            Assert-Equal $assessment.OpenControlCount 0 'An ignored control is not an open control.'
+            Assert-Equal $assessment.AddressedWithPointsRemaining 1 'The ignored control is counted as addressed with points remaining.'
+            $gap = @($assessment.Gaps | Where-Object { $_.id -eq 'MFARegistrationV2' }) | Select-Object -First 1
+            Assert-True ($null -ne $gap) 'MFARegistrationV2 is on the gap list.'
+            Assert-Equal $gap.gapClassification 'addressed-with-points-remaining' 'The gap is flagged as addressed with points remaining.'
+            Assert-Equal $gap.pointsAvailable 8.93 'The remaining points stay on the gap.'
+            Assert-Equal $gap.addressedState 'ignored' 'The addressed state is preserved.'
+            $topGap = @($assessment.TopGaps | Where-Object { $_.id -eq 'MFARegistrationV2' }) | Select-Object -First 1
+            Assert-True ($null -ne $topGap) 'The addressed gap is included in the top gap list.'
+        }
+
+        It 'uses enabled member users as the licence-readiness denominator' {
+            $script:GraphUsersCache = @{}
+            function Get-GraphRestAll {
+                param([string]$Uri, [hashtable]$Query = @{}, [switch]$BypassCache)
+                if ($Uri -match '/subscribedSkus$') {
+                    return @([pscustomobject]@{ SkuPartNumber = 'SPE_E5'; EnabledUnits = 10; ConsumedUnits = 4 })
+                }
+                if ($Uri -match '/users$') {
+                    return @(
+                        [pscustomobject]@{
+                            Id = 'member-ready'
+                            userType = 'Member'
+                            accountEnabled = $true
+                            assignedPlans = @(
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'MicrosoftOffice' }
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'exchange' }
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'SharePointEnterprise' }
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'TeamspaceAPI' }
+                            )
+                        }
+                        [pscustomobject]@{
+                            Id = 'member-partial'
+                            userType = 'Member'
+                            accountEnabled = $true
+                            assignedPlans = @(
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'exchange' }
+                            )
+                        }
+                        [pscustomobject]@{
+                            Id = 'member-disabled'
+                            userType = 'Member'
+                            accountEnabled = $false
+                            assignedPlans = @(
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'MicrosoftOffice' }
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'exchange' }
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'SharePointEnterprise' }
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'TeamspaceAPI' }
+                            )
+                        }
+                        [pscustomobject]@{
+                            Id = 'guest-ready'
+                            userType = 'Guest'
+                            accountEnabled = $true
+                            assignedPlans = @(
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'MicrosoftOffice' }
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'exchange' }
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'SharePointEnterprise' }
+                                [pscustomobject]@{ capabilityStatus = 'Enabled'; service = 'TeamspaceAPI' }
+                            )
+                        }
+                    )
+                }
+                return @()
+            }
+            function Test-GraphPermissionsAvailable { param([string[]]$RequiredPermissions) return $true }
+
+            $licensing = Get-LicensingReadiness
+            Assert-Equal $licensing.PrereqReadyUserCount 1 'Only the enabled member with all four services is ready.'
+            Assert-Equal $licensing.PrereqReadyDenominator 2 'The denominator is the two enabled members.'
+            Assert-Equal $licensing.PrereqReadyPercent 50 '1 of 2 enabled members is 50 percent.'
+            Assert-True ($licensing.PrereqReadyDenominatorDefinition -match 'Guests are excluded') 'The denominator definition is exposed.'
+        }
+
+        It 'weights completeness by measured metrics instead of collected sections' {
+            $script:ScoringModel = $null
+            $sections = [ordered]@{
+                ReadinessFlags = [ordered]@{
+                    MfaRegisteredPercent = 'not collected'
+                    CaPoliciesEnabled = 'not collected'
+                    SensitivityLabelsPublished = 'not collected'
+                    OneDrivePersonalSiteSharePercent = 'not collected'
+                    RestrictedSearchEnabled = 'not collected'
+                    ActiveUsersInReportPeriodPercent = 'not collected'
+                }
+                Identity = [ordered]@{ Status = 'reported' }
+                ConditionalAccess = [ordered]@{ Status = 'reported' }
+                DataGovernance = [ordered]@{ Status = 'reported' }
+                SharePointOneDrive = [ordered]@{ Status = 'reported' }
+                AdoptionSignals = [ordered]@{ Status = 'reported' }
+                IdentityAccessAdvanced = [ordered]@{ Status = 'reported' }
+                DataProtectionAdvanced = [ordered]@{ Status = 'reported' }
+                SharePointExposureAdvanced = [ordered]@{
+                    Status = 'reported'
+                    AnyoneLinkSites = 0
+                    AnyoneLinkMeasurement = 'site-inventory'
+                }
+                AppGovernanceAdvanced = [ordered]@{ Status = 'reported' }
+                EndpointAppAdvanced = [ordered]@{ Status = 'reported' }
+                AdoptionAdvanced = [ordered]@{ Status = 'reported' }
+            }
+            $script:Report = $sections
+            $evidence = Get-ReadinessEvidence
+            Assert-Equal $evidence.DataCompleteness.CompletenessScope 'metric-level' 'Completeness is calculated from metrics.'
+            Assert-Equal $evidence.DataCompleteness.PossibleMetricWeight 500 'Every scoring metric weight is in the denominator.'
+            Assert-Equal $evidence.DataCompleteness.MeasuredMetricWeight 33 'Only the anyone-link metric weight was measured.'
+            Assert-Equal $evidence.DataCompleteness.CompletenessPercent 6.6 'Collected sections do not make a one-metric domain 100 percent complete.'
+            Assert-Equal $evidence.DomainScores.ContentExposure 100 'The measured anyone-link metric still scores from its own weight.'
+            Assert-Equal $evidence.OverallScore 100 'The overall score averages measured domains.'
+            Assert-Equal $evidence.ConfidenceAdjustedScore 6.6 'The confidence-adjusted score uses metric completeness.'
+            Assert-True ($evidence.DataCompleteness.CompletenessPercent -ne 100) 'Section-level collection is not reported as full completeness.'
+            Assert-Equal $evidence.DataCompleteness.ConfidenceLevel 'low' 'A small measured weight is low confidence.'
+        }
+
+        It 'saves retention and DLP policies as lists and keeps label policy counts separate' {
+            function Get-ConnectionInformation { [pscustomobject]@{ Name = 'IPPSSession' } }
+            function Get-DlpCompliancePolicy {
+                [CmdletBinding()]
+                param()
+                [pscustomobject]@{ Name = 'DLP baseline'; Mode = 'Enable'; Workload = 'Exchange, SharePoint' }
+            }
+            function Get-RetentionCompliancePolicy {
+                [CmdletBinding()]
+                param()
+                [pscustomobject]@{ Name = 'Finance hold'; Enabled = $true; Mode = 'Enforce'; Workload = 'SharePoint, OneDriveForBusiness' }
+            }
+            function Get-GraphRestAll {
+                param([string]$Uri, [hashtable]$Query = @{}, [switch]$BypassCache)
+                $script:GraphLastHttpStatus = 403
+                return @()
+            }
+
+            $governance = Get-DataGovernanceReadiness
+            Assert-True ($governance.DlpPolicies -is [System.Array]) 'DLP policies are saved as a list.'
+            Assert-Equal @($governance.DlpPolicies).Count 1 'The single DLP policy stays in a list.'
+            Assert-Equal $governance.DlpPolicies[0].State 'Enable' 'DLP State is populated from Mode when State is absent.'
+            Assert-Equal $governance.DlpPolicies[0].Enabled $true 'An Enable-mode DLP policy is enabled.'
+            Assert-Equal $governance.DlpPolicies[0].Workloads 'Exchange, SharePoint' 'DLP workloads are kept.'
+            Assert-True ($governance.RetentionPolicies -is [System.Array]) 'Retention policies are saved as a list.'
+            Assert-Equal $governance.RetentionPolicies[0].Name 'Finance hold' 'The retention policy name is kept.'
+            Assert-Equal $governance.RetentionPolicies[0].Enabled $true 'The retention policy enabled flag is kept.'
+            Assert-Equal $governance.RetentionPolicies[0].Mode 'Enforce' 'The retention policy mode is kept.'
+            Assert-Equal $governance.RetentionPolicies[0].Workloads 'SharePoint, OneDriveForBusiness' 'Retention workloads are kept.'
+
+            $snapshot = Get-SensitivityLabelSnapshot -GraphCollected $false -ComplianceSessionConnected $true -ComplianceLabels @(
+                [pscustomobject]@{ Name = 'Public' }
+                [pscustomobject]@{ Name = 'Confidential' }
+            ) -ComplianceLabelPolicies @(
+                [pscustomobject]@{ Name = 'Publish default'; Labels = @('Public', 'Confidential') }
+                [pscustomobject]@{ Name = 'Publish public'; Labels = @('Public') }
+                [pscustomobject]@{ Name = 'Empty policy'; Labels = @() }
+            )
+            Assert-Equal $snapshot.Total 2 'Label total counts labels.'
+            Assert-Equal $snapshot.Published 2 'Published label count is unique label names.'
+            Assert-Equal $snapshot.PolicyTotal 3 'Label policy total counts policies.'
+            Assert-Equal $snapshot.PolicyPublished 2 'Label policies that publish labels are counted separately from labels.'
+
+            $script:Report = [ordered]@{
+                DataGovernance = [ordered]@{
+                    Status = 'reported'
+                    SensitivityLabelsPublished = 12
+                    SensitivityLabelsTotal = 20
+                    LabelPoliciesPublished = $snapshot.PolicyPublished
+                    LabelPoliciesTotal = $snapshot.PolicyTotal
+                    DlpPolicies = 'not collected'
+                    RetentionPolicies = 'not collected'
+                }
+            }
+            $advanced = Get-DataProtectionAdvanced
+            Assert-Equal $advanced.SensitivityLabelsPublished 12 'Advanced output keeps the label publication count.'
+            Assert-Equal $advanced.SensitivityLabelsTotal 20 'Advanced output keeps the label total.'
+            Assert-Equal $advanced.LabelPoliciesPublished 2 'Label policy publication is not the label count.'
+            Assert-Equal $advanced.LabelPoliciesTotal 3 'Label policy total is not the label total.'
+        }
+
+        It 'reads AllowCloudRecording from the Teams meeting policy' {
+            $script:TeamsConnected = $true
+            $script:GraphLastHttpStatus = 200
+            function Test-GraphPermissionsAvailable { param([string[]]$RequiredPermissions) return $true }
+            function Get-GraphRestAll { param([string]$Uri, [hashtable]$Query = @{}, [switch]$BypassCache) return @() }
+            function Get-CsTeamsMeetingPolicy {
+                [CmdletBinding()]
+                param([string]$Identity)
+                [pscustomobject]@{ AllowCloudRecording = $true; AllowTranscription = $false }
+            }
+
+            $teams = Get-TeamsReadiness
+            Assert-Equal $teams.RecordingEnabled $true 'AllowCloudRecording populates RecordingEnabled.'
+            Assert-Equal $teams.TranscriptionEnabled $false 'AllowTranscription still populates TranscriptionEnabled.'
+            Assert-Equal $teams.MeetingPolicyState 'enabled' 'Cloud recording makes the meeting policy enabled.'
         }
     }
 }
