@@ -122,6 +122,9 @@ Assert-Equal (ConvertTo-SharingCapabilityName -Value 4) '4' 'Unknown integers ar
 
 # Per-site AnyoneLinkEnabled and tenant ExternalSharingLevel go through the same helper.
 $script:MockSharingCapability = 2
+$script:MockTenantCollectionError = $null
+$script:MockTenantCollectionNull = $false
+$script:MockSiteCollectionError = $null
 $script:MockSites = @(
     [pscustomobject]@{ Url = 'https://contoso.sharepoint.com/sites/disabled'; StorageQuota = 1; StorageUsageCurrent = 0; SharingCapability = 0; LastContentModifiedDate = [datetime]::UtcNow }
     [pscustomobject]@{ Url = 'https://contoso.sharepoint.com/sites/external'; StorageQuota = 1; StorageUsageCurrent = 0; SharingCapability = '1'; LastContentModifiedDate = [datetime]::UtcNow }
@@ -133,6 +136,8 @@ $script:MockSites = @(
 function Get-PnPTenant {
     [CmdletBinding()]
     param()
+    if ($script:MockTenantCollectionError) { throw $script:MockTenantCollectionError }
+    if ($script:MockTenantCollectionNull) { return }
     [pscustomobject]@{
         SharingCapability = $script:MockSharingCapability
         DefaultSharingLinkType = 'Internal'
@@ -143,6 +148,7 @@ function Get-PnPTenant {
 function Get-PnPTenantSite {
     [CmdletBinding()]
     param([switch]$IncludeOneDriveSites)
+    if ($script:MockSiteCollectionError) { throw $script:MockSiteCollectionError }
     # The collector always passes -IncludeOneDriveSites. Accept that switch and
     # return the prepared sample whether or not it is set.
     $sites = @($script:MockSites)
@@ -167,6 +173,44 @@ Assert-Equal (Get-SharePointOneDriveReadinessLocal).ExternalSharingLevel 'Extern
 
 $script:MockSharingCapability = $null
 Assert-Equal (Get-SharePointOneDriveReadinessLocal).ExternalSharingLevel 'not collected' 'A missing tenant capability stays not collected.'
+
+$script:MockSharingCapability = 2
+$script:MockSites = @()
+$emptyInventory = Get-SharePointOneDriveReadinessLocal
+Assert-Equal $emptyInventory.Status 'reported' 'A successfully collected empty site inventory remains reported.'
+Assert-Equal $emptyInventory.SiteInventoryStatus 'reported' 'An empty site inventory is distinct from a failed collection.'
+Assert-Equal $emptyInventory.TotalSiteCount 0 'A successful empty site inventory reports zero sites.'
+
+$script:MockSiteCollectionError = 'Access denied while listing sites.'
+$failedInventory = Get-SharePointOneDriveReadinessLocal
+Assert-Equal $failedInventory.Status 'partial' 'A site inventory failure keeps successfully collected tenant settings.'
+Assert-Equal $failedInventory.SiteInventoryStatus 'not collected' 'A site inventory failure is explicit.'
+Assert-Equal $failedInventory.TotalSiteCount 'not collected' 'A site inventory failure is not reported as zero sites.'
+Assert-Equal $failedInventory.OneDrivePersonalSiteCount 'not collected' 'A site inventory failure does not fabricate a OneDrive count.'
+Assert-True ($failedInventory.SiteInventoryReason -match 'Access denied') 'The site inventory error is preserved for diagnosis.'
+$script:Report = [ordered]@{ SharePointOneDrive = $failedInventory }
+$failedExposure = Get-SharePointExposureAdvanced
+Assert-Equal $failedExposure.AnyoneLinkSites 'not collected' 'Failed site collection does not become zero anonymous-link sites.'
+
+$script:MockSiteCollectionError = $null
+$script:MockTenantCollectionError = 'Tenant settings unavailable.'
+$script:MockSites = @([pscustomobject]@{
+    Url = 'https://contoso.sharepoint.com/sites/available'
+    StorageQuota = 1
+    StorageUsageCurrent = 0
+    SharingCapability = 1
+    LastContentModifiedDate = [datetime]::UtcNow
+})
+$tenantFailure = Get-SharePointOneDriveReadinessLocal
+Assert-Equal $tenantFailure.Status 'partial' 'Site data remains available when tenant settings fail.'
+Assert-Equal $tenantFailure.ExternalSharingLevel 'not collected' 'Failed tenant settings remain unknown.'
+Assert-Equal $tenantFailure.TotalSiteCount 1 'A successful site inventory is retained when tenant settings fail.'
+$script:MockTenantCollectionError = $null
+$script:MockTenantCollectionNull = $true
+$nullTenant = Get-SharePointOneDriveReadinessLocal
+Assert-Equal $nullTenant.Status 'partial' 'A null tenant result is not reported as complete collection.'
+Assert-True ($nullTenant.Reason -match 'returned no data') 'A null tenant result explains which collection returned no data.'
+$script:MockTenantCollectionNull = $false
 
 # Scoring and recommendations consume AnyoneLinkSites; they do not re-read SharingCapability.
 $script:Report = [ordered]@{
@@ -198,4 +242,26 @@ Assert-Equal $withLinks.RiskSignals.AnyoneLinkSites 115 'Risk signals keep the a
 $linkRecommendations = Get-Recommendations
 Assert-True ((@($linkRecommendations.TopRisks) -join "`n") -match '115 sampled SharePoint/OneDrive sites allow anonymous links') 'Recommendations follow the corrected anyone-link count.'
 
-Write-Output 'm365-ai-ready-export SharingCapability tests passed.'
+function Get-ConnectionInformation {
+    [CmdletBinding()]
+    param()
+    [pscustomobject]@{ Name = 'ExchangeOnline' }
+}
+
+function Get-EXOMailbox {
+    [CmdletBinding()]
+    param($ResultSize, $Properties)
+    throw 'Mailbox query access denied.'
+}
+
+function Test-GraphPermissionsAvailable {
+    param([string[]]$RequiredPermissions)
+    return $false
+}
+
+$exchangeFailure = Get-ExchangeReadiness
+Assert-Equal $exchangeFailure.Status 'not collected' 'A failed Exchange query with no Graph fallback is not reported as an empty mailbox list.'
+Assert-Equal $exchangeFailure.TotalMailboxes 'not collected' 'A failed Exchange query does not fabricate zero mailboxes.'
+Assert-True ($exchangeFailure.Reason -match 'Mailbox query access denied') 'The Exchange query failure is included in the report reason.'
+
+Write-Output 'm365-ai-ready-export collector tests passed.'

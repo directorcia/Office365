@@ -1,33 +1,98 @@
 <#
-================================================================================
-GITHUB COPILOT — IMPLEMENTATION BRIEF (read before completing this file)
-================================================================================
-GOAL: A READ-ONLY PowerShell script that extracts Microsoft 365 tenant
-configuration and posture data to assess "AI / Copilot readiness", and writes
-ONE consolidated JSON file for downstream analysis.
+.SYNOPSIS
+    Collects read-only Microsoft 365 AI readiness signals into one JSON report.
 
-HARD RULES:
-  - READ-ONLY. Use only Get-* / Connect-* / Disconnect-* cmdlets.
-    NEVER emit Set-, New-, Remove-, Update-, Add-, Grant-, or Revoke- cmdlets.
-  - RESILIENT. Wrap every collector in try/catch. On failure, record the error
-    in $script:Report.Errors and CONTINUE. Never hard-fail the whole run.
-  - NO SECRETS. Output config/IDs only — never tokens, passwords, or keys.
-  - DETERMINISTIC JSON. Use stable, ordered key names across all tenants.
-  - SAMPLING-AWARE. Honour -IncludeSampling / -SampleSize on heavy collectors
-    (SharePoint sites, permissions). Note truncation in the output.
-  - Prefer Microsoft Graph cmdlets; use ExchangeOnlineManagement, PnP.PowerShell,
-    and SharePoint Online Management Shell only where Graph is insufficient.
-  - PowerShell 7+. Use [ordered] hashtables for all JSON sections.
-================================================================================
+.DESCRIPTION
+    Connects interactively to Microsoft Graph and any available Microsoft 365
+    services, collects tenant configuration and posture signals, records
+    collector failures as partial or unavailable data, and writes one ordered
+    JSON report. Tenant configuration is never changed. The report file is
+    written only after ShouldProcess approval.
 
-Documentation - https://github.com/directorcia/Office365/wiki/Microsoft-365-AI-Readiness-Export-%E2%80%90-Execution-and-Operations-Guide
+.PARAMETER TenantId
+    Tenant ID or domain to use for authentication. When omitted, the current
+    account's organization context or the identity provider's organizations
+    endpoint is used.
 
+.PARAMETER OutputPath
+    Destination for the consolidated JSON report. Relative paths are resolved
+    from the current location. Parent directories are created when approved.
+
+.PARAMETER GraphClientId
+    Entra application client ID used for Microsoft Graph device-code login.
+
+.PARAMETER PnPClientId
+    Optional Entra application client ID for PnP.PowerShell authentication.
+    Environment variables ENTRAID_APP_ID, ENTRAID_CLIENT_ID, and PNP_CLIENT_ID
+    are checked when this parameter is omitted.
+
+.PARAMETER GraphScopes
+    Optional delegated Graph scopes to request during authentication.
+
+.PARAMETER RequestRequiredGraphScopesUpFront
+    Requests the exporter's full delegated Graph scope set before collection.
+
+.PARAMETER ForceInteractiveTeamsPnPLogin
+    Forces a new Teams sign-in instead of reusing an existing Teams session.
+
+.PARAMETER SharePointCollectionChild
+    Internal mode used by the script's isolated SharePoint collection process.
+
+.PARAMETER SharePointAdminUrl
+    SharePoint admin center URL required by the internal child collection mode.
+
+.PARAMETER IncludeSampling
+    Enables sampling for supported large SharePoint collections.
+
+.PARAMETER IncludeDiagnostics
+    Includes collector timing details in the JSON report.
+
+.PARAMETER IncludeDetailedData
+    Includes detailed Secure Score control-profile data and a longer score history.
+
+.PARAMETER SampleSize
+    Maximum number of SharePoint sites to include when sampling is enabled.
+    Valid values are 1 through 5000; the default is 200.
+
+.EXAMPLE
+    .\m365-ai-ready-export.ps1
+    Collects available signals and writes a timestamped report in the current folder.
+
+.EXAMPLE
+    .\m365-ai-ready-export.ps1 -TenantId contoso.onmicrosoft.com -OutputPath 'C:\Reports\Contoso readiness.json'
+    Collects for the specified tenant and writes the report at the supplied path.
+
+.EXAMPLE
+    .\m365-ai-ready-export.ps1 -IncludeSampling -SampleSize 500 -IncludeDiagnostics -WhatIf
+    Collects using a 500-site sample and previews, but does not write, the report.
+
+.INPUTS
+    None. The script does not accept pipeline input.
+
+.OUTPUTS
+    Writes a consolidated JSON file. Progress and diagnostics are written as
+    host messages; collector data is stored in the JSON report.
+
+.NOTES
+    Requires PowerShell 7.0 or later. Microsoft Graph authentication is
+    interactive. Optional MicrosoftTeams, PnP.PowerShell, and
+    ExchangeOnlineManagement modules enable additional signals. Graph delegated
+    permissions depend on the collectors; unavailable permissions are recorded
+    as data gaps. The script does not support unattended authentication.
+
+    Change log: Adds write confirmation support and distinguishes failed
+    SharePoint/Exchange collection from successful empty results.
+    Documentation:
+    https://github.com/directorcia/Office365/wiki/Microsoft-365-AI-Readiness-Export-%E2%80%90-Execution-and-Operations-Guide
 #>
 
-[CmdletBinding()]
+#requires -Version 7.0
+[CmdletBinding(SupportsShouldProcess)]
 param(
     [string]$TenantId,
+    [ValidateNotNullOrEmpty()]
     [string]$OutputPath = ".\AIReadiness_$(Get-Date -Format 'yyyyMMdd_HHmmss').json",
+    [ValidateNotNullOrEmpty()]
     [string]$GraphClientId = '04b07795-8ddb-461a-bbee-02f9e1bf7b46',
     [string]$PnPClientId,
     [string[]]$GraphScopes,
@@ -73,11 +138,6 @@ function Resolve-OutputFilePath {
     }
     else {
         [System.IO.Path]::GetFullPath((Join-Path -Path $currentLocation -ChildPath $Path))
-    }
-
-    $directory = Split-Path -Path $resolvedPath -Parent
-    if (-not [string]::IsNullOrWhiteSpace($directory) -and -not (Test-Path -LiteralPath $directory)) {
-        $null = New-Item -ItemType Directory -Path $directory -Force
     }
 
     return $resolvedPath
@@ -2572,18 +2632,44 @@ function Get-SharePointOneDriveReadinessLocal {
 
     $tenant = $null
     $sites = @()
+    $tenantCollectionError = $null
+    $siteCollectionError = $null
 
-    try {
-        if (Get-Command Get-PnPTenant -ErrorAction SilentlyContinue) { $tenant = Get-PnPTenant -ErrorAction Stop }
-    } catch {}
-    try {
-        if (Get-Command Get-PnPTenantSite -ErrorAction SilentlyContinue) { $sites = @(Get-PnPTenantSite -IncludeOneDriveSites -ErrorAction Stop) }
-    } catch {}
+    if (Get-Command Get-PnPTenant -ErrorAction SilentlyContinue) {
+        try {
+            $tenant = Get-PnPTenant -ErrorAction Stop
+        }
+        catch {
+            $tenantCollectionError = "Tenant settings could not be collected: $($_.Exception.Message)"
+        }
+    }
+    else {
+        $tenantCollectionError = 'Tenant settings could not be collected because Get-PnPTenant is unavailable.'
+    }
+    if ($null -eq $tenant -and [string]::IsNullOrWhiteSpace($tenantCollectionError)) {
+        $tenantCollectionError = 'Tenant settings could not be collected because Get-PnPTenant returned no data.'
+    }
 
-    if ($null -eq $tenant -and @($sites).Count -eq 0) {
+    if (Get-Command Get-PnPTenantSite -ErrorAction SilentlyContinue) {
+        try {
+            $sites = @(Get-PnPTenantSite -IncludeOneDriveSites -ErrorAction Stop)
+        }
+        catch {
+            $siteCollectionError = "Site inventory could not be collected: $($_.Exception.Message)"
+        }
+    }
+    else {
+        $siteCollectionError = 'Site inventory could not be collected because Get-PnPTenantSite is unavailable.'
+    }
+
+    $siteInventoryCollected = $null -eq $siteCollectionError
+    if ($null -eq $tenant -and -not $siteInventoryCollected) {
+        $collectionErrors = @(@($tenantCollectionError, $siteCollectionError) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
         return [ordered]@{
             Status                = 'not collected'
-            Reason                = 'SharePoint / PnP tenant session was unavailable or returned no data.'
+            Reason                = $collectionErrors -join ' '
+            SiteInventoryStatus   = 'not collected'
+            SiteInventoryReason   = $siteCollectionError
             ExternalSharingLevel  = 'not collected'
             DefaultSharingLinkType = 'not collected'
             RestrictedSearchEnabled = 'not collected'
@@ -2607,10 +2693,10 @@ function Get-SharePointOneDriveReadinessLocal {
         }
     }
 
-    $totalCount = @($sites).Count
-    $siteList = @($sites)
+    $totalCount = if ($siteInventoryCollected) { @($sites).Count } else { 'not collected' }
+    $siteList = if ($siteInventoryCollected) { @($sites) } else { @() }
 
-    if ($Sample -and $totalCount -gt $Max) {
+    if ($Sample -and $siteInventoryCollected -and $totalCount -gt $Max) {
         $siteList = @($siteList | Select-Object -First $Max)
     }
 
@@ -2672,51 +2758,66 @@ function Get-SharePointOneDriveReadinessLocal {
         }
     }
 
+    $collectionErrors = @(@($tenantCollectionError, $siteCollectionError) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     return [ordered]@{
-        Status                = 'reported'
-        Reason                = ''
+        Status                = if ($collectionErrors.Count -gt 0) { 'partial' } else { 'reported' }
+        Reason                = $collectionErrors -join ' '
+        SiteInventoryStatus   = if ($siteInventoryCollected) { 'reported' } else { 'not collected' }
+        SiteInventoryReason   = if ($siteInventoryCollected) { '' } else { $siteCollectionError }
         ExternalSharingLevel   = $externalSharingLevel
         DefaultSharingLinkType = if ($tenant) { [string](Get-ObjectPropertyValue -InputObject $tenant -Name 'DefaultSharingLinkType' -Default 'not collected') } else { 'not collected' }
         RestrictedSearchEnabled = if ($tenant -and $null -ne (Get-ObjectPropertyValue -InputObject $tenant -Name 'RestrictedSharePointSearch')) { [bool](Get-ObjectPropertyValue -InputObject $tenant -Name 'RestrictedSharePointSearch') } else { 'not collected' }
         TotalSiteCount         = $totalCount
-        Truncated              = [bool]($Sample -and $totalCount -gt $Max)
+        Truncated              = if ($siteInventoryCollected) { [bool]($Sample -and $totalCount -gt $Max) } else { 'not collected' }
         Sites                  = @($siteSummaries)
-        OneDrivePersonalSiteCount = $oneDriveCoverage
-        OneDrivePersonalSiteSharePercent = if (@($siteList).Count -gt 0) { [math]::Round(($oneDriveCoverage / @($siteList).Count) * 100, 2) } else { 0 }
+        OneDrivePersonalSiteCount = if ($siteInventoryCollected) { $oneDriveCoverage } else { 'not collected' }
+        OneDrivePersonalSiteSharePercent = if (-not $siteInventoryCollected) { 'not collected' } elseif (@($siteList).Count -gt 0) { [math]::Round(($oneDriveCoverage / @($siteList).Count) * 100, 2) } else { 0 }
         OneDriveCoverageMetric = 'Deprecated alias: OneDriveCoveragePercent reflects the share of sampled SharePoint/PnP tenant sites whose URL is a OneDrive personal site, not licensed-user OneDrive provisioning coverage.'
-        OneDriveCoveragePercent = if (@($siteList).Count -gt 0) { [math]::Round(($oneDriveCoverage / @($siteList).Count) * 100, 2) } else { 0 }
-        InactiveSiteCount      = $inactive
+        OneDriveCoveragePercent = if (-not $siteInventoryCollected) { 'not collected' } elseif (@($siteList).Count -gt 0) { [math]::Round(($oneDriveCoverage / @($siteList).Count) * 100, 2) } else { 0 }
+        InactiveSiteCount      = if ($siteInventoryCollected) { $inactive } else { 'not collected' }
         OversharingSignals     = [ordered]@{
-            Status                     = if ($oversharingSignalAvailable) { 'reported' } else { 'not collected' }
-            CollectionMethod           = if ($oversharingSignalAvailable) {
+            Status                     = if (-not $siteInventoryCollected) { 'not collected' } elseif ($oversharingSignalAvailable) { 'reported' } else { 'not collected' }
+            CollectionMethod           = if (-not $siteInventoryCollected) {
+                'Site inventory could not be collected.'
+            }
+            elseif ($oversharingSignalAvailable) {
                 'Best-effort from PnP tenant site metadata counters exposed by current cmdlet/runtime.'
             }
             else {
                 'No oversharing counters collected from standard Get-PnPTenantSite output.'
             }
-            CollectionScope            = if ($oversharingSignalAvailable) { 'sampled site metadata counters only (not guaranteed tenant-wide)' } else { 'standard PnP tenant site metadata only' }
-            CollectionPathUsed         = if ($oversharingSignalAvailable) { $oversharingPropertySource } else { 'none' }
-            CollectionReason           = if ($oversharingSignalAvailable) {
+            CollectionScope            = if (-not $siteInventoryCollected) { 'not collected' } elseif ($oversharingSignalAvailable) { 'sampled site metadata counters only (not guaranteed tenant-wide)' } else { 'standard PnP tenant site metadata only' }
+            CollectionPathUsed         = if (-not $siteInventoryCollected) { 'not collected' } elseif ($oversharingSignalAvailable) { $oversharingPropertySource } else { 'none' }
+            CollectionReason           = if (-not $siteInventoryCollected) {
+                $siteCollectionError
+            }
+            elseif ($oversharingSignalAvailable) {
                 'reported from tenant site metadata counters exposed by current cmdlet/runtime'
             }
             else {
                 'standard Get-PnPTenantSite output does not normally include per-site sharing-link counters'
             }
-            RequiredForReliableCollection = if ($oversharingSignalAvailable) {
+            RequiredForReliableCollection = if (-not $siteInventoryCollected) {
+                'A successful Get-PnPTenantSite collection is required.'
+            }
+            elseif ($oversharingSignalAvailable) {
                 'SharePoint Advanced Management oversharing telemetry is still recommended for reliable tenant-wide results'
             }
             else {
                 'SharePoint Advanced Management oversharing telemetry (recommended), or costly per-site sharing-link enumeration'
             }
-            DocumentationNote          = if ($oversharingSignalAvailable) {
+            DocumentationNote          = if (-not $siteInventoryCollected) {
+                'Unknown site inventory is not evidence of low oversharing risk.'
+            }
+            elseif ($oversharingSignalAvailable) {
                 'Counters were exposed in this run, but this is not guaranteed in standard PnP output across tenants.'
             }
             else {
                 'This run did not collect oversharing link counters; absence here does not imply low oversharing risk.'
             }
-            SampledAnyoneLinkCount     = if ($oversharingSignalAvailable) { $anyoneLinkCount } else { 'not collected' }
-            SampledOrgWideLinkCount    = if ($oversharingSignalAvailable) { $orgWideLinkCount } else { 'not collected' }
-            SitesWithAnyoneLinksCount  = if ($oversharingSignalAvailable) { $sitesWithAnyoneLinks } else { 'not collected' }
+            SampledAnyoneLinkCount     = if ($siteInventoryCollected -and $oversharingSignalAvailable) { $anyoneLinkCount } else { 'not collected' }
+            SampledOrgWideLinkCount    = if ($siteInventoryCollected -and $oversharingSignalAvailable) { $orgWideLinkCount } else { 'not collected' }
+            SitesWithAnyoneLinksCount  = if ($siteInventoryCollected -and $oversharingSignalAvailable) { $sitesWithAnyoneLinks } else { 'not collected' }
         }
     }
 }
@@ -2725,6 +2826,7 @@ function Get-ExchangeReadiness {
     try {
         $mailboxes = @()
         $hasExoSession = $false
+        $exoCollectionError = $null
 
         if (Get-Command Get-ConnectionInformation -ErrorAction SilentlyContinue) {
             $hasExoSession = @((Get-ConnectionInformation -ErrorAction SilentlyContinue)).Count -gt 0
@@ -2732,27 +2834,38 @@ function Get-ExchangeReadiness {
 
         if ($hasExoSession -and (Get-Command Get-EXOMailbox -ErrorAction SilentlyContinue)) {
             # ArchiveStatus and LitigationHoldEnabled are not in the default EXO minimum property set.
-            $mailboxes = @(Get-EXOMailbox -ResultSize Unlimited -Properties RecipientTypeDetails, ArchiveStatus, LitigationHoldEnabled -ErrorAction SilentlyContinue)
-            $shared = @($mailboxes | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'RecipientTypeDetails' -Default '')) -eq 'SharedMailbox' }).Count
-            $archive = @($mailboxes | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'ArchiveStatus' -Default '')) -eq 'Active' }).Count
-            $litigation = @($mailboxes | Where-Object { (Get-ObjectPropertyValue -InputObject $_ -Name 'LitigationHoldEnabled') -eq $true }).Count
+            try {
+                $mailboxes = @(Get-EXOMailbox -ResultSize Unlimited -Properties RecipientTypeDetails, ArchiveStatus, LitigationHoldEnabled -ErrorAction Stop)
+                $shared = @($mailboxes | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'RecipientTypeDetails' -Default '')) -eq 'SharedMailbox' }).Count
+                $archive = @($mailboxes | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'ArchiveStatus' -Default '')) -eq 'Active' }).Count
+                $litigation = @($mailboxes | Where-Object { (Get-ObjectPropertyValue -InputObject $_ -Name 'LitigationHoldEnabled') -eq $true }).Count
 
-            return [ordered]@{
-                Status               = 'reported'
-                Reason               = ''
-                TotalMailboxes       = @($mailboxes).Count
-                UserMailboxes        = @($mailboxes | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'RecipientTypeDetails' -Default '')) -in @('UserMailbox', 'SharedMailbox') }).Count
-                SharedMailboxes      = $shared
-                ArchiveEnabledCount  = $archive
-                LitigationHoldCount  = $litigation
-                ExchangeOnlineReady  = @($mailboxes).Count -gt 0
+                return [ordered]@{
+                    Status               = 'reported'
+                    Reason               = ''
+                    TotalMailboxes       = @($mailboxes).Count
+                    UserMailboxes        = @($mailboxes | Where-Object { ([string](Get-ObjectPropertyValue -InputObject $_ -Name 'RecipientTypeDetails' -Default '')) -in @('UserMailbox', 'SharedMailbox') }).Count
+                    SharedMailboxes      = $shared
+                    ArchiveEnabledCount  = $archive
+                    LitigationHoldCount  = $litigation
+                    ExchangeOnlineReady  = @($mailboxes).Count -gt 0
+                }
             }
+            catch {
+                $exoCollectionError = "Exchange Online mailbox collection failed: $($_.Exception.Message)"
+            }
+        }
+        elseif ($hasExoSession) {
+            $exoCollectionError = 'Exchange Online mailbox collection failed because Get-EXOMailbox is unavailable.'
+        }
+        else {
+            $exoCollectionError = 'Exchange Online session was unavailable.'
         }
 
         if (-not (Test-GraphPermissionsAvailable -RequiredPermissions @('Directory.Read.All'))) {
             return [ordered]@{
                 Status               = 'not collected'
-                Reason               = 'Exchange Online session was unavailable and Graph directory read access is missing.'
+                Reason               = "$exoCollectionError Graph directory read access is also missing, so mailbox data could not be collected."
                 TotalMailboxes       = 'not collected'
                 UserMailboxes        = 'not collected'
                 SharedMailboxes      = 'not collected'
@@ -2768,7 +2881,7 @@ function Get-ExchangeReadiness {
 
         return [ordered]@{
             Status               = 'partial'
-            Reason               = 'Mailbox count was estimated from Graph users because Exchange Online session details were unavailable.'
+            Reason               = "$exoCollectionError Mailbox count was estimated from Graph users because Exchange Online mailbox data was unavailable."
             TotalMailboxes       = $mailboxCount
             UserMailboxes        = $mailboxCount
             SharedMailboxes      = 'not collected'
@@ -2780,7 +2893,7 @@ function Get-ExchangeReadiness {
     catch {
         return [ordered]@{
             Status               = 'not collected'
-            Reason               = 'Exchange mailbox data could not be collected.'
+            Reason               = "Exchange mailbox data could not be collected: $($_.Exception.Message)"
             TotalMailboxes       = 'not collected'
             UserMailboxes        = 'not collected'
             SharedMailboxes      = 'not collected'
@@ -3314,6 +3427,23 @@ function Get-SharePointExposureAdvanced {
         return [ordered]@{
             Status = 'not collected'
             Reason = 'SharePoint / OneDrive baseline data was not collected.'
+            SampledSites = 'not collected'
+            ExternalSharingSites = 'not collected'
+            AnyoneLinkSites = 'not collected'
+            InactiveSites = 'not collected'
+            OversharedContentSignal = 'not collected'
+            SampledAnyoneLinkCount = 'not collected'
+            SampledOrgWideLinkCount = 'not collected'
+            UnlabeledContentSignal = 'not collected'
+            Truncated = 'not collected'
+        }
+    }
+
+    $siteInventoryStatus = [string](Get-ObjectPropertyValue -InputObject $sharePoint -Name 'SiteInventoryStatus' -Default 'reported')
+    if ($siteInventoryStatus -ne 'reported') {
+        return [ordered]@{
+            Status = 'not collected'
+            Reason = [string](Get-ObjectPropertyValue -InputObject $sharePoint -Name 'SiteInventoryReason' -Default 'SharePoint site inventory was not collected.')
             SampledSites = 'not collected'
             ExternalSharingSites = 'not collected'
             AnyoneLinkSites = 'not collected'
@@ -4325,17 +4455,29 @@ try {
     Invoke-Collector -Section 'PrerequisitesAndGaps' -Action { Get-PrerequisitesAndGaps }
 
     Write-Phase 'Output'
-    Write-Step "Writing JSON export to '$resolvedOutputPath'..." -Color Cyan
-    $exportReport = [ordered]@{}
-    foreach ($key in @($script:Report.Keys)) {
-        if (-not $IncludeDiagnostics -and $key -eq 'CollectorTimings') {
-            continue
+    if ($PSCmdlet.ShouldProcess($resolvedOutputPath, 'Write AI readiness JSON report')) {
+        $outputDirectory = Split-Path -Path $resolvedOutputPath -Parent
+        if (-not [string]::IsNullOrWhiteSpace($outputDirectory) -and -not (Test-Path -LiteralPath $outputDirectory)) {
+            [void][System.IO.Directory]::CreateDirectory($outputDirectory)
         }
 
-        $exportReport[$key] = $script:Report[$key]
+        Write-Step "Writing JSON export to '$resolvedOutputPath'..." -Color Cyan
+        $exportReport = [ordered]@{}
+        foreach ($key in @($script:Report.Keys)) {
+            if (-not $IncludeDiagnostics -and $key -eq 'CollectorTimings') {
+                continue
+            }
+
+            $exportReport[$key] = $script:Report[$key]
+        }
+
+        $exportReport | ConvertTo-Json -Depth 15 | Out-File -LiteralPath $resolvedOutputPath -Encoding utf8NoBOM -ErrorAction Stop
+        Write-Step "AI readiness export complete: $resolvedOutputPath" -Color Green
     }
-    $exportReport | ConvertTo-Json -Depth 15 | Out-File -FilePath $resolvedOutputPath -Encoding utf8NoBOM
-    Write-Step "AI readiness export complete: $resolvedOutputPath" -Color Green
+    else {
+        Write-Step "Report file was not written: $resolvedOutputPath" -Color DarkYellow
+    }
+
     $timingRows = @($script:Report.CollectorTimings.GetEnumerator() |
         Sort-Object { $_.Value.DurationMs } -Descending |
         Select-Object -First 5 |
