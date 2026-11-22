@@ -96,6 +96,13 @@
     Copy the device code to the clipboard during provisioning sign-in. Opt-in only, because
     clipboard contents can leak on shared/RDP sessions.
 
+.PARAMETER WhatIf
+    Show the selected workflow without installing modules, changing certificates or app
+    registrations, or connecting to Exchange Online.
+
+.PARAMETER Confirm
+    Prompt once before running the selected workflow and its associated state changes.
+
 .EXAMPLE
     .\o365-connect-exo-cert.ps1 -GenerateLocalCertificate -ProvisionEntraApp -Tenant contoso.onmicrosoft.com
     One-time setup: generate a certificate, create the Entra app, grant permissions,
@@ -109,11 +116,21 @@
     .\o365-connect-exo-cert.ps1 -UseCertificateAuth -Organization contoso.onmicrosoft.com -AppId 11111111-2222-3333-4444-555555555555 -CertificateThumbprint ABCDEF0123456789ABCDEF0123456789ABCDEF01
     Connect with explicit values, bypassing the profile map.
 
+.INPUTS
+    None. Parameters are supplied on the command line.
+
+.OUTPUTS
+    None. Status and error messages are reported to the host; helper metadata is used internally.
+
 .NOTES
+    Requirements: Windows PowerShell 5.1+; ExchangeOnlineManagement module (installation is offered when missing).
+    Change log: 2026-11-22 - Harden profile-map updates and certificate-export rollback; add WhatIf support.
     CIAOPS - Script provided as is. Use at own risk. No guarantees or warranty provided.
     Usage - https://github.com/directorcia/Office365/wiki/Connect-to-Exchange-Online-with-Certificates
     Source - https://github.com/directorcia/Office365/blob/master/o365-connect-exo-cert.ps1
 #>
+#Requires -Version 5.1
+[CmdletBinding(SupportsShouldProcess)]
 param(
     [switch]$noprompt = $false,   ## if -noprompt used then user will not be asked for any input
     [switch]$noupdate = $false,   ## if -noupdate used then module will not be checked for more recent version
@@ -124,7 +141,9 @@ param(
     [switch]$UseCertificateAuth = $false,        ## MODE 2: connect with an existing app/cert
 
     ## --- MODE 1 (certificate generation) options ---
+    [ValidateNotNullOrEmpty()]
     [string]$GeneratedCertSubject = "O365-EXO-AppAuth",  ## CN and default friendly name of the new cert
+    [ValidateRange(1, 100)]
     [int]$GeneratedCertYearsValid = 2,                    ## cert lifetime in years
     [string]$GeneratedCertOutputPath = "",  ## defaults to parent of script directory at runtime
     [switch]$ExportGeneratedPfx = $false,   ## also export private key as password-protected .pfx
@@ -149,6 +168,9 @@ param(
     ## Opt-in only. Clipboard copy can leak auth codes in shared/RDP sessions.
     [switch]$CopyDeviceCodeToClipboard = $false
 )
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
 ## Resolve paths relative to the script file itself, not the caller's working directory.
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -210,24 +232,27 @@ function Resolve-ExoCertificateProfile {
     Write-Verbose "Resolving certificate profile from map path: $Path"
     Write-Debug "Resolving certificate profile from map path: $Path"
 
-    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -Path $Path)) {
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
         Write-Debug "Certificate map file missing or not provided."
         return $null
     }
 
     try {
-        $raw = Get-Content -Path $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        $mapContent = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+        $raw = $mapContent | ConvertFrom-Json -ErrorAction Stop
     }
     catch {
         throw "Unable to parse certificate mapping file '$Path'. $($_.Exception.Message)"
     }
 
     $profileItems = @()
-    if ($raw -is [System.Array]) {
+    if ($mapContent.TrimStart().StartsWith('[', [System.StringComparison]::Ordinal)) {
         $profileItems = @($raw)
     }
-    elseif ($null -ne $raw.profiles) {
-        $profileItems = @($raw.profiles)
+    elseif ($null -ne $raw -and $raw.PSObject.Properties['profiles']) {
+        if ($null -ne $raw.profiles) {
+            $profileItems = @($raw.profiles)
+        }
     }
 
     if ($profileItems.Count -eq 0) {
@@ -331,18 +356,19 @@ function New-ExoLocalCertificate {
         }
     }
 
-    if (-not (Test-Path -Path $OutputPath)) {
+    if (-not (Test-Path -LiteralPath $OutputPath)) {
         Write-Debug "Creating certificate output directory: $OutputPath"
-        New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
+        try {
+            [System.IO.Directory]::CreateDirectory($OutputPath) | Out-Null
+        }
+        catch {
+            throw "Unable to create certificate output directory '$OutputPath'. $($_.Exception.Message)"
+        }
     }
 
     ## RSA-2048/SHA-256 with KeySpec Signature matches what Entra ID expects for
     ## client-assertion certs; Exportable allows the optional .pfx export below.
     $certificate = New-SelfSignedCertificate -Subject "CN=$SubjectName" -CertStoreLocation "Cert:\CurrentUser\My" -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears($YearsValid) -KeySpec Signature -ErrorAction Stop
-
-    $resolvedFriendlyName = if ([string]::IsNullOrWhiteSpace($FriendlyName)) { $SubjectName } else { $FriendlyName }
-    $certificate.FriendlyName = $resolvedFriendlyName
-    Write-Debug "Certificate friendly name set to: $resolvedFriendlyName"
 
     ## File names embed the thumbprint (e.g. Subject-THUMBPRINT.cer) so repeated runs
     ## never overwrite each other; strip characters unsafe in file names first.
@@ -353,6 +379,10 @@ function New-ExoLocalCertificate {
 
     ## Remove the store cert if any export fails, so a failed run leaves no orphaned certificate behind.
     try {
+        $resolvedFriendlyName = if ([string]::IsNullOrWhiteSpace($FriendlyName)) { $SubjectName } else { $FriendlyName }
+        $certificate.FriendlyName = $resolvedFriendlyName
+        Write-Debug "Certificate friendly name set to: $resolvedFriendlyName"
+
         Export-Certificate -Cert $certificate -FilePath $cerPath -Type CERT -Force -ErrorAction Stop | Out-Null
 
         if ($ExportPfx) {
@@ -361,9 +391,12 @@ function New-ExoLocalCertificate {
         }
     }
     catch {
-        Remove-Item -Path "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
-        if (Test-Path -Path $cerPath) { Remove-Item -Path $cerPath -Force -ErrorAction SilentlyContinue }
-        throw "Certificate export failed; generated certificate removed from store. $($_.Exception.Message)"
+        Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $cerPath) { Remove-Item -LiteralPath $cerPath -Force -ErrorAction SilentlyContinue }
+        if ($null -ne $pfxPath -and (Test-Path -LiteralPath $pfxPath)) {
+            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+        }
+        throw "Certificate export failed; generated certificate and partial export files were removed. $($_.Exception.Message)"
     }
 
     return [PSCustomObject]@{
@@ -597,41 +630,60 @@ function Set-ExoProfileMapEntry {
         Write-Verbose "Profile map lock acquired for: $fullMapPath"
 
         $mapData = @{ profiles = @() }
-        if (Test-Path -Path $fullMapPath) {
+        if (Test-Path -LiteralPath $fullMapPath) {
             try {
-                $raw = Get-Content -Path $fullMapPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                $mapContent = Get-Content -LiteralPath $fullMapPath -Raw -ErrorAction Stop
+                $raw = $mapContent | ConvertFrom-Json -ErrorAction Stop
                 ## Accept both supported map formats (bare array and { profiles = [...] })
                 ## so an array-format map is not silently wiped on update.
-                if ($raw -is [System.Array]) { $mapData = @{ profiles = @($raw) } }
-                elseif ($null -ne $raw.profiles) { $mapData = $raw }
+                if ($mapContent.TrimStart().StartsWith('[', [System.StringComparison]::Ordinal)) {
+                    $mapData = @{ profiles = @($raw) }
+                }
+                elseif ($null -ne $raw -and $raw.PSObject.Properties['profiles']) {
+                    if ($null -eq $raw.profiles) {
+                        throw "The profile map object has a null 'profiles' property."
+                    }
+                    $mapData = @{ profiles = @($raw.profiles) }
+                }
+                else {
+                    throw "The profile map must be an array or an object containing a 'profiles' array."
+                }
             }
             catch {
-                Write-Debug "Could not parse existing profile map inside lock - will overwrite."
+                throw "Unable to read existing certificate profile map '$fullMapPath'; it was not changed. $($_.Exception.Message)"
             }
         }
 
         $profileList = [System.Collections.Generic.List[object]]::new()
         foreach ($p in $mapData.profiles) { $profileList.Add($p) }
 
-        ## Replace existing entry for the same tenant/app, or append.
-        ## This preserves profiles that share the same display name across different tenants.
+        ## App IDs uniquely identify registrations; a tenant may intentionally have several profiles.
         $existingIdx = $null
+        $profileAppId = $null
+        if ($null -ne $ProfileEntry -and $ProfileEntry.PSObject.Properties['appId']) {
+            $profileAppId = $ProfileEntry.appId
+        }
         for ($i = 0; $i -lt $profileList.Count; $i++) {
-            $sameApp = (-not [string]::IsNullOrWhiteSpace($profileList[$i].appId) -and $profileList[$i].appId -eq $ProfileEntry.appId)
-            $sameTenant = ((-not [string]::IsNullOrWhiteSpace($profileList[$i].tenant) -and $profileList[$i].tenant -eq $ProfileEntry.tenant) -or
-                (-not [string]::IsNullOrWhiteSpace($profileList[$i].organization) -and $profileList[$i].organization -eq $ProfileEntry.organization))
-
-            if ($sameApp -or $sameTenant) { $existingIdx = $i; break }
+            $existingAppId = $null
+            if ($null -ne $profileList[$i] -and $profileList[$i].PSObject.Properties['appId']) {
+                $existingAppId = $profileList[$i].appId
+            }
+            if (-not [string]::IsNullOrWhiteSpace($profileAppId) -and
+                -not [string]::IsNullOrWhiteSpace($existingAppId) -and
+                $existingAppId -eq $profileAppId) {
+                $existingIdx = $i
+                break
+            }
         }
         if ($null -ne $existingIdx) { $profileList[$existingIdx] = $ProfileEntry } else { $profileList.Add($ProfileEntry) }
 
-        @{ profiles = $profileList.ToArray() } | ConvertTo-Json -Depth 5 | Set-Content -Path $tempPath -Encoding UTF8
-        Move-Item -Path $tempPath -Destination $fullMapPath -Force
+        @{ profiles = $profileList.ToArray() } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $tempPath -Encoding UTF8
+        Move-Item -LiteralPath $tempPath -Destination $fullMapPath -Force
         Write-Host -ForegroundColor $Colors.ProcessMessage "Profile map updated: $fullMapPath"
     }
     finally {
-        if (Test-Path -Path $tempPath) {
-            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $tempPath) {
+            Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
         }
         if ($hasHandle) {
             $mutex.ReleaseMutex()
@@ -1162,7 +1214,12 @@ function Write-ExoConnectedOrganization {
 ##  guard -> MODE 1 (generate/provision) or MODE 2 (certificate connect).
 ## ============================================================================
 
-Clear-Host
+try {
+    Clear-Host -ErrorAction Stop
+}
+catch {
+    Write-Verbose "Unable to clear the host display; continuing without clearing it. $($_.Exception.Message)"
+}
 
 ## Enforce TLS 1.2 minimum. Required for .NET Framework / PowerShell 5.1; .NET 6+ (PS7+) defaults to TLS 1.2+ already.
 ## OR (-bor) the flag in rather than overwriting, so newer protocols (e.g. TLS 1.3) stay enabled.
@@ -1183,6 +1240,17 @@ try {
     ## reject both-set and neither-set up front before doing any work.
     if (($GenerateLocalCertificate -and $UseCertificateAuth) -or (-not $GenerateLocalCertificate -and -not $UseCertificateAuth)) {
         throw "Specify exactly one mode: -GenerateLocalCertificate or -UseCertificateAuth."
+    }
+
+    $requestedOperation = if ($GenerateLocalCertificate) {
+        if ($ProvisionEntraApp) { 'Generate a certificate and provision Entra ID and Exchange access' }
+        else { 'Generate and export a local Exchange Online certificate' }
+    }
+    else {
+        'Connect to Exchange Online using certificate authentication'
+    }
+    if (-not $PSCmdlet.ShouldProcess($requestedOperation, 'Run selected workflow')) {
+        return
     }
 
     ## ------------------------------------------------------------------------
