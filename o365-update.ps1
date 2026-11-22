@@ -23,58 +23,7 @@ Why PowerShell 7?
 
 ================================================================================
 #>
-#Requires -Version 7.0
 
-[CmdletBinding()]
-param(
-    [Parameter(HelpMessage = "Prompt before installing missing modules")]
-    [switch]$Prompt,
-
-    [Parameter(HelpMessage = "Create a transcript log of all operations")]
-    [switch]$CreateLog,
-
-    [Parameter(HelpMessage = "Path for log file (default: current directory)")]
-    [ValidateScript({
-        if (-not (Test-Path $_ -PathType Container)) {
-            throw "LogPath '$_' does not exist or is not a directory"
-        }
-        return $true
-    })]
-    [string]$LogPath = (Get-Location).Path,
-
-    [Parameter(HelpMessage = "Skip deprecated module cleanup")]
-    [switch]$SkipDeprecatedCleanup,
-
-    [Parameter(HelpMessage = "Skip automatic cleanup of old module versions after updates")]
-    [switch]$SkipVersionCleanup,
-
-    [Parameter(HelpMessage = "Force a comprehensive cleanup of ALL old module versions for ALL installed modules, regardless of ModuleScope, -Prompt or -SkipVersionCleanup, unloading modules from the session and falling back to direct folder removal when Uninstall-Module cannot complete the job")]
-    [switch]$ForceVersionCleanup,
-
-    [Parameter(HelpMessage = "Only check versions without updating")]
-    [switch]$CheckOnly,
-
-    [Parameter(HelpMessage = "Check for PowerShell session conflicts and exit")]
-    [switch]$CheckSessions,
-
-    [Parameter(HelpMessage = "Automatically terminate conflicting PowerShell sessions without prompting")]
-    [switch]$TerminateConflicts,
-
-    [Parameter(HelpMessage = "Specify which modules to process (default: all)")]
-    [ValidateSet('All', 'Graph', 'Azure', 'Exchange', 'Teams', 'SharePoint', 'PowerApps')]
-    [string[]]$ModuleScope = @('All'),
-
-    [Parameter(HelpMessage = "Skip network connectivity checks")]
-    [switch]$SkipConnectivityCheck,
-
-    [Parameter(HelpMessage = "Use alternative PowerShell Gallery repository")]
-    [ValidateNotNullOrEmpty()]
-    [string]$Repository = 'PSGallery',
-
-    [Parameter(HelpMessage = "Maximum minutes per background installation")]
-    [ValidateRange(1, 240)]
-    [int]$TimeoutMinutes = 30
-)
 <#
 .SYNOPSIS
     Updates all relevant Microsoft Cloud PowerShell modules
@@ -124,7 +73,60 @@ param(
     Checks for PowerShell session conflicts and exits without performing updates
 
 .PARAMETER TerminateConflicts
-    Automatically terminates conflicting PowerShell sessions without prompting
+    Retained for backwards compatibility only. Terminating other sessions is not implemented;
+    the switch is accepted but ignored with a warning. Use -CheckSessions to list sessions
+    that may lock modules and close them manually.
+
+.PARAMETER ModuleScope
+    Limits processing to one or more module categories: All (default), Graph, Azure,
+    Exchange, Teams, SharePoint, PowerApps. Core and Other modules (PowerShellGet,
+    PackageManagement, Microsoft.WinGet.Client) are only processed with 'All'.
+
+.PARAMETER SkipConnectivityCheck
+    Skips the repository reachability check that normally runs before any updates.
+    Use when outbound web requests are blocked but the repository is still usable
+    (e.g. an internal file-share repository).
+
+.PARAMETER Repository
+    Name of a registered PowerShellGet repository to install from (default: PSGallery).
+    Must already be registered with Register-PSRepository.
+
+.PARAMETER TimeoutMinutes
+    Maximum minutes allowed for each background installation before it is abandoned
+    (1-240, default 30). Old versions are retained when an installation times out.
+
+.PARAMETER PassThru
+    Emits one result object per processed module to the pipeline so results can be
+    filtered, exported or inspected by automation. Console output is unchanged.
+
+.PARAMETER WhatIf
+    Shows which modules would be installed, updated or uninstalled without making changes.
+    Administrator rights are not required when -WhatIf is used.
+
+.PARAMETER Confirm
+    Prompts for confirmation before each install, update or uninstall.
+
+.INPUTS
+    None. This script does not accept pipeline input.
+
+.OUTPUTS
+    None by default (progress is written to the host/information stream).
+    With -PassThru: PSCustomObject per module with ModuleName, Category, Action, Status,
+    LocalVersion, OnlineVersion, Duration and ErrorMessage properties.
+
+.EXAMPLE
+    .\o365-update.ps1 -ModuleScope Graph, Exchange -WhatIf
+    Shows what would be installed/updated for the Graph and Exchange modules without changing anything.
+
+.EXAMPLE
+    $results = .\o365-update.ps1 -CheckOnly -PassThru
+    $results | Where-Object Status -eq 'UpdateAvailable' | Format-Table ModuleName, LocalVersion, OnlineVersion
+    Captures check results as objects and lists modules with pending updates.
+
+.EXAMPLE
+    .\o365-update.ps1 -CreateLog -LogPath 'D:\Logs\Module Updates' -TimeoutMinutes 60
+    Unattended run (e.g. scheduled task) with a transcript in a folder containing spaces and a longer timeout.
+    Check $LASTEXITCODE: 0 = success, 1 = one or more operations failed or prerequisites were not met.
 
 .EXAMPLE
     .\o365-update.ps1
@@ -147,10 +149,6 @@ param(
     Checks for PowerShell session conflicts and provides guidance
 
 .EXAMPLE
-    .\o365-update.ps1 -TerminateConflicts
-    Automatically terminates conflicting PowerShell sessions and then updates modules
-
-.EXAMPLE
     .\o365-update.ps1 -SkipVersionCleanup
     Updates modules but skips automatic cleanup of old versions to preserve multiple versions
 
@@ -168,11 +166,26 @@ param(
     outside PowerShellGet.
 
 .NOTES
-    Author: CIAOPS    Version: 2.16
+    Author: CIAOPS    Version: 2.17
     Last Updated: November 2026
-    Requires: PowerShell 7.X or higher, Administrator privileges
+    Requires: PowerShell 7.X; Administrator privileges for installs/removals (not for
+              -CheckOnly, -CheckSessions or -WhatIf); PowerShellGet 2.x; internet access
+              to the PowerShell Gallery (or the repository given in -Repository)
 
     IMPORTANT: This version removes deprecated Azure AD and MSOnline modules in favor of Microsoft Graph PowerShell SDK
+
+    Major Changes in v2.17:
+    - Added -WhatIf/-Confirm support for installs, updates, old-version cleanup and deprecated
+      module removal; -WhatIf runs without elevation
+    - Added -PassThru to emit one O365Update.ModuleResult object per module for automation
+    - Set-StrictMode -Version Latest; fixed single-module -ModuleScope reporting the wrong count
+    - Prerelease module versions (e.g. 1.2.3-nightly) no longer break version comparisons
+    - TLS 1.2 is now added to (not substituted for) the enabled protocols, so TLS 1.3 stays on
+    - The repository InstallationPolicy is restored after install instead of being left Trusted
+    - Uses cached, name-filtered presence checks to avoid Get-InstalledModule calls for modules
+      not present on disk, without performing a slow full module-path scan
+    - Consolidated duplicated direct-install fallback code; removed unused functions
+    - Fixed comment-based help so Get-Help works
 
     Major Changes in v2.16 (19 November 2026):
     - Made prerequisite failures and unreachable repositories fail fast instead of continuing
@@ -356,7 +369,67 @@ param(
     https://github.com/directorcia/Office365
 #>
 
-# Script configuration
+#Requires -Version 7.0
+
+#region Parameters
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [Parameter(HelpMessage = "Prompt before installing missing modules")]
+    [switch]$Prompt,
+
+    [Parameter(HelpMessage = "Create a transcript log of all operations")]
+    [switch]$CreateLog,
+
+    [Parameter(HelpMessage = "Path for log file (default: current directory)")]
+    [ValidateScript({
+        # -LiteralPath so folder names containing [ ] are not treated as wildcards
+        if (-not (Test-Path -LiteralPath $_ -PathType Container)) {
+            throw "LogPath '$_' does not exist or is not a directory. Create it first or pass an existing folder."
+        }
+        return $true
+    })]
+    [string]$LogPath = (Get-Location).Path,
+
+    [Parameter(HelpMessage = "Skip deprecated module cleanup")]
+    [switch]$SkipDeprecatedCleanup,
+
+    [Parameter(HelpMessage = "Skip automatic cleanup of old module versions after updates")]
+    [switch]$SkipVersionCleanup,
+
+    [Parameter(HelpMessage = "Force a comprehensive cleanup of ALL old module versions for ALL installed modules, regardless of ModuleScope, -Prompt or -SkipVersionCleanup, unloading modules from the session and falling back to direct folder removal when Uninstall-Module cannot complete the job")]
+    [switch]$ForceVersionCleanup,
+
+    [Parameter(HelpMessage = "Only check versions without updating")]
+    [switch]$CheckOnly,
+
+    [Parameter(HelpMessage = "Check for PowerShell session conflicts and exit")]
+    [switch]$CheckSessions,
+
+    [Parameter(HelpMessage = "Accepted for compatibility; session termination is not implemented and this switch is ignored")]
+    [switch]$TerminateConflicts,
+
+    [Parameter(HelpMessage = "Specify which modules to process (default: all)")]
+    [ValidateSet('All', 'Graph', 'Azure', 'Exchange', 'Teams', 'SharePoint', 'PowerApps')]
+    [string[]]$ModuleScope = @('All'),
+
+    [Parameter(HelpMessage = "Skip network connectivity checks")]
+    [switch]$SkipConnectivityCheck,
+
+    [Parameter(HelpMessage = "Use alternative PowerShell Gallery repository")]
+    [ValidateNotNullOrEmpty()]
+    [string]$Repository = 'PSGallery',
+
+    [Parameter(HelpMessage = "Maximum minutes per background installation")]
+    [ValidateRange(1, 240)]
+    [int]$TimeoutMinutes = 30,
+
+    [Parameter(HelpMessage = "Emit a result object per module to the pipeline")]
+    [switch]$PassThru
+)
+#endregion Parameters
+
+#region Configuration
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
@@ -497,18 +570,147 @@ $Script:DeprecatedModules = @(
     @{ Name = 'MSCommerce'; Replacement = 'Microsoft.Graph'; Reason = 'Commerce functionality available through Microsoft Graph.' }
 )
 
-# Session conflict tracking variables
-$Script:SessionConflictCheckPerformed = $false
-$Script:SessionConflictsResolved = $false
-
-# Cleanup prompt tracking variable
+# Run state (initialised up front so Set-StrictMode never trips on an unset variable)
 $Script:SkipCleanupPrompts = $false
+$Script:LastInstallationError = $null
+$Script:ModuleOperationResults = @()
+$Script:FilteredModuleList = @()
+$Script:ProcessingFailureCount = 0
+$Script:SkippedCount = 0
+$Script:ModuleResults = [System.Collections.Generic.List[object]]::new()
+# Per-name results; avoids the much slower full Get-Module -ListAvailable scan.
+$Script:ModulePresenceCache = @{}
 
-# Configuration variables
 $Script:JobsSupported = $ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'
 $Script:BootstrapModuleNames = @('PowerShellGet', 'PackageManagement')
+#endregion Configuration
+
+#region Helper functions
+
+function ConvertTo-ModuleVersion {
+    <#
+    .SYNOPSIS
+        Converts a module version (possibly a prerelease string) to [version] for comparison.
+    .DESCRIPTION
+        PowerShellGet reports prerelease modules as strings such as '2.4.0-nightly', which a
+        plain [version] cast rejects. The prerelease label is stripped so those modules can
+        still be compared and sorted instead of failing the whole module check.
+    #>
+    [CmdletBinding()]
+    [OutputType([version])]
+    param(
+        [Parameter(Mandatory)]
+        [AllowNull()]
+        [object]$Version
+    )
+
+    if ($null -eq $Version) { return [version]'0.0' }
+    if ($Version -is [version]) { return $Version }
+
+    $text = ([string]$Version).Trim()
+    # Drop SemVer prerelease/build metadata: '1.2.3-beta+abc' -> '1.2.3'
+    $text = ($text -split '[-+]', 2)[0]
+    $parsed = $null
+    if ([version]::TryParse($text, [ref]$parsed)) { return $parsed }
+    # Single-component versions ('5') are valid module versions but not valid [version] strings
+    if ($text -match '^\d+$') { return [version]::new([int]$text, 0) }
+
+    throw "Cannot interpret '$Version' as a module version."
+}
+
+function Enable-Tls12 {
+    <#
+    .SYNOPSIS
+        Ensures TLS 1.2 is enabled for this process without disabling newer protocols.
+    .DESCRIPTION
+        Assigning Tls12 outright (the previous behaviour) replaced SystemDefault and so turned
+        off TLS 1.3. OR-ing the flag in keeps whatever the OS already allows.
+    #>
+    [CmdletBinding()]
+    param()
+
+    try {
+        $current = [Net.ServicePointManager]::SecurityProtocol
+        if ($current -ne [Net.SecurityProtocolType]::SystemDefault -and
+            -not ($current -band [Net.SecurityProtocolType]::Tls12)) {
+            [Net.ServicePointManager]::SecurityProtocol = $current -bor [Net.SecurityProtocolType]::Tls12
+        }
+        [Net.ServicePointManager]::DefaultConnectionLimit = [Math]::Max([Net.ServicePointManager]::DefaultConnectionLimit, 12)
+    }
+    catch {
+        # Expected under Constrained Language Mode; downloads still work with OS defaults.
+        Write-Verbose "Could not adjust network settings: $($_.Exception.Message)"
+    }
+}
+
+function Test-ModulePresentOnDisk {
+    <#
+    .SYNOPSIS
+        Checks whether a module exists on PSModulePath, caching by module name.
+    .DESCRIPTION
+        A name-filtered Get-Module query is much cheaper than either Get-InstalledModule -AllVersions
+        or a full unfiltered Get-Module scan on module trees with many OneDrive-backed entries.
+        Call with -Refresh after changing this module's installation state.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Name,
+
+        [Parameter()]
+        [switch]$Refresh
+    )
+
+    if ($Refresh -or -not $Script:ModulePresenceCache.ContainsKey($Name)) {
+        Write-Verbose "Checking PSModulePath for '$Name'..."
+        $availableModules = @(Get-Module -Name $Name -ListAvailable -ErrorAction SilentlyContinue)
+        $Script:ModulePresenceCache[$Name] = ($availableModules.Count -gt 0)
+    }
+
+    return [bool]$Script:ModulePresenceCache[$Name]
+}
+
+function Add-ModuleResult {
+    <#
+    .SYNOPSIS
+        Records a per-module outcome for the -PassThru output and the final summary.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [hashtable]$Module,
+        [Parameter(Mandatory)] [string]$Status,
+        [Parameter()] [AllowNull()] [string]$Action,
+        [Parameter()] [AllowNull()] [object]$LocalVersion,
+        [Parameter()] [AllowNull()] [object]$OnlineVersion,
+        [Parameter()] [timespan]$Duration = [timespan]::Zero,
+        [Parameter()] [AllowNull()] [string]$ErrorMessage
+    )
+
+    $Script:ModuleResults.Add([pscustomobject]@{
+        PSTypeName    = 'O365Update.ModuleResult'
+        ModuleName    = $Module.Name
+        Category      = $Module.Category
+        Action        = $Action
+        Status        = $Status
+        LocalVersion  = if ($null -ne $LocalVersion) { [string]$LocalVersion } else { $null }
+        OnlineVersion = if ($null -ne $OnlineVersion) { [string]$OnlineVersion } else { $null }
+        Duration      = $Duration
+        ErrorMessage  = $ErrorMessage
+    })
+}
 
 function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+        Writes coloured console status text.
+    .NOTES
+        Write-Host is deliberate: this is UI text, not data. In PS5+ it goes to the
+        Information stream (6), so it can still be captured or silenced with 6>$null.
+        Use -PassThru on the script for machine-readable output.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'Coloured UI text; data is emitted via -PassThru')]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -542,16 +744,29 @@ function Write-ColorOutput {
 }
 
 function Test-PackageProvider {
-    [CmdletBinding()]
+    <#
+    .SYNOPSIS
+        Ensures a package provider (normally NuGet) is installed and current.
+    .OUTPUTS
+        [bool] $true when the provider is usable (or would be, under -WhatIf); otherwise $false.
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([bool])]
     param(
         [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
         [string]$PackageName
     )
+
+    # NuGet versions below this cannot talk to the current PowerShell Gallery API
+    $minimumProviderVersion = [version]'2.8.5.201'
 
     try {
         Write-ColorOutput "    Checking package provider: $PackageName" -Type Info
 
-        $installedProvider = Get-PackageProvider -Name $PackageName -ErrorAction SilentlyContinue
+        # Several provider versions can be loaded side by side; compare against the newest
+        $installedProvider = @(Get-PackageProvider -Name $PackageName -ErrorAction SilentlyContinue) |
+            Sort-Object { [version]$_.Version } -Descending | Select-Object -First 1
 
         if (-not $installedProvider) {
             Write-ColorOutput "    [Warning] Package provider '$PackageName' not found" -Type Warning
@@ -559,12 +774,15 @@ function Test-PackageProvider {
             if ($Prompt -and -not $CheckOnly) {
                 $response = Read-Host "    Install package provider '$PackageName' (Y/N)?"
                 if ($response -notmatch '^[Yy]') {
-                    Write-ColorOutput "    Skipping installation of $PackageName" -Type Warning
-                    return
+                    Write-ColorOutput "    Skipping installation of $PackageName - module installs need it. Re-run and answer Y, or run: Install-PackageProvider -Name $PackageName -Force" -Type Warning
+                    return $false
                 }
             }
 
             if (-not $CheckOnly) {
+                if (-not $PSCmdlet.ShouldProcess($PackageName, 'Install package provider')) {
+                    return [bool]$WhatIfPreference
+                }
                 Write-ColorOutput "    Installing package provider: $PackageName" -Type Process
                 Install-PackageProvider -Name $PackageName -Force -Confirm:$false
                 Write-ColorOutput "    Successfully installed $PackageName" -Type Process
@@ -572,13 +790,13 @@ function Test-PackageProvider {
             return $true
         }
 
-        if ([version]$installedProvider.Version -ge [version]'2.8.5.201') {
-            Write-Verbose "Package provider '$PackageName' meets the minimum version."
+        if ([version]$installedProvider.Version -ge $minimumProviderVersion) {
+            Write-Verbose "Package provider '$PackageName' v$($installedProvider.Version) meets the minimum version $minimumProviderVersion."
             return $true
         }
 
         # Check for updates
-        $onlineProvider = Find-PackageProvider -Name $PackageName -ErrorAction SilentlyContinue
+        $onlineProvider = Find-PackageProvider -Name $PackageName -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $onlineProvider) {
             Write-ColorOutput "    Cannot find online version of $PackageName" -Type Warning
             return $true
@@ -591,28 +809,19 @@ function Test-PackageProvider {
             Write-ColorOutput "    Local provider $PackageName ($localVersion) is up to date" -Type Process
             return $true
         }
-        else {
-            Write-ColorOutput "    Local provider $PackageName ($localVersion) can be updated to ($onlineVersion)" -Type Warning
-              if (-not $CheckOnly) {
-                Write-ColorOutput "    Updating package provider: $PackageName" -Type Process
 
-                # Use warning suppression for package providers too
-                $oldWarningPreference = $WarningPreference
-                $WarningPreference = 'SilentlyContinue'
-                try {
-                    # There is no Update-PackageProvider cmdlet; Install-PackageProvider -Force installs the newer version side-by-side
-                    Install-PackageProvider -Name $PackageName -Force -Confirm:$false -WarningAction SilentlyContinue 2>$null
-                    Write-ColorOutput "    Successfully updated $PackageName" -Type Process
-                }
-                finally {
-                    $WarningPreference = $oldWarningPreference
-                }
-            }
-            return $true
+        Write-ColorOutput "    Local provider $PackageName ($localVersion) can be updated to ($onlineVersion)" -Type Warning
+        if (-not $CheckOnly -and $PSCmdlet.ShouldProcess("$PackageName $localVersion -> $onlineVersion", 'Update package provider')) {
+            Write-ColorOutput "    Updating package provider: $PackageName" -Type Process
+            # There is no Update-PackageProvider cmdlet; Install-PackageProvider -Force installs the newer version side-by-side
+            Install-PackageProvider -Name $PackageName -Force -Confirm:$false -WarningAction SilentlyContinue 2>$null
+            Write-ColorOutput "    Successfully updated $PackageName" -Type Process
         }
+        return $true
     }
     catch {
         Write-ColorOutput "    Error processing package provider '$PackageName' - $($PSItem.Exception.Message)" -Type Error
+        Write-ColorOutput "    Fix: run 'Install-PackageProvider -Name $PackageName -Force' in an elevated PowerShell 7 session, then re-run." -Type Info
         return $false
     }
 }
@@ -836,6 +1045,101 @@ function Get-ModuleSpecificParams {
     return $moduleParams
 }
 
+function Test-ModuleConflictError {
+    <#
+    .SYNOPSIS
+        Returns $true when an Install-Module error can be fixed by retrying with -AllowClobber
+        (or -SkipPublisherCheck for PnP.PowerShell, whose publisher certificate changed).
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)] [string]$ModuleName,
+        [Parameter(Mandatory)] [AllowEmptyString()] [string]$ErrorMessage
+    )
+
+    if ($ErrorMessage -like '*already available*' -or
+        $ErrorMessage -like '*AllowClobber*' -or
+        $ErrorMessage -like '*may override the existing commands*') {
+        return $true
+    }
+    return ($ModuleName -eq 'PnP.PowerShell' -and
+        ($ErrorMessage -like '*publisher*' -or $ErrorMessage -like '*SkipPublisherCheck*' -or $ErrorMessage -like '*signed module*'))
+}
+
+function Invoke-ModuleInstallDirect {
+    <#
+    .SYNOPSIS
+        Runs Install-Module in the current process (used when background jobs are unavailable).
+    .DESCRIPTION
+        Single implementation of the in-process install path, including one retry with
+        -AllowClobber / -SkipPublisherCheck for command-conflict errors. No timeout can be
+        enforced here because the call blocks the current runspace.
+    .OUTPUTS
+        [bool] success. On failure $Script:LastInstallationError holds the reason.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)] [string]$ModuleName,
+        [Parameter(Mandatory)] [hashtable]$InstallParams,
+        [Parameter(Mandatory)] [string]$Operation,
+        [Parameter(Mandatory)] [datetime]$StartTime
+    )
+
+    $isConstrainedLargeModule = ($ExecutionContext.SessionState.LanguageMode -eq 'ConstrainedLanguage' -and
+        $ModuleName -in @('Az', 'Microsoft.Graph'))
+
+    Enable-Tls12
+    Write-ColorOutput "    Starting $Operation of $ModuleName..." -Type Process
+    if ($isConstrainedLargeModule) {
+        Write-ColorOutput "    📋 Phase 1: Download and Installation starting..." -Type Process
+    }
+
+    try {
+        $null = Install-Module -Name $ModuleName @InstallParams
+        $elapsed = (Get-Date) - $StartTime
+        Write-ColorOutput "    Successfully completed $Operation of $ModuleName" -Type Process
+        Write-ColorOutput ("    Actual time: {0:N1} minutes" -f $elapsed.TotalMinutes) -Type Info
+        if ($isConstrainedLargeModule) {
+            Write-ColorOutput "    ✅ $ModuleName processing complete in Constrained Language Mode" -Type Process
+            Write-ColorOutput "    The extended time was due to security verification requirements" -Type Info
+        }
+        return $true
+    }
+    catch {
+        $errorMessage = $_.Exception.Message
+        $Script:LastInstallationError = $errorMessage
+
+        if (-not (Test-ModuleConflictError -ModuleName $ModuleName -ErrorMessage $errorMessage)) {
+            Write-ColorOutput "    Error during $Operation of $ModuleName`: $errorMessage" -Type Error
+            Write-ColorOutput ("    Time elapsed: {0:N1} minutes" -f ((Get-Date) - $StartTime).TotalMinutes) -Type Info
+            return $false
+        }
+    }
+
+    Write-ColorOutput "    ⚠️ Command conflict detected for $ModuleName" -Type Warning
+    Write-ColorOutput "    🔄 Retry attempt with -AllowClobber..." -Type Process
+    $retryParams = $InstallParams.Clone()
+    $retryParams.AllowClobber = $true
+    if ($ModuleName -eq 'PnP.PowerShell') {
+        $retryParams.SkipPublisherCheck = $true
+    }
+
+    try {
+        $null = Install-Module -Name $ModuleName @retryParams
+        Write-ColorOutput "    ✅ Successfully resolved conflict and installed $ModuleName" -Type Process
+        Write-ColorOutput ("    Total time: {0:N1} minutes" -f ((Get-Date) - $StartTime).TotalMinutes) -Type Info
+        return $true
+    }
+    catch {
+        $Script:LastInstallationError = $_.Exception.Message
+        Write-ColorOutput "    ❌ Retry failed: $($_.Exception.Message)" -Type Error
+        Write-ColorOutput ("    Total time elapsed: {0:N1} minutes" -f ((Get-Date) - $StartTime).TotalMinutes) -Type Info
+        return $false
+    }
+}
+
 function Install-ModuleWithProgress {
     <#
     .SYNOPSIS
@@ -924,11 +1228,21 @@ function Install-ModuleWithProgress {
         $ProgressPreference = 'SilentlyContinue'
         $ConfirmPreference = 'None'
         $PSDefaultParameterValues['*:Confirm'] = $false
+        $progressFile = $null
+        $originalInstallationPolicy = $null
 
         try {
-            # Set the same optimizations in the job
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            [Net.ServicePointManager]::DefaultConnectionLimit = 12
+            # Job runs in a new process; enable TLS 1.2 without disabling TLS 1.3 (see Enable-Tls12)
+            try {
+                $currentProtocol = [Net.ServicePointManager]::SecurityProtocol
+                if ($currentProtocol -ne [Net.SecurityProtocolType]::SystemDefault) {
+                    [Net.ServicePointManager]::SecurityProtocol = $currentProtocol -bor [Net.SecurityProtocolType]::Tls12
+                }
+                [Net.ServicePointManager]::DefaultConnectionLimit = 12
+            }
+            catch {
+                Write-Verbose "Could not adjust network settings in job: $($_.Exception.Message)"
+            }
 
             # Start-Job runs in a separate process, so provider and repository
             # consent from the parent session is not available here.
@@ -936,12 +1250,16 @@ function Install-ModuleWithProgress {
             if (-not $nugetProvider) {
                 Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -Confirm:$false -ErrorAction Stop
             }
-            Set-PSRepository -Name $Repository -InstallationPolicy Trusted -ErrorAction Stop
+            # Set-PSRepository persists to the user's profile, so remember the original policy
+            # and put it back in 'finally' rather than leaving the repository trusted forever.
+            $originalInstallationPolicy = (Get-PSRepository -Name $Repository -ErrorAction Stop).InstallationPolicy
+            if ($originalInstallationPolicy -ne 'Trusted') {
+                Set-PSRepository -Name $Repository -InstallationPolicy Trusted -ErrorAction Stop
+            }
 
             # Create progress tracking for Az and Graph modules in constrained mode
             $isConstrainedLargeModule = ($LanguageMode -eq 'ConstrainedLanguage' -and
                                        ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph'))
-            $progressFile = $null
 
             if ($isConstrainedLargeModule) {
                 $progressFile = $ProgressFilePath
@@ -1036,8 +1354,11 @@ function Install-ModuleWithProgress {
             return @{ Success = $false; Message = $_.Exception.Message }
         }
         finally {
-            if ($progressFile -and (Test-Path $progressFile)) {
-                Remove-Item $progressFile -Force -ErrorAction SilentlyContinue
+            if ($progressFile -and (Test-Path -LiteralPath $progressFile)) {
+                Remove-Item -LiteralPath $progressFile -Force -ErrorAction SilentlyContinue
+            }
+            if ($originalInstallationPolicy -and $originalInstallationPolicy -ne 'Trusted') {
+                Set-PSRepository -Name $Repository -InstallationPolicy $originalInstallationPolicy -ErrorAction SilentlyContinue
             }
         }
     }
@@ -1055,92 +1376,7 @@ function Install-ModuleWithProgress {
             Write-ColorOutput ""
         }
 
-        # Execute directly without background jobs
-        try {
-            # Set the same optimizations
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            [Net.ServicePointManager]::DefaultConnectionLimit = 12
-
-            Write-ColorOutput "    Starting $Operation of $ModuleName..." -Type Process
-
-            # Show additional warning for large modules before starting
-            if ($languageMode -eq 'ConstrainedLanguage' -and ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph')) {
-                Write-ColorOutput "    📋 Phase 1: Download and Installation starting..." -Type Process
-            }
-
-            $null = Install-Module -Name $ModuleName @InstallParams
-
-            $actualTime = ((Get-Date) - $startTime).TotalSeconds
-            Write-ColorOutput "    Successfully completed $Operation of $ModuleName" -Type Process
-            Write-ColorOutput ("    Actual time: {0:N1} minutes" -f ($actualTime / 60)) -Type Info
-
-            # Additional feedback for constrained mode
-            if ($languageMode -eq 'ConstrainedLanguage' -and ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph')) {
-                Write-ColorOutput "    ✅ $ModuleName processing complete in Constrained Language Mode" -Type Process
-                Write-ColorOutput "    The extended time was due to security verification requirements" -Type Info
-            }
-
-            return $true
-        }
-        catch {
-            $actualTime = ((Get-Date) - $startTime).TotalSeconds
-            $errorMessage = $_.Exception.Message
-            $Script:LastInstallationError = $errorMessage
-
-            # Enhanced error handling for AllowClobber conflicts and publisher-signature conflicts
-            if ($errorMessage -like "*already available*" -or
-                $errorMessage -like "*AllowClobber*" -or
-                $errorMessage -like "*may override the existing commands*" -or
-                ($ModuleName -eq 'PnP.PowerShell' -and ($errorMessage -like "*publisher*" -or $errorMessage -like "*SkipPublisherCheck*" -or $errorMessage -like "*signed module*"))) {
-                Write-ColorOutput "    ⚠️ Command conflict detected for $ModuleName" -Type Warning
-                Write-ColorOutput "    💡 Retrying with enhanced conflict resolution..." -Type Info
-
-                # Force AllowClobber for conflict resolution
-                try {
-                    Write-ColorOutput "    🔄 Retry attempt with -AllowClobber..." -Type Process
-
-                    if ($Operation -in @('Install', 'Update')) {
-                        $retryArgs = @{
-                            Name = $ModuleName
-                            Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
-                            Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
-                            ErrorAction = 'Stop'
-                        }
-                        if ($ModuleName -eq 'PnP.PowerShell') {
-                            $retryArgs.SkipPublisherCheck = $true
-                            $retryArgs.AllowClobber = $true
-                        } else {
-                            $retryArgs.AllowClobber = $true
-                        }
-                        if ($InstallParams.ContainsKey('Scope')) { $retryArgs.Scope = $InstallParams.Scope }
-                        if ($InstallParams.ContainsKey('AcceptLicense')) { $retryArgs.AcceptLicense = $InstallParams.AcceptLicense }
-                        if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $retryArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
-
-                        $retryArgs.Repository = $InstallParams.Repository
-                        $retryArgs.RequiredVersion = $InstallParams.RequiredVersion
-                        $null = Install-Module @retryArgs
-
-                        Write-ColorOutput "    ✅ Successfully resolved conflict and installed $ModuleName" -Type Process
-                        Write-ColorOutput ("    Retry time: {0:N1} minutes" -f ($actualTime / 60)) -Type Info
-                        return $true
-                    } else {
-                        $Script:LastInstallationError = "Unsupported operation '$Operation'."
-                        return $false
-                    }
-                }
-                catch {
-                    $Script:LastInstallationError = $_.Exception.Message
-                    Write-ColorOutput "    ❌ Retry failed: $($_.Exception.Message)" -Type Error
-                    Write-ColorOutput ("    Total time elapsed: {0:N1} minutes" -f ($actualTime / 60)) -Type Info
-                    return $false
-                }
-            } else {
-                # Original error handling for non-AllowClobber errors
-                Write-ColorOutput "    Error during $Operation of $ModuleName`: $errorMessage" -Type Error
-                Write-ColorOutput ("    Time elapsed: {0:N1} minutes" -f ($actualTime / 60)) -Type Info
-                return $false
-            }
-        }
+        return (Invoke-ModuleInstallDirect -ModuleName $ModuleName -InstallParams $InstallParams -Operation $Operation -StartTime $startTime)
     }
 
     # Background job implementation for environments that support it
@@ -1155,135 +1391,7 @@ function Install-ModuleWithProgress {
         Write-ColorOutput '    The installation timeout cannot be enforced in direct execution mode.' -Type Warning
         $Script:JobsSupported = $false
 
-        # Fallback to direct execution
-        try {
-            # Set the same optimizations
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            [Net.ServicePointManager]::DefaultConnectionLimit = 12
-
-            Write-ColorOutput "    Starting $Operation of $ModuleName..." -Type Process
-
-            switch ($Operation) {
-                'Install' {
-                    # Use explicit parameter passing for constrained language mode compatibility
-                    $installArgs = @{
-                        Name = $ModuleName
-                        Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
-                        Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
-                        ErrorAction = 'Stop'
-                    }
-                    if ($InstallParams.ContainsKey('Scope')) { $installArgs.Scope = $InstallParams.Scope }
-                    if ($InstallParams.ContainsKey('AllowClobber')) { $installArgs.AllowClobber = $InstallParams.AllowClobber }
-                    if ($InstallParams.ContainsKey('AcceptLicense')) { $installArgs.AcceptLicense = $InstallParams.AcceptLicense }
-                    if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $installArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
-
-                    $null = Install-Module -Name $ModuleName @InstallParams
-                }
-                'Update' {
-                    # Use explicit parameter passing for constrained language mode compatibility.
-                    # PnP.PowerShell needs Install-Module with SkipPublisherCheck to update past
-                    # Microsoft-signed versions without tripping the publisher check.
-                    if ($ModuleName -eq 'PnP.PowerShell') {
-                        $updateArgs = @{
-                            Name = $ModuleName
-                            Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
-                            Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
-                            ErrorAction = 'Stop'
-                        }
-                        if ($InstallParams.ContainsKey('Scope')) { $updateArgs.Scope = $InstallParams.Scope }
-                        if ($InstallParams.ContainsKey('AllowClobber')) { $updateArgs.AllowClobber = $InstallParams.AllowClobber }
-                        if ($InstallParams.ContainsKey('AcceptLicense')) { $updateArgs.AcceptLicense = $InstallParams.AcceptLicense }
-                        if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $updateArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
-                        $null = Install-Module -Name $ModuleName @InstallParams
-                    } else {
-                        # Update-Module doesn't support AllowClobber, AcceptLicense, or SkipPublisherCheck
-                        $updateArgs = @{
-                            Name = $ModuleName
-                            Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
-                            Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
-                            ErrorAction = 'Stop'
-                        }
-                        # Only add Scope if present (Update-Module supports this)
-                        if ($InstallParams.ContainsKey('Scope')) { $updateArgs.Scope = $InstallParams.Scope }
-
-                        $null = Install-Module -Name $ModuleName @InstallParams
-                    }
-                }
-                default {
-                    # Use explicit parameter passing for constrained language mode compatibility
-                    $installArgs = @{
-                        Name = $ModuleName
-                        Force = if ($InstallParams.ContainsKey('Force')) { $InstallParams.Force } else { $true }
-                        Confirm = if ($InstallParams.ContainsKey('Confirm')) { $InstallParams.Confirm } else { $false }
-                        ErrorAction = 'Stop'
-                    }
-                    if ($InstallParams.ContainsKey('Scope')) { $installArgs.Scope = $InstallParams.Scope }
-                    if ($InstallParams.ContainsKey('AllowClobber')) { $installArgs.AllowClobber = $InstallParams.AllowClobber }
-                    if ($InstallParams.ContainsKey('AcceptLicense')) { $installArgs.AcceptLicense = $InstallParams.AcceptLicense }
-                    if ($InstallParams.ContainsKey('SkipPublisherCheck')) { $installArgs.SkipPublisherCheck = $InstallParams.SkipPublisherCheck }
-
-                    $null = Install-Module -Name $ModuleName @InstallParams
-                }
-            }
-
-            $actualTime = ((Get-Date) - $startTime).TotalSeconds
-            Write-ColorOutput "    Successfully completed $Operation of $ModuleName" -Type Process
-            Write-ColorOutput ("    Actual time: {0:N0} seconds" -f $actualTime) -Type Info
-            return $true
-        }
-        catch {
-            $actualTime = ((Get-Date) - $startTime).TotalSeconds
-            $errorMessage = $_.Exception.Message
-            $Script:LastInstallationError = $errorMessage
-
-            # Enhanced error handling for AllowClobber conflicts
-            if ($errorMessage -like "*already available*" -and $errorMessage -like "*AllowClobber*") {
-                Write-ColorOutput "    ⚠️ Command conflict detected for $ModuleName" -Type Warning
-                Write-ColorOutput "    💡 Retrying installation with enhanced conflict resolution..." -Type Info
-
-                # Force AllowClobber for conflict resolution
-                $retryParams = $InstallParams.Clone()
-                $retryParams.AllowClobber = $true
-
-                try {
-                    Write-ColorOutput "    🔄 Retry attempt with -AllowClobber..." -Type Process
-
-                    if ($Operation -in @('Install', 'Update')) {
-                        $retryArgs = @{
-                            Name = $ModuleName
-                            Force = if ($retryParams.ContainsKey('Force')) { $retryParams.Force } else { $true }
-                            Confirm = if ($retryParams.ContainsKey('Confirm')) { $retryParams.Confirm } else { $false }
-                            AllowClobber = $true
-                            ErrorAction = 'Stop'
-                        }
-                        if ($retryParams.ContainsKey('Scope')) { $retryArgs.Scope = $retryParams.Scope }
-                        if ($retryParams.ContainsKey('AcceptLicense')) { $retryArgs.AcceptLicense = $retryParams.AcceptLicense }
-                        if ($retryParams.ContainsKey('SkipPublisherCheck')) { $retryArgs.SkipPublisherCheck = $retryParams.SkipPublisherCheck }
-
-                        $retryArgs.Repository = $InstallParams.Repository
-                        $retryArgs.RequiredVersion = $InstallParams.RequiredVersion
-                        $null = Install-Module @retryArgs
-                    } else {
-                        throw "Unsupported operation '$Operation'."
-                    }
-
-                    Write-ColorOutput "    ✅ Successfully resolved conflict and installed $ModuleName" -Type Process
-                    Write-ColorOutput ("    Retry time: {0:N0} seconds" -f $actualTime) -Type Info
-                    return $true
-                }
-                catch {
-                    $Script:LastInstallationError = $_.Exception.Message
-                    Write-ColorOutput "    ❌ Retry failed: $($_.Exception.Message)" -Type Error
-                    Write-ColorOutput ("    Total time elapsed: {0:N0} seconds" -f $actualTime) -Type Info
-                    return $false
-                }
-            } else {
-                # Original error handling for non-AllowClobber errors
-                Write-ColorOutput "    Error during $Operation of $ModuleName`: $errorMessage" -Type Error
-                Write-ColorOutput ("    Time elapsed: {0:N0} seconds" -f $actualTime) -Type Info
-                return $false
-            }
-        }
+        return (Invoke-ModuleInstallDirect -ModuleName $ModuleName -InstallParams $InstallParams -Operation $Operation -StartTime $startTime)
     }
 
     # Enhanced progress tracking with phase detection
@@ -1333,7 +1441,8 @@ function Install-ModuleWithProgress {
                 }
             }
             catch {
-                # Ignore progress file read errors
+                # The job may be mid-write; a missed poll is harmless, the next one catches up
+                Write-Verbose "Progress file read skipped: $($_.Exception.Message)"
             }
         }
 
@@ -1536,12 +1645,13 @@ function Get-FilteredModuleList {
         return $Script:ModuleList
     }
 
-    $filteredModules = @()
+    $filteredModules = [System.Collections.Generic.List[object]]::new()
 
     foreach ($scopeItem in $Scope) {
-        $modulesInScope = $Script:ModuleList | Where-Object { $_.Category -eq $scopeItem }
-        if ($modulesInScope) {
-            $filteredModules += $modulesInScope
+        # @() so a category with a single module still reports Count = 1, not the hashtable key count
+        $modulesInScope = @($Script:ModuleList.Where({ $_.Category -eq $scopeItem }))
+        if ($modulesInScope.Count -gt 0) {
+            $filteredModules.AddRange($modulesInScope)
             Write-ColorOutput "Added $($modulesInScope.Count) module(s) from $scopeItem category" -Type Info
         } else {
             Write-ColorOutput "Warning: No modules found for scope '$scopeItem'" -Type Warning
@@ -1549,9 +1659,10 @@ function Get-FilteredModuleList {
     }
 
     # Remove duplicates and sort by priority
-    $uniqueModules = $filteredModules | Sort-Object Name -Unique | Sort-Object Priority, Name
+    $uniqueModules = @($filteredModules | Sort-Object { $_.Name } -Unique | Sort-Object { $_.Priority }, { $_.Name })
 
     Write-ColorOutput "Total modules selected: $($uniqueModules.Count)" -Type Process
+    # A single result unrolls to a bare hashtable; callers must wrap the call in @()
     return $uniqueModules
 }
 
@@ -1629,9 +1740,16 @@ function Get-ModuleVersionInfo {
     }
 
     try {
+        # Get-InstalledModule -AllVersions costs ~20 s per call on large module trees, so only
+        # pay for it when the module actually exists on PSModulePath (one cached scan).
+        $presentOnDisk = Test-ModulePresentOnDisk -Name $ModuleName
+
         # Check for versions installed via PowerShellGet / Install-Module
-        $installedModules = @(Get-InstalledModule -Name $ModuleName -AllVersions -ErrorAction SilentlyContinue |
-            Sort-Object { [version]$_.Version } -Descending)
+        $installedModules = @()
+        if ($presentOnDisk) {
+            $installedModules = @(Get-InstalledModule -Name $ModuleName -AllVersions -ErrorAction SilentlyContinue |
+                Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending)
+        }
         $versionInfo.InstalledVersions = $installedModules
 
         if ($installedModules) {
@@ -1644,10 +1762,10 @@ function Get-ModuleVersionInfo {
         # Get-InstalledModule only sees modules registered by PowerShellGet. A module can also
         # be installed by another tool or copied into PSModulePath, so inspect available modules
         # before deciding that an installation is missing.
-        if (-not $versionInfo.IsInstalled) {
+        if (-not $versionInfo.IsInstalled -and $presentOnDisk) {
             $psHomeModulePath = Join-Path $PSHOME 'Modules'
             $availableModules = @(Get-Module -Name $ModuleName -ListAvailable -ErrorAction SilentlyContinue |
-                Sort-Object { [version]$_.Version } -Descending)
+                Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending)
             $availableModule = $availableModules | Select-Object -First 1
 
             if ($availableModule) {
@@ -1671,17 +1789,15 @@ function Get-ModuleVersionInfo {
             $versionInfo.OnlineVersion = $onlineModule.Version
 
             if ($versionInfo.IsInstalled) {
-                if ([version]$versionInfo.OnlineVersion -gt [version]$versionInfo.LocalVersion) {
+                $localVersion = ConvertTo-ModuleVersion $versionInfo.LocalVersion
+                $onlineVersion = ConvertTo-ModuleVersion $versionInfo.OnlineVersion
+                if ($onlineVersion -gt $localVersion) {
                     $versionInfo.UpdateAvailable = $true
                     # Update-Module requires a PowerShellGet registration. For modules
                     # discovered only on PSModulePath, install the newer copy instead.
                     if (-not $versionInfo.IsRegistered) {
                         $versionInfo.InstallRecommended = $true
                     }
-
-                    # Determine if update is recommended based on version difference
-                    $localVersion = [version]$versionInfo.LocalVersion
-                    $onlineVersion = [version]$versionInfo.OnlineVersion
 
                     # Recommend update for major/minor version changes or security updates
                     if ($onlineVersion.Major -gt $localVersion.Major -or
@@ -1768,7 +1884,7 @@ function Get-ModuleVersionCleanupEntries {
             [string]$ModuleBase
         )
 
-        $version = [version]$ModuleVersion.Version
+        $version = ConvertTo-ModuleVersion $ModuleVersion.Version
         $moduleRoot = Get-ModuleInstallRoot -ModuleName $ModuleName -ModuleBase $ModuleBase
         $keyPath = if ($ModuleBase) { $ModuleBase } else { '<unknown>' }
         $key = '{0}|{1}' -f $version.ToString(), $keyPath
@@ -1795,7 +1911,7 @@ function Get-ModuleVersionCleanupEntries {
         }
     }
 
-    return @($entriesByKey.Values | Sort-Object { [version]$_.Version } -Descending)
+    return @($entriesByKey.Values | Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending)
 }
 
 function Remove-ModuleVersionForced {
@@ -1822,9 +1938,9 @@ function Remove-ModuleVersionForced {
         filesystem fallback. If not supplied, the path is looked up.
 
     .RETURNS
-        Hashtable: @{ Success = [bool]; Method = 'Uninstall-Module'|'Filesystem'|$null; ErrorMessage = [string] }
+        Hashtable: @{ Success = [bool]; Method = 'Uninstall-Module'|'Filesystem'|'WhatIf'|$null; ErrorMessage = [string] }
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName,
@@ -1839,6 +1955,11 @@ function Remove-ModuleVersionForced {
     $psHomeModulePath = Join-Path $PSHOME 'Modules'
     $outcome = @{ Success = $false; Method = $null; ErrorMessage = $null }
 
+    if (-not $PSCmdlet.ShouldProcess("$ModuleName v$Version", 'Remove module version')) {
+        $outcome.Method = 'WhatIf'
+        return $outcome
+    }
+
     # Unload the exact version from this session first, otherwise both Uninstall-Module
     # and a filesystem delete can fail with "file in use" if it was ever imported.
     try {
@@ -1852,7 +1973,7 @@ function Remove-ModuleVersionForced {
 
     # First attempt: standard, supported removal path
     try {
-        Uninstall-Module -Name $ModuleName -RequiredVersion $Version -Force -ErrorAction Stop
+        Uninstall-Module -Name $ModuleName -RequiredVersion $Version -Force -Confirm:$false -ErrorAction Stop
         $outcome.Success = $true
         $outcome.Method = 'Uninstall-Module'
         return $outcome
@@ -1881,7 +2002,7 @@ function Remove-ModuleVersionForced {
             throw "Refusing to delete '$ModuleBase' - it is a PS7 bundled module"
         }
 
-        Remove-Item -LiteralPath $ModuleBase -Recurse -Force -ErrorAction Stop
+        Remove-Item -LiteralPath $ModuleBase -Recurse -Force -Confirm:$false -ErrorAction Stop
         $outcome.Success = $true
         $outcome.Method = 'Filesystem'
     }
@@ -1917,7 +2038,7 @@ function Remove-OldModuleVersions {
     .RETURNS
         Hashtable with cleanup results
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName,
@@ -1953,7 +2074,7 @@ function Remove-OldModuleVersions {
         if ($keepNewestPerRoot) {
             $versionsToRemove = @()
             foreach ($rootGroup in ($installedVersions | Group-Object -Property ModuleRoot)) {
-                $rootVersions = @($rootGroup.Group | Sort-Object { [version]$_.Version } -Descending)
+                $rootVersions = @($rootGroup.Group | Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending)
                 $versionsToRemove += @($rootVersions | Select-Object -Skip 1)
             }
 
@@ -1977,17 +2098,20 @@ function Remove-OldModuleVersions {
 
         foreach ($versionToRemove in $versionsToRemove) {
             try {
+                if (-not $PSCmdlet.ShouldProcess("$ModuleName v$($versionToRemove.Version)", 'Remove old module version')) {
+                    continue
+                }
                 Write-Verbose "Removing $ModuleName version $($versionToRemove.Version)"
 
                 if ($Force) {
-                    $forcedResult = Remove-ModuleVersionForced -ModuleName $ModuleName -Version $versionToRemove.Version -ModuleBase $versionToRemove.ModuleBase
+                    $forcedResult = Remove-ModuleVersionForced -ModuleName $ModuleName -Version $versionToRemove.Version -ModuleBase $versionToRemove.ModuleBase -Confirm:$false
                     if (-not $forcedResult.Success) {
                         throw $forcedResult.ErrorMessage
                     }
                     Write-ColorOutput "      ✅ Removed version $($versionToRemove.Version) (via $($forcedResult.Method))" -Type Process
                 } else {
                     # Use Uninstall-Module with specific version
-                    Uninstall-Module -Name $ModuleName -RequiredVersion $versionToRemove.Version -ErrorAction Stop
+                    Uninstall-Module -Name $ModuleName -RequiredVersion $versionToRemove.Version -Confirm:$false -ErrorAction Stop
                     Write-ColorOutput "      ✅ Removed version $($versionToRemove.Version)" -Type Process
                 }
 
@@ -2050,7 +2174,7 @@ function Remove-AllOldModuleVersions {
     .RETURNS
         Hashtable with overall cleanup results
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter()]
         [string[]]$ExcludeModules = @(),
@@ -2187,7 +2311,7 @@ function Test-Prerequisites {
 
     # Check PowerShell version
     $psVersion = $PSVersionTable.PSVersion
-    Write-ColorOutput "PowerShell Version: $($psVersion.Major).$($psVersion.Minor).$($psVersion.Build)" -Type Info
+    Write-ColorOutput "PowerShell Version: $psVersion" -Type Info
 
     if ($psVersion.Major -lt 7) {
         Write-ColorOutput "❌ PowerShell 7.0 or higher is required" -Type Error
@@ -2203,7 +2327,7 @@ function Test-Prerequisites {
 
         if ($isAdmin) {
             Write-ColorOutput "✅ Running with administrator privileges" -Type Success
-        } elseif ($CheckOnly -or $CheckSessions) {
+        } elseif ($CheckOnly -or $CheckSessions -or $WhatIfPreference) {
             Write-ColorOutput "ℹ️ Administrator privileges are not required for this read-only operation" -Type Info
         } else {
             Write-ColorOutput "❌ Administrator privileges are required (AllUsers scope installs)" -Type Error
@@ -2247,27 +2371,32 @@ function Start-ModuleProcessing {
     .SYNOPSIS
         Processes modules based on the filtered list
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param()
 
-    Write-ProgressHeader "Module Processing" "Processing $($Script:FilteredModuleList.Count) modules"
+    $modules = @($Script:FilteredModuleList)
+    $totalModules = $modules.Count
+    Write-ProgressHeader "Module Processing" "Processing $totalModules modules"
 
     $processedCount = 0
     $successCount = 0
     $failureCount = 0
-    $cleanupCandidates = @()
+    $cleanupCandidates = [System.Collections.Generic.List[object]]::new()
     $Script:ModuleOperationResults = @()
 
-    foreach ($module in $Script:FilteredModuleList) {
+    foreach ($module in $modules) {
         $processedCount++
 
-        Write-ColorOutput "($processedCount of $($Script:FilteredModuleList.Count)) Processing: $($module.Description)" -Type Info
+        Write-Progress -Activity 'Microsoft cloud module update' -Status "$($module.Name) ($processedCount of $totalModules)" -PercentComplete ([int](($processedCount - 1) / [Math]::Max($totalModules, 1) * 100))
+        Write-ColorOutput "($processedCount of $totalModules) Processing: $($module.Description)" -Type Info
 
         # Get version information
         $versionInfo = Get-ModuleVersionInfo -ModuleName $module.Name
 
         if ($versionInfo.ErrorMessage) {
             Write-ColorOutput "  ❌ Error checking module: $($versionInfo.ErrorMessage)" -Type Error
+            Write-ColorOutput "     Fix: check connectivity to repository '$Repository' (or use -Repository) and re-run with -Verbose." -Type Info
+            Add-ModuleResult -Module $module -Status 'Failed' -Action 'Check' -LocalVersion $versionInfo.LocalVersion -ErrorMessage $versionInfo.ErrorMessage
             $failureCount++
             continue
         }
@@ -2299,8 +2428,7 @@ function Start-ModuleProcessing {
                         Write-ColorOutput "     This will keep only the latest version ($($versionInfo.LocalVersion))" -Type Info
 
                         do {
-                            $cleanupChoice = Read-Host "  Clean up old versions? (Y/N/S for Skip all prompts)"
-                            $cleanupChoice = $cleanupChoice.Trim().ToUpper()
+                            $cleanupChoice = ([string](Read-Host "  Clean up old versions? (Y/N/S for Skip all prompts)")).Trim().ToUpper()
 
                             if ($cleanupChoice -eq 'S') {
                                 # Skip all future prompts for this session
@@ -2345,11 +2473,15 @@ function Start-ModuleProcessing {
         if ($CheckOnly) {
             if ($versionInfo.UpdateAvailable) {
                 Write-ColorOutput "  📋 Update available" -Type Warning
+                $checkStatus = 'UpdateAvailable'
             } elseif ($versionInfo.InstallRecommended) {
                 Write-ColorOutput "  📋 Installation recommended" -Type Warning
+                $checkStatus = 'InstallRecommended'
             } else {
                 Write-ColorOutput "  ✅ Up to date" -Type Process
+                $checkStatus = 'UpToDate'
             }
+            Add-ModuleResult -Module $module -Status $checkStatus -Action 'Check' -LocalVersion $versionInfo.LocalVersion -OnlineVersion $versionInfo.OnlineVersion
             $successCount++
             continue
         }
@@ -2370,6 +2502,7 @@ function Start-ModuleProcessing {
             $bundledVer = $versionInfo.LocalVersion
             Write-ColorOutput "  + Bundled with PS7 (v$bundledVer in $PSHOME\Modules) - skipping install" -Type Process
             Write-ColorOutput "    To get a standalone copy, run: Install-Module $($module.Name) -Force -AllowClobber -Scope AllUsers" -Type Info
+            Add-ModuleResult -Module $module -Status 'Bundled' -Action 'None' -LocalVersion $versionInfo.LocalVersion -OnlineVersion $versionInfo.OnlineVersion
             $successCount++
             Write-ColorOutput ""
             continue
@@ -2380,8 +2513,18 @@ function Start-ModuleProcessing {
                 $response = Read-Host "  $action $($module.Name)? (Y/N)"
                 if ($response -notmatch '^[Yy]') {
                     Write-ColorOutput "  ⏭️ Skipped by user" -Type Warning
+                    Add-ModuleResult -Module $module -Status 'Skipped' -Action $action -LocalVersion $versionInfo.LocalVersion -OnlineVersion $versionInfo.OnlineVersion
+                    $Script:SkippedCount++
                     continue
                 }
+            }
+
+            # Installs run in a separate job process that does not inherit -WhatIf, so gate here.
+            if (-not $PSCmdlet.ShouldProcess("$($module.Name) $($versionInfo.LocalVersion) -> $($versionInfo.OnlineVersion) (AllUsers)", "$action module")) {
+                Add-ModuleResult -Module $module -Status 'WhatIf' -Action $action -LocalVersion $versionInfo.LocalVersion -OnlineVersion $versionInfo.OnlineVersion
+                $Script:SkippedCount++
+                Write-ColorOutput ""
+                continue
             }
 
             # Process the module using the existing Install-ModuleWithProgress function
@@ -2403,7 +2546,7 @@ function Start-ModuleProcessing {
                 $success = Install-ModuleWithProgress -ModuleName $module.Name -InstallParams $installParams -Operation $action
                 if ($success) {
                     $verified = @(Get-InstalledModule -Name $module.Name -RequiredVersion $versionInfo.OnlineVersion -ErrorAction Stop |
-                        Where-Object { [version]$_.Version -eq [version]$versionInfo.OnlineVersion })
+                        Where-Object { (ConvertTo-ModuleVersion $_.Version) -eq (ConvertTo-ModuleVersion $versionInfo.OnlineVersion) })
                     if ($verified.Count -eq 0) {
                         throw "Installation did not produce $($module.Name) v$($versionInfo.OnlineVersion)."
                     }
@@ -2419,10 +2562,12 @@ function Start-ModuleProcessing {
 
             if ($result.Success) {
                 $successCount++
-                $cleanupCandidates += $module
+                $cleanupCandidates.Add($module)
             } else {
                 $failureCount++
             }
+            $resultStatus = if ($result.Success) { 'Succeeded' } else { 'Failed' }
+            Add-ModuleResult -Module $module -Status $resultStatus -Action $action -LocalVersion $versionInfo.LocalVersion -OnlineVersion $versionInfo.OnlineVersion -Duration $result.Duration -ErrorMessage $result.ErrorMessage
 
             # Store result for summary
             if (-not $Script:ModuleOperationResults) {
@@ -2438,12 +2583,14 @@ function Start-ModuleProcessing {
             }
         } else {
             Write-ColorOutput "  ✅ Already up to date" -Type Process
+            Add-ModuleResult -Module $module -Status 'UpToDate' -Action 'None' -LocalVersion $versionInfo.LocalVersion -OnlineVersion $versionInfo.OnlineVersion
             $successCount++
-            if ($versionInfo.MultipleVersionsInstalled) { $cleanupCandidates += $module }
+            if ($versionInfo.MultipleVersionsInstalled) { $cleanupCandidates.Add($module) }
         }
 
         Write-ColorOutput ""
     }
+    Write-Progress -Activity 'Microsoft cloud module update' -Completed
 
     # Final pass to ensure processed modules are maintained in a latest-only state
     if (-not $CheckOnly -and -not $SkipVersionCleanup) {
@@ -2462,6 +2609,7 @@ function Start-ModuleProcessing {
     Write-ProgressHeader "Processing Summary"
     Write-ColorOutput "Total modules processed: $processedCount" -Type Info
     Write-ColorOutput "Successful operations: $successCount" -Type Process
+    Write-ColorOutput "Skipped (user/WhatIf): $($Script:SkippedCount)" -Type Info
     Write-ColorOutput "Failed operations: $failureCount" -Type Error
     $Script:ProcessingFailureCount = $failureCount
 
@@ -2487,14 +2635,14 @@ function Start-ModuleProcessing {
 
         # Check for any remaining modules with multiple versions
         $modulesWithMultipleVersions = @()
-        foreach ($module in $Script:FilteredModuleList) {
-            $installedVersions = Get-InstalledModule -Name $module.Name -AllVersions -ErrorAction SilentlyContinue
-            if ($installedVersions -and $installedVersions.Count -gt 1) {
+        foreach ($module in $modules) {
+            $installedVersions = @(Get-InstalledModule -Name $module.Name -AllVersions -ErrorAction SilentlyContinue)
+            if ($installedVersions.Count -gt 1) {
                 $modulesWithMultipleVersions += @{
                     Name = $module.Name
                     Description = $module.Description
                     VersionCount = $installedVersions.Count
-                    Versions = ($installedVersions | Sort-Object Version -Descending | ForEach-Object { $_.Version.ToString() })
+                    Versions = ($installedVersions | Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending | ForEach-Object { $_.Version.ToString() })
                 }
             }
         }
@@ -2538,7 +2686,7 @@ function Remove-DeprecatedModules {
     .SYNOPSIS
         Removes deprecated PowerShell modules that should no longer be used
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param()
 
     Write-ProgressHeader "Deprecated Module Cleanup"
@@ -2548,18 +2696,28 @@ function Remove-DeprecatedModules {
 
     foreach ($deprecatedModule in $Script:DeprecatedModules) {
         try {
-            $installedVersions = Get-InstalledModule -Name $deprecatedModule.Name -AllVersions -ErrorAction SilentlyContinue
+            # Most deprecated modules are absent; the cached on-disk check avoids a ~20 s
+            # Get-InstalledModule call for each of them.
+            if (-not (Test-ModulePresentOnDisk -Name $deprecatedModule.Name)) {
+                Write-Verbose "Deprecated module $($deprecatedModule.Name) not present on PSModulePath"
+                continue
+            }
 
-            if ($installedVersions) {
+            $installedVersions = @(Get-InstalledModule -Name $deprecatedModule.Name -AllVersions -ErrorAction SilentlyContinue)
+
+            if ($installedVersions.Count -gt 0) {
                 Write-ColorOutput "Found deprecated module: $($deprecatedModule.Name)" -Type Warning
                 Write-ColorOutput "  Reason: $($deprecatedModule.Reason)" -Type Info
                 Write-ColorOutput "  Replacement: $($deprecatedModule.Replacement)" -Type Info
                 Write-ColorOutput "  Versions installed: $($installedVersions.Count)" -Type Info
 
                 foreach ($version in $installedVersions) {
+                    if (-not $PSCmdlet.ShouldProcess("$($deprecatedModule.Name) v$($version.Version)", 'Uninstall deprecated module')) {
+                        continue
+                    }
                     try {
                         Write-ColorOutput "  Removing version $($version.Version)..." -Type Process
-                        Uninstall-Module -Name $deprecatedModule.Name -RequiredVersion $version.Version -Force -ErrorAction Stop
+                        Uninstall-Module -Name $deprecatedModule.Name -RequiredVersion $version.Version -Force -Confirm:$false -ErrorAction Stop
                         Write-ColorOutput "    ✅ Removed successfully" -Type Process
                         $removedCount++
                     }
@@ -2578,6 +2736,8 @@ function Remove-DeprecatedModules {
 
     if ($removedCount -gt 0) {
         Write-ColorOutput "✅ Removed $removedCount deprecated module version(s)" -Type Process
+        # Removals change what is on disk; refresh the cache before version checks use it
+        $null = Test-ModulePresentOnDisk -Name 'PowerShellGet' -Refresh
     } else {
         Write-ColorOutput "✅ No deprecated modules found or removal needed" -Type Process
     }
@@ -2612,7 +2772,9 @@ function Write-ProgressHeader {
     Write-ColorOutput ""
 }
 
-#region Main Execution
+#endregion Helper functions
+
+#region Main logic
 
 try {
     # Early elevation check (friendlier than the generic #Requires message)
@@ -2624,7 +2786,8 @@ try {
         $isAdmin = $false
     }
 
-    if (-not $isAdmin -and -not $CheckOnly -and -not $CheckSessions) {
+    # -WhatIf makes no changes, so like -CheckOnly it may run without elevation
+    if (-not $isAdmin -and -not $CheckOnly -and -not $CheckSessions -and -not $WhatIfPreference) {
         $scriptPath = $PSCommandPath
         $argumentParts = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "'$($scriptPath -replace "'", "''")'")
         foreach ($boundName in $PSBoundParameters.Keys | Sort-Object) {
@@ -2661,16 +2824,17 @@ try {
     # Start transcript logging if requested
     if ($CreateLog) {
         $logFile = Join-Path $LogPath "o365-update-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
-        Start-Transcript -Path $logFile -Append
+        # Transcript cmdlets honour -WhatIf; logging must still happen during a dry run
+        Start-Transcript -LiteralPath $logFile -Append -WhatIf:$false | Out-Null
         Write-ColorOutput "📋 Logging to: $logFile" -Type System
     }
 
     # Show header (Clear-Host removed to avoid console issues in some environments)
-    Write-ProgressHeader "Microsoft Cloud PowerShell Module Updater v2.16" "Enhanced version with improved module management and version cleanup"
+    Write-ProgressHeader "Microsoft Cloud PowerShell Module Updater v2.17" "Enhanced version with improved module management and version cleanup"
 
     # Display configuration
     Write-ColorOutput "Configuration:" -Type Info
-    $displayMode = if ($CheckSessions) { 'Session Check' } elseif ($CheckOnly) { 'Check Only' } else { 'Update' }
+    $displayMode = if ($CheckSessions) { 'Session Check' } elseif ($CheckOnly) { 'Check Only' } elseif ($WhatIfPreference) { 'Update (WhatIf - no changes)' } else { 'Update' }
     Write-ColorOutput "  Mode: $displayMode" -Type Info
     Write-ColorOutput "  Scope: $($ModuleScope -join ', ')" -Type Info
     Write-ColorOutput "  Repository: $Repository" -Type Info
@@ -2738,7 +2902,7 @@ try {
 
     # Filter modules based on scope
     Write-ColorOutput "📋 Filtering modules based on scope..." -Type System
-    $Script:FilteredModuleList = Get-FilteredModuleList -Scope $ModuleScope
+    $Script:FilteredModuleList = @(Get-FilteredModuleList -Scope $ModuleScope)
 
     if ($Script:FilteredModuleList.Count -eq 0) {
         Write-ColorOutput "❌ No modules selected for processing. Please check your ModuleScope parameter." -Type Error
@@ -2827,16 +2991,24 @@ catch {
     exit 1
 }
 finally {
-    # Stop transcript if it was started
+    #region Cleanup
+    Write-Progress -Activity 'Microsoft cloud module update' -Completed
+
+    # Emitted here so results reach the pipeline on every exit path, including exit 1
+    if ($PassThru) {
+        $Script:ModuleResults.ToArray()
+    }
+
     if ($CreateLog) {
         try {
-            Stop-Transcript
+            Stop-Transcript -WhatIf:$false | Out-Null
             Write-ColorOutput "📋 Log file saved successfully" -Type System
         }
         catch {
-            # Transcript might not be running
+            Write-Verbose "Transcript was not running: $($_.Exception.Message)"
         }
     }
+    #endregion Cleanup
 }
 
-#endregion
+#endregion Main logic
