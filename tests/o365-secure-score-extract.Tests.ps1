@@ -511,6 +511,82 @@ Describe 'o365-secure-score-extract' {
         Assert-MockCalled Connect-MgGraph -Times 1 -Scope It
     }
 
+    It 'maps compact Medium and medium cost and impact to Moderate and title-cases other values' {
+        Mock Invoke-MgGraphRequest {
+            switch -Wildcard ($Uri) {
+                '*/v1.0/organization*' {
+                    return @{
+                        value = @(@{ id = '11111111-2222-3333-4444-555555555555'; verifiedDomains = @(@{ name = 'contoso.com'; isDefault = $true }) })
+                    }
+                }
+                '*/beta/security/secureScores*' {
+                    return @{
+                        value = @(
+                            @{
+                                createdDateTime = '2026-11-22T00:00:00Z'
+                                currentScore    = 0
+                                maxScore        = 20
+                                controlScores   = @(
+                                    @{ controlName = 'mdo_targeteduserprotectionaction'; score = 0 }
+                                    @{ controlName = 'CustomEffortControl'; score = 0 }
+                                )
+                            }
+                        )
+                    }
+                }
+                '*/beta/security/secureScoreControlProfiles*' {
+                    return @{
+                        value = @(
+                            @{
+                                id                  = 'mdo_targeteduserprotectionaction'
+                                title               = 'Targeted user protection action'
+                                rank                = 1
+                                tier                = 'Core'
+                                maxScore            = 10
+                                implementationCost  = 'Medium'
+                                userImpact          = 'medium'
+                                controlStateUpdates = @(@{ state = 'Default' })
+                            }
+                            @{
+                                id                  = 'CustomEffortControl'
+                                title               = 'Unrecognised effort labels'
+                                rank                = 2
+                                tier                = 'Core'
+                                maxScore            = 10
+                                implementationCost  = ' CUSTOM '
+                                userImpact          = 'x'
+                                controlStateUpdates = @(@{ state = 'Default' })
+                            }
+                        )
+                    }
+                }
+                '*/v1.0/identity/conditionalAccess/policies*' { return @{ value = @() } }
+                '*/v1.0/policies/identitySecurityDefaultsEnforcementPolicy' { return @{ isEnabled = $false } }
+                '*/beta/reports/authenticationMethods/userRegistrationActivity*' { return @{ value = @() } }
+                default { throw "Unexpected Graph URI in cost normalisation test: $Uri" }
+            }
+        }
+
+        $outPath = Join-Path -Path $script:tempDir -ChildPath 'cost-normalise.json'
+        $summary = & $scriptPath -TenantDomain 'contoso.com' -DataFile $outPath -Compact
+
+        $compact = Get-Content -LiteralPath $summary.CompactDataFile -Raw | ConvertFrom-Json
+        $medium = @($compact.SecureScoreControls.TopOpen | Where-Object { $_.id -eq 'mdo_targeteduserprotectionaction' })
+        $medium.Count | Should Be 1
+        $medium[0].implementationCost | Should Be 'Moderate'
+        $medium[0].userImpact | Should Be 'Moderate'
+
+        $custom = @($compact.SecureScoreControls.TopOpen | Where-Object { $_.id -eq 'CustomEffortControl' })
+        $custom.Count | Should Be 1
+        $custom[0].implementationCost | Should Be 'Custom'
+        $custom[0].userImpact | Should Be 'X'
+
+        $full = Get-Content -LiteralPath $outPath -Raw | ConvertFrom-Json
+        $fullMedium = @($full.SecureScoreControls.Open | Where-Object { $_.id -eq 'mdo_targeteduserprotectionaction' })
+        $fullMedium[0].implementationCost | Should Be 'Medium'
+        $fullMedium[0].userImpact | Should Be 'medium'
+    }
+
     It 'rejects malformed TenantDomain values via parameter validation' {
         Assert-ThrowsWithMessage -Action {
             & $scriptPath -TenantDomain 'not a valid domain!'

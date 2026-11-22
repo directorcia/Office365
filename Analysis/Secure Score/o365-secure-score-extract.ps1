@@ -28,6 +28,10 @@ Change Log  : - 2026-11-22: Added Set-StrictMode, SupportsShouldProcess
                 '<AppName> (<ClientId>) [AppOnly]'. Compact output normalises
                 implementationCost and userImpact. MFA stage text describes
                 registration activity events.
+              - 2026-11-22: Compact implementationCost and userImpact treat
+                Medium (any casing, trimmed) as Moderate. Other unrecognised
+                non-empty values stay title-cased (first character upper,
+                remainder lower). Null and whitespace stay null.
 ================================================================================
 
 .SYNOPSIS
@@ -61,8 +65,11 @@ Change Log  : - 2026-11-22: Added Set-StrictMode, SupportsShouldProcess
     AddressedWithPointsRemaining, NotApplicableCount, TotalPointsAvailable
     (sum of pointsAvailable across scored controls, including addressed gaps),
     per-control currentScore and pointsAvailable, and
-    MfaRegistrationSummaryDescription. The compact file also normalises
-    implementationCost and userImpact to Low, Moderate, High, or Unknown.
+    MfaRegistrationSummaryDescription. The compact file normalises
+    implementationCost and userImpact: Low, Moderate, High, and Unknown keep
+    those labels regardless of casing. Medium (any casing, after trim) maps to
+    Moderate. Any other non-empty value is kept title-cased (first character
+    upper-invariant, remainder lower-invariant). Null and whitespace stay null.
     TotalCount / All remain the full control-profile catalog, not the scored set.
 
     Writes a progressive *_partial.json recovery checkpoint after each stage,
@@ -970,8 +977,12 @@ begin {
     }
 
     function ConvertTo-NormalizedCostImpact {
-        # Compact output only. Graph returns mixed casing ("low", "MODERATE") which
-        # breaks grouping unless consumers normalise it themselves.
+        # Compact output only. Graph returns mixed casing ("low", "MODERATE") and
+        # sometimes "Medium" for the same band as Moderate. Known labels become
+        # Low, Moderate, High, or Unknown. "Medium" (any casing, trimmed) maps to
+        # Moderate. Any other non-empty value is kept title-cased: first character
+        # upper-invariant, remainder lower-invariant ("CUSTOM" becomes "Custom").
+        # Null and whitespace stay null.
         param(
             [object]$Value
         )
@@ -987,6 +998,7 @@ begin {
 
         switch ($text.ToLowerInvariant()) {
             'low' { return 'Low' }
+            'medium' { return 'Moderate' }
             'moderate' { return 'Moderate' }
             'high' { return 'High' }
             'unknown' { return 'Unknown' }
