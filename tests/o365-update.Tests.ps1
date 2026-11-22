@@ -100,27 +100,100 @@ Describe 'o365-update.ps1' {
         }
     }
 
+    Context 'Test-AllUsersModuleWriteAccess' {
+        It 'creates and removes a probe in a writable target directory' {
+            $modulePath = Join-Path $env:TEMP ([guid]::NewGuid().ToString('N'))
+            $null = New-Item -Path $modulePath -ItemType Directory
+            try {
+                $result = Test-AllUsersModuleWriteAccess -ModulePath $modulePath
+                Assert-Equal $result.CanWrite $true 'write access'
+                Assert-Equal @(Get-ChildItem -LiteralPath $modulePath).Count 0 'temporary probe cleanup'
+            }
+            finally {
+                Remove-Item -LiteralPath $modulePath -Recurse -Force
+            }
+        }
+        It 'fails closed when the target directory is missing' {
+            $result = Test-AllUsersModuleWriteAccess -ModulePath (Join-Path $env:TEMP ([guid]::NewGuid().ToString('N')))
+            Assert-Equal $result.CanWrite $false 'write access'
+            if ($result.ErrorMessage -notmatch 'does not exist') { throw 'Expected an actionable missing-directory error' }
+        }
+        It 'does not create a probe under -WhatIf' {
+            $modulePath = Join-Path $env:TEMP ([guid]::NewGuid().ToString('N'))
+            $null = New-Item -Path $modulePath -ItemType Directory
+            try {
+                $result = Test-AllUsersModuleWriteAccess -ModulePath $modulePath -WhatIf
+                Assert-Equal $result.CanWrite $null 'write check result'
+                Assert-Equal @(Get-ChildItem -LiteralPath $modulePath).Count 0 'probe count'
+            }
+            finally {
+                Remove-Item -LiteralPath $modulePath -Recurse -Force
+            }
+        }
+    }
+
+    Context 'Get-ModuleInstallWorkerScript' {
+        It 'reads a request file and installs with its module name and parameters' {
+            $command = Get-ModuleInstallWorkerScript
+            if ($command -notmatch 'Get-Content -LiteralPath \$RequestPath -Raw') { throw 'Expected the worker to read its request file' }
+            if ($command -notmatch 'Install-Module -Name \$request\.ModuleName @workerParams') { throw 'Expected the worker to splat the serialized parameters' }
+        }
+    }
+
+    Context 'Invoke-PowerShellCommandWithTimeout' {
+        It 'captures a successful child process result' {
+            $command = "param([string]`$RequestPath)`n'worker-ok' | Write-Output; exit 0"
+            $result = Invoke-PowerShellCommandWithTimeout -CommandText $command -TimeoutSeconds 15 -Activity 'Worker test'
+            Assert-Equal $result.Success $true 'worker success'
+            if ($result.StandardOutput -notmatch 'worker-ok') { throw 'Expected child process output to be captured' }
+        }
+        It 'passes its JSON request to the child process' {
+            $command = @'
+param([string]$RequestPath)
+$request = Get-Content -LiteralPath $RequestPath -Raw | ConvertFrom-Json -AsHashtable
+if ($request.ModuleName -eq 'PnP.PowerShell' -and $request.InstallParams.Scope -eq 'AllUsers') { exit 0 }
+exit 1
+'@
+            $requestJson = @{ ModuleName = 'PnP.PowerShell'; InstallParams = @{ Scope = 'AllUsers' } } | ConvertTo-Json -Compress
+            $result = Invoke-PowerShellCommandWithTimeout -CommandText $command -RequestJson $requestJson -TimeoutSeconds 15 -Activity 'Request test'
+            Assert-Equal $result.Success $true 'request transfer'
+        }
+        It 'terminates a child process that exceeds its timeout' {
+            $command = "param([string]`$RequestPath)`nStart-Sleep -Seconds 30"
+            $result = Invoke-PowerShellCommandWithTimeout -CommandText $command -TimeoutSeconds 1 -Activity 'Timeout test'
+            Assert-Equal $result.TimedOut $true 'timeout status'
+            Assert-Equal $result.Success $false 'worker success'
+            if ($result.ErrorMessage -notmatch 'timeout') { throw 'Expected a timeout error message' }
+        }
+    }
+
     Context 'Invoke-ModuleInstallDirect' {
         It 'retries with -AllowClobber on a conflict without mutating the caller''s parameters' {
-            $Script:installCalls = [System.Collections.Generic.List[hashtable]]::new()
-            function Install-Module {
-                [CmdletBinding()] param($Name, [switch]$Force, [switch]$AllowClobber, [switch]$SkipPublisherCheck, $Scope)
-                $Script:installCalls.Add(@{ AllowClobber = [bool]$AllowClobber; SkipPublisherCheck = [bool]$SkipPublisherCheck })
-                if ($Script:installCalls.Count -eq 1) { throw 'The following commands are already available on this system' }
+            $Script:workerRequests = [System.Collections.Generic.List[string]]::new()
+            Mock Invoke-PowerShellCommandWithTimeout {
+                $Script:workerRequests.Add($RequestJson)
+                if ($Script:workerRequests.Count -eq 1) {
+                    [pscustomobject]@{ Success = $false; TimedOut = $false; ErrorMessage = 'The following commands are already available on this system' }
+                } else {
+                    [pscustomobject]@{ Success = $true; TimedOut = $false; ErrorMessage = $null }
+                }
             }
 
             $params = @{ Force = $true; Scope = 'AllUsers' }
-            $ok = Invoke-ModuleInstallDirect -ModuleName 'PnP.PowerShell' -InstallParams $params -Operation 'Install' -StartTime (Get-Date)
+            $ok = Invoke-ModuleInstallDirect -ModuleName 'PnP.PowerShell' -InstallParams $params -Operation 'Install' -StartTime (Get-Date) -TimeoutMinutes 1
 
             Assert-Equal $ok $true 'result'
-            Assert-Equal $Script:installCalls.Count 2 'Install-Module calls'
-            Assert-Equal $Script:installCalls[1].AllowClobber $true 'retry AllowClobber'
-            Assert-Equal $Script:installCalls[1].SkipPublisherCheck $true 'retry SkipPublisherCheck for PnP'
+            Assert-Equal $Script:workerRequests.Count 2 'worker process calls'
+            $retryRequest = ConvertFrom-Json -InputObject $Script:workerRequests[1] -AsHashtable
+            Assert-Equal $retryRequest.InstallParams.AllowClobber $true 'retry AllowClobber'
+            Assert-Equal $retryRequest.InstallParams.SkipPublisherCheck $true 'retry SkipPublisherCheck for PnP'
             if ($params.ContainsKey('AllowClobber')) { throw 'Caller hashtable was mutated' }
         }
         It 'returns $false and records the error for a non-conflict failure' {
-            function Install-Module { [CmdletBinding()] param($Name, [switch]$Force) throw 'Network unreachable' }
-            $ok = Invoke-ModuleInstallDirect -ModuleName 'Az' -InstallParams @{ Force = $true } -Operation 'Update' -StartTime (Get-Date)
+            Mock Invoke-PowerShellCommandWithTimeout {
+                [pscustomobject]@{ Success = $false; TimedOut = $false; ErrorMessage = 'Network unreachable' }
+            }
+            $ok = Invoke-ModuleInstallDirect -ModuleName 'Az' -InstallParams @{ Force = $true } -Operation 'Update' -StartTime (Get-Date) -TimeoutMinutes 1
             Assert-Equal $ok $false 'result'
             Assert-Equal $Script:LastInstallationError 'Network unreachable' 'recorded error'
         }

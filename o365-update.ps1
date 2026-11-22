@@ -92,8 +92,9 @@ Why PowerShell 7?
     Must already be registered with Register-PSRepository.
 
 .PARAMETER TimeoutMinutes
-    Maximum minutes allowed for each background installation before it is abandoned
-    (1-240, default 30). Old versions are retained when an installation times out.
+    Maximum minutes allowed for each installation before its worker process is stopped
+    (1-240, default 30). This limit is enforced in both background-job and child-process modes.
+    Old versions are retained when an installation times out.
 
 .PARAMETER PassThru
     Emits one result object per processed module to the pipeline so results can be
@@ -166,13 +167,17 @@ Why PowerShell 7?
     outside PowerShellGet.
 
 .NOTES
-    Author: CIAOPS    Version: 2.17
+    Author: CIAOPS    Version: 2.18
     Last Updated: November 2026
     Requires: PowerShell 7.X; Administrator privileges for installs/removals (not for
               -CheckOnly, -CheckSessions or -WhatIf); PowerShellGet 2.x; internet access
               to the PowerShell Gallery (or the repository given in -Repository)
 
     IMPORTANT: This version removes deprecated Azure AD and MSOnline modules in favor of Microsoft Graph PowerShell SDK
+
+    Major Changes in v2.18:
+    - Verifies effective write access to the AllUsers module directory before making changes
+    - Enforces TimeoutMinutes in restricted environments by running installs in a child process
 
     Major Changes in v2.17:
     - Added -WhatIf/-Confirm support for installs, updates, old-version cleanup and deprecated
@@ -419,7 +424,7 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$Repository = 'PSGallery',
 
-    [Parameter(HelpMessage = "Maximum minutes per background installation")]
+    [Parameter(HelpMessage = "Maximum minutes per installation worker process")]
     [ValidateRange(1, 240)]
     [int]$TimeoutMinutes = 30,
 
@@ -1067,14 +1072,169 @@ function Test-ModuleConflictError {
         ($ErrorMessage -like '*publisher*' -or $ErrorMessage -like '*SkipPublisherCheck*' -or $ErrorMessage -like '*signed module*'))
 }
 
+function Invoke-PowerShellCommandWithTimeout {
+    <#
+    .SYNOPSIS
+        Executes PowerShell command text in a child process with a hard timeout.
+    #>
+    [CmdletBinding()]
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$CommandText,
+
+        [Parameter()]
+        [ValidateNotNullOrEmpty()]
+        [string]$RequestJson = '{}',
+
+        [Parameter(Mandatory)]
+        [ValidateRange(1, 14400)]
+        [int]$TimeoutSeconds,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Activity
+    )
+
+    $workerDirectory = Join-Path $env:TEMP "O365Update-$([guid]::NewGuid().ToString('N'))"
+    $workerScriptPath = Join-Path $workerDirectory 'worker.ps1'
+    $requestPath = Join-Path $workerDirectory 'request.json'
+    $stdoutPath = Join-Path $workerDirectory 'stdout.txt'
+    $stderrPath = Join-Path $workerDirectory 'stderr.txt'
+    $process = $null
+    $result = [ordered]@{
+        Success = $false
+        TimedOut = $false
+        ExitCode = $null
+        StandardOutput = $null
+        StandardError = $null
+        ErrorMessage = $null
+        Duration = [timespan]::Zero
+    }
+    $startedAt = Get-Date
+
+    try {
+        $null = New-Item -Path $workerDirectory -ItemType Directory -ErrorAction Stop
+        Set-Content -LiteralPath $workerScriptPath -Value $CommandText -Encoding utf8 -ErrorAction Stop
+        Set-Content -LiteralPath $requestPath -Value $RequestJson -Encoding utf8 -ErrorAction Stop
+        $pwshPath = Join-Path $PSHOME 'pwsh.exe'
+        $argumentList = "-NoLogo -NoProfile -NonInteractive -File `"$workerScriptPath`" -RequestPath `"$requestPath`""
+        $process = Start-Process -FilePath $pwshPath `
+            -ArgumentList $argumentList `
+            -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath `
+            -ErrorAction Stop
+
+        $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+        while (-not $process.HasExited) {
+            if ((Get-Date) -ge $deadline) {
+                Stop-Process -Id $process.Id -Force -ErrorAction Stop
+                $result.TimedOut = $true
+                $result.ErrorMessage = "The PowerShell worker exceeded the $TimeoutSeconds-second timeout and was terminated."
+                break
+            }
+
+            $elapsed = (Get-Date) - $startedAt
+            $percentComplete = [int][Math]::Min(99, ($elapsed.TotalSeconds / $TimeoutSeconds) * 100)
+            Write-Progress -Activity $Activity -Status ("Child process running ({0:N0}s elapsed)" -f $elapsed.TotalSeconds) -PercentComplete $percentComplete
+            Start-Sleep -Seconds 1
+        }
+
+        if (-not $result.TimedOut) {
+            $result.ExitCode = $process.ExitCode
+            $result.Success = $result.ExitCode -eq 0
+        }
+
+        if (Test-Path -LiteralPath $stdoutPath) {
+            $result.StandardOutput = Get-Content -LiteralPath $stdoutPath -Raw -ErrorAction Stop
+        }
+        if (Test-Path -LiteralPath $stderrPath) {
+            $result.StandardError = Get-Content -LiteralPath $stderrPath -Raw -ErrorAction Stop
+        }
+
+        if (-not $result.Success -and -not $result.TimedOut) {
+            $result.ErrorMessage = if (-not [string]::IsNullOrWhiteSpace($result.StandardError)) {
+                $result.StandardError.Trim()
+            } elseif (-not [string]::IsNullOrWhiteSpace($result.StandardOutput)) {
+                $result.StandardOutput.Trim()
+            } else {
+                "The PowerShell worker exited with code $($result.ExitCode) without an error message."
+            }
+        }
+    }
+    catch {
+        $result.ErrorMessage = $_.Exception.Message
+    }
+    finally {
+        $result.Duration = (Get-Date) - $startedAt
+        Write-Progress -Activity $Activity -Completed
+
+        if ($process -and -not $process.HasExited) {
+            try {
+                Stop-Process -Id $process.Id -Force -ErrorAction Stop
+            }
+            catch {
+                Write-Verbose "Could not stop PowerShell worker PID $($process.Id): $($_.Exception.Message)"
+            }
+        }
+
+        if (Test-Path -LiteralPath $workerDirectory) {
+            try {
+                Remove-Item -LiteralPath $workerDirectory -Recurse -Force -ErrorAction Stop
+            }
+            catch {
+                Write-Verbose "Could not remove temporary worker directory '$workerDirectory': $($_.Exception.Message)"
+            }
+        }
+    }
+
+    return [pscustomobject]$result
+}
+
+function Get-ModuleInstallWorkerScript {
+    <#
+    .SYNOPSIS
+        Creates a worker command that installs a module from a serialized request.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+
+    return @"
+param([Parameter(Mandatory)][string]`$RequestPath)
+`$ErrorActionPreference = 'Stop'
+try {
+    try {
+        `$protocol = [Net.ServicePointManager]::SecurityProtocol
+        if (`$protocol -ne [Net.SecurityProtocolType]::SystemDefault -and -not (`$protocol -band [Net.SecurityProtocolType]::Tls12)) {
+            [Net.ServicePointManager]::SecurityProtocol = `$protocol -bor [Net.SecurityProtocolType]::Tls12
+        }
+    }
+    catch {
+        Write-Warning "Could not adjust TLS settings in the worker process: `$(`$_.Exception.Message)"
+    }
+
+    `$request = Get-Content -LiteralPath `$RequestPath -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+    `$workerParams = `$request.InstallParams
+    Install-Module -Name `$request.ModuleName @workerParams -ErrorAction Stop
+    exit 0
+}
+catch {
+    Write-Error -Message `$_.Exception.Message -ErrorAction Continue
+    exit 1
+}
+"@
+}
+
 function Invoke-ModuleInstallDirect {
     <#
     .SYNOPSIS
-        Runs Install-Module in the current process (used when background jobs are unavailable).
+        Runs Install-Module in a child process when background jobs are unavailable.
     .DESCRIPTION
-        Single implementation of the in-process install path, including one retry with
-        -AllowClobber / -SkipPublisherCheck for command-conflict errors. No timeout can be
-        enforced here because the call blocks the current runspace.
+        Uses a separate PowerShell process so the installation can be terminated when its
+        timeout expires. Retries once with -AllowClobber / -SkipPublisherCheck for conflicts.
     .OUTPUTS
         [bool] success. On failure $Script:LastInstallationError holds the reason.
     #>
@@ -1084,7 +1244,8 @@ function Invoke-ModuleInstallDirect {
         [Parameter(Mandatory)] [string]$ModuleName,
         [Parameter(Mandatory)] [hashtable]$InstallParams,
         [Parameter(Mandatory)] [string]$Operation,
-        [Parameter(Mandatory)] [datetime]$StartTime
+        [Parameter(Mandatory)] [datetime]$StartTime,
+        [Parameter(Mandatory)] [ValidateRange(1, 240)] [int]$TimeoutMinutes
     )
 
     $isConstrainedLargeModule = ($ExecutionContext.SessionState.LanguageMode -eq 'ConstrainedLanguage' -and
@@ -1096,8 +1257,18 @@ function Invoke-ModuleInstallDirect {
         Write-ColorOutput "    📋 Phase 1: Download and Installation starting..." -Type Process
     }
 
-    try {
-        $null = Install-Module -Name $ModuleName @InstallParams
+    $workerCommand = Get-ModuleInstallWorkerScript
+    $requestJson = @{
+        ModuleName = $ModuleName
+        InstallParams = $InstallParams
+    } | ConvertTo-Json -Depth 10 -Compress
+
+    $attempt = Invoke-PowerShellCommandWithTimeout -CommandText $workerCommand `
+        -RequestJson $requestJson `
+        -TimeoutSeconds ($TimeoutMinutes * 60) `
+        -Activity "$Operation module: $ModuleName"
+
+    if ($attempt.Success) {
         $elapsed = (Get-Date) - $StartTime
         Write-ColorOutput "    Successfully completed $Operation of $ModuleName" -Type Process
         Write-ColorOutput ("    Actual time: {0:N1} minutes" -f $elapsed.TotalMinutes) -Type Info
@@ -1107,15 +1278,13 @@ function Invoke-ModuleInstallDirect {
         }
         return $true
     }
-    catch {
-        $errorMessage = $_.Exception.Message
-        $Script:LastInstallationError = $errorMessage
+    $errorMessage = $attempt.ErrorMessage
+    $Script:LastInstallationError = $errorMessage
 
-        if (-not (Test-ModuleConflictError -ModuleName $ModuleName -ErrorMessage $errorMessage)) {
-            Write-ColorOutput "    Error during $Operation of $ModuleName`: $errorMessage" -Type Error
-            Write-ColorOutput ("    Time elapsed: {0:N1} minutes" -f ((Get-Date) - $StartTime).TotalMinutes) -Type Info
-            return $false
-        }
+    if ($attempt.TimedOut -or -not (Test-ModuleConflictError -ModuleName $ModuleName -ErrorMessage $errorMessage)) {
+        Write-ColorOutput "    Error during $Operation of $ModuleName`: $errorMessage" -Type Error
+        Write-ColorOutput ("    Time elapsed: {0:N1} minutes" -f ((Get-Date) - $StartTime).TotalMinutes) -Type Info
+        return $false
     }
 
     Write-ColorOutput "    ⚠️ Command conflict detected for $ModuleName" -Type Warning
@@ -1125,19 +1294,26 @@ function Invoke-ModuleInstallDirect {
     if ($ModuleName -eq 'PnP.PowerShell') {
         $retryParams.SkipPublisherCheck = $true
     }
+    $workerCommand = Get-ModuleInstallWorkerScript
+    $retryRequestJson = @{
+        ModuleName = $ModuleName
+        InstallParams = $retryParams
+    } | ConvertTo-Json -Depth 10 -Compress
+    $attempt = Invoke-PowerShellCommandWithTimeout -CommandText $workerCommand `
+        -RequestJson $retryRequestJson `
+        -TimeoutSeconds ($TimeoutMinutes * 60) `
+        -Activity "$Operation module: $ModuleName (retry)"
 
-    try {
-        $null = Install-Module -Name $ModuleName @retryParams
+    if ($attempt.Success) {
         Write-ColorOutput "    ✅ Successfully resolved conflict and installed $ModuleName" -Type Process
         Write-ColorOutput ("    Total time: {0:N1} minutes" -f ((Get-Date) - $StartTime).TotalMinutes) -Type Info
         return $true
     }
-    catch {
-        $Script:LastInstallationError = $_.Exception.Message
-        Write-ColorOutput "    ❌ Retry failed: $($_.Exception.Message)" -Type Error
-        Write-ColorOutput ("    Total time elapsed: {0:N1} minutes" -f ((Get-Date) - $StartTime).TotalMinutes) -Type Info
-        return $false
-    }
+
+    $Script:LastInstallationError = $attempt.ErrorMessage
+    Write-ColorOutput "    ❌ Retry failed: $($attempt.ErrorMessage)" -Type Error
+    Write-ColorOutput ("    Total time elapsed: {0:N1} minutes" -f ((Get-Date) - $StartTime).TotalMinutes) -Type Info
+    return $false
 }
 
 function Install-ModuleWithProgress {
@@ -1146,9 +1322,8 @@ function Install-ModuleWithProgress {
         Installs or updates PowerShell modules with progress tracking
 
     .DESCRIPTION
-        Executes module installation/update operations in a background job while
-        displaying a real-time progress bar with time estimates. Designed for
-        large modules that take significant time to install (Az, Microsoft.Graph, etc.)
+        Executes module installation/update operations in a background job, or in a timed
+        child process when jobs are unavailable, while displaying progress and time estimates.
 
     .PARAMETER ModuleName
         Name of the module to install or update
@@ -1365,18 +1540,16 @@ function Install-ModuleWithProgress {
 
     # Check if background jobs are supported in this environment
     if (-not $Script:JobsSupported) {
-        Write-ColorOutput "    Background jobs not supported - using direct execution" -Type Warning
-        Write-ColorOutput '    The installation timeout cannot be enforced in direct execution mode.' -Type Warning
+        Write-ColorOutput "    Background jobs not supported - using a timed PowerShell child process" -Type Warning
 
-        # Special handling for large modules in constrained mode
+        # Constrained Language Mode prevents jobs; the child process preserves bounded execution.
         if ($languageMode -eq 'ConstrainedLanguage' -and ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph')) {
-            Write-ColorOutput "    ⚠️  DIRECT EXECUTION in Constrained Mode for $ModuleName" -Type Warning
-            Write-ColorOutput "    The process will appear to freeze during verification - DO NOT CANCEL!" -Type Warning
-            Write-ColorOutput "    Expected phases will not show individual progress" -Type Info
+            Write-ColorOutput "    ⚠️  $ModuleName will run in a separate process under Constrained Language Mode" -Type Warning
+            Write-ColorOutput "    Progress is monitored, and the worker is terminated after $TimeoutMinutes minute(s)" -Type Info
             Write-ColorOutput ""
         }
 
-        return (Invoke-ModuleInstallDirect -ModuleName $ModuleName -InstallParams $InstallParams -Operation $Operation -StartTime $startTime)
+        return (Invoke-ModuleInstallDirect -ModuleName $ModuleName -InstallParams $InstallParams -Operation $Operation -StartTime $startTime -TimeoutMinutes $TimeoutMinutes)
     }
 
     # Background job implementation for environments that support it
@@ -1386,12 +1559,11 @@ function Install-ModuleWithProgress {
         $job = Start-Job -ScriptBlock $jobScript -ArgumentList $ModuleName, $InstallParams, $Operation, $languageMode, $progressFile, $Repository
     }
     catch {
-        Write-ColorOutput "    Background job creation failed - falling back to direct execution" -Type Warning
+        Write-ColorOutput "    Background job creation failed - falling back to a timed PowerShell child process" -Type Warning
         Write-ColorOutput "    Error: $($_.Exception.Message)" -Type Warning
-        Write-ColorOutput '    The installation timeout cannot be enforced in direct execution mode.' -Type Warning
         $Script:JobsSupported = $false
 
-        return (Invoke-ModuleInstallDirect -ModuleName $ModuleName -InstallParams $InstallParams -Operation $Operation -StartTime $startTime)
+        return (Invoke-ModuleInstallDirect -ModuleName $ModuleName -InstallParams $InstallParams -Operation $Operation -StartTime $startTime -TimeoutMinutes $TimeoutMinutes)
     }
 
     # Enhanced progress tracking with phase detection
@@ -2297,6 +2469,69 @@ function Remove-AllOldModuleVersions {
     return $overallResult
 }
 
+function Test-AllUsersModuleWriteAccess {
+    <#
+    .SYNOPSIS
+        Verifies effective write access to the PowerShell 7 AllUsers module directory.
+    .DESCRIPTION
+        Tests the actual target directory rather than relying only on administrator group
+        membership, which can disagree with the current UAC token or directory ACLs.
+        Creates and removes a uniquely named, empty probe file before any module changes.
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter()]
+        [ValidateNotNullOrEmpty()]
+        [string]$ModulePath = (Join-Path $env:ProgramFiles 'PowerShell\Modules')
+    )
+
+    $probePath = Join-Path $ModulePath ".o365-update-write-test-$([guid]::NewGuid().ToString('N')).tmp"
+    $created = $false
+
+    try {
+        if (-not (Test-Path -LiteralPath $ModulePath -PathType Container)) {
+            throw "AllUsers module directory '$ModulePath' does not exist."
+        }
+
+        if (-not $PSCmdlet.ShouldProcess($ModulePath, 'Create and remove write-access probe')) {
+            return [pscustomobject]@{
+                CanWrite = $null
+                ModulePath = $ModulePath
+                ErrorMessage = 'Write-access probe was skipped by ShouldProcess.'
+            }
+        }
+
+        $null = New-Item -Path $probePath -ItemType File -ErrorAction Stop
+        $created = $true
+        Remove-Item -LiteralPath $probePath -Force -ErrorAction Stop
+        $created = $false
+
+        return [pscustomobject]@{
+            CanWrite = $true
+            ModulePath = $ModulePath
+            ErrorMessage = $null
+        }
+    }
+    catch {
+        $errorMessage = $_.Exception.Message
+        if ($created -and (Test-Path -LiteralPath $probePath)) {
+            try {
+                Remove-Item -LiteralPath $probePath -Force -ErrorAction Stop
+            }
+            catch {
+                Write-Verbose "Could not remove permission probe '$probePath': $($_.Exception.Message)"
+            }
+        }
+
+        return [pscustomobject]@{
+            CanWrite = $false
+            ModulePath = $ModulePath
+            ErrorMessage = $errorMessage
+        }
+    }
+}
+
 function Test-Prerequisites {
     <#
     .SYNOPSIS
@@ -2333,9 +2568,24 @@ function Test-Prerequisites {
             Write-ColorOutput "❌ Administrator privileges are required (AllUsers scope installs)" -Type Error
             $allPrerequisitesMet = $false
         }
+
+        if ($isAdmin -and -not $CheckOnly -and -not $CheckSessions -and -not $WhatIfPreference) {
+            $writeAccess = Test-AllUsersModuleWriteAccess
+            if ($writeAccess.CanWrite) {
+                Write-ColorOutput "✅ Write access verified for $($writeAccess.ModulePath)" -Type Success
+            } else {
+                Write-ColorOutput "❌ Cannot write to the AllUsers module directory '$($writeAccess.ModulePath)'." -Type Error
+                Write-ColorOutput "   No module changes were made. Open PowerShell 7 with 'Run as administrator' and try again." -Type Info
+                Write-ColorOutput "   Permission check failed: $($writeAccess.ErrorMessage)" -Type Info
+                $allPrerequisitesMet = $false
+            }
+        }
     }
     catch {
         Write-ColorOutput "⚠️ Could not verify administrator privileges: $($_.Exception.Message)" -Type Warning
+        if (-not $CheckOnly -and -not $CheckSessions -and -not $WhatIfPreference) {
+            $allPrerequisitesMet = $false
+        }
     }
 
     # Check execution policy
@@ -2830,7 +3080,7 @@ try {
     }
 
     # Show header (Clear-Host removed to avoid console issues in some environments)
-    Write-ProgressHeader "Microsoft Cloud PowerShell Module Updater v2.17" "Enhanced version with improved module management and version cleanup"
+    Write-ProgressHeader "Microsoft Cloud PowerShell Module Updater v2.18" "Enhanced version with improved module management and version cleanup"
 
     # Display configuration
     Write-ColorOutput "Configuration:" -Type Info
