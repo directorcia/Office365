@@ -2,10 +2,11 @@
 <#
 ================================================================================
 Script      : o365-secure-score-extract.ps1
-Purpose     : Extracts Microsoft 365 Secure Score history, control profiles,
-              Conditional Access policies, Security Defaults, and MFA
-              registration summary for one or more tenants to UTF-8 JSON,
-              emitting a summary result object per processed tenant.
+Purpose     : Extracts Microsoft 365 Secure Score history, control profiles
+              joined to the latest control scores, Conditional Access policies,
+              Security Defaults, and MFA registration activity events for one
+              or more tenants to UTF-8 JSON, emitting a summary result object
+              per processed tenant.
 Requirements: - Windows PowerShell 5.1 or PowerShell 7+
               - Microsoft.Graph.Authentication module
               - Microsoft Graph permissions: SecurityEvents.Read.All,
@@ -17,21 +18,52 @@ Change Log  : - 2026-11-22: Added Set-StrictMode, SupportsShouldProcess
                 all-verified-domain/GUID tenant matching, singular-noun helper
                 names with aliases, List/HashSet optimisations, Write-Information
                 messaging, Write-Progress feedback, and structured output objects.
+              - 2026-11-22: Open controls are scored controls from the latest
+                secureScore.controlScores (controlName = profile id) that still
+                have points available and are not addressed. Added
+                ScoredControlCount, OpenControlCount, FullyAchievedCount,
+                AddressedWithPointsRemaining, NotApplicableCount, and
+                TotalPointsAvailable. Top open controls sort by points available,
+                then rank (0/null last). App-only sessions without Account use
+                '<AppName> (<ClientId>) [AppOnly]'. Compact output normalises
+                implementationCost and userImpact. MFA stage text describes
+                registration activity events.
 ================================================================================
 
 .SYNOPSIS
     Extracts Microsoft 365 Secure Score, control profiles, Conditional Access
-    policies, Security Defaults, and MFA registration summary to JSON.
+    policies, Security Defaults, and MFA registration activity to JSON.
 
 .DESCRIPTION
     Connects to Microsoft Graph (reusing an active session when any verified
     domain or tenant GUID matches and required scopes are already consented) and
     collects five security posture datasets:
       1. Secure Score latest snapshot and recent history
-      2. Secure Score control profiles (all, open, and top 25 open by rank)
+      2. Secure Score control profiles joined to the latest secureScore
+         controlScores (controlName equals profile id). A control is open only
+         when it was scored, pointsAvailable (profile maxScore minus current
+         score, floored at 0) is greater than zero, and it is not addressed
+         (completed, ignored, thirdParty, riskAccepted, alternativeMitigation).
+         Fully achieved controls are scored items already at full marks.
+         Addressed controls that still have a points gap are counted separately.
+         Catalog profiles absent from controlScores are not applicable.
+         The top 25 open controls are ordered by pointsAvailable descending,
+         then by rank, with rank 0 or null last.
       3. Conditional Access policies
       4. Identity Security Defaults enforcement status
-      5. Authentication methods user registration activity (30-day summary)
+      5. Authentication methods user registration activity events for the last
+         30 days (Graph userRegistrationActivity). This is event activity, not
+         a point-in-time MFA registration status. The JSON property remains
+         MfaRegistrationSummary; MfaRegistrationSummaryDescription explains it.
+
+    Existing JSON property names are unchanged. The export adds
+    ScoredControlCount, OpenControlCount, FullyAchievedCount,
+    AddressedWithPointsRemaining, NotApplicableCount, TotalPointsAvailable
+    (sum of pointsAvailable across scored controls, including addressed gaps),
+    per-control currentScore and pointsAvailable, and
+    MfaRegistrationSummaryDescription. The compact file also normalises
+    implementationCost and userImpact to Low, Moderate, High, or Unknown.
+    TotalCount / All remain the full control-profile catalog, not the scored set.
 
     Writes a progressive *_partial.json recovery checkpoint after each stage,
     saves the finalized UTF-8 JSON export (plus an optional *_compact.json file
@@ -106,8 +138,11 @@ Change Log  : - 2026-11-22: Added Set-StrictMode, SupportsShouldProcess
     PSCustomObject. Emits one extraction summary object per processed tenant
     containing Tenant, TenantId, CollectedBy, CollectionDate, FullDataFile,
     FullSizeKB, CompactDataFile, CompactSizeKB, LatestScore, MaxScore,
-    OpenControlCount, ConditionalAccessCount, SecurityDefaultsEnabled,
-    MfaRecordCount, StagesSucceeded, StagesDegraded, and ElapsedSeconds.
+    OpenControlCount, ScoredControlCount, FullyAchievedCount,
+    AddressedWithPointsRemaining, NotApplicableCount, TotalPointsAvailable,
+    ConditionalAccessCount, SecurityDefaultsEnabled, MfaRecordCount,
+    StagesSucceeded, StagesDegraded, and ElapsedSeconds. CollectedBy falls
+    back to '<AppName> (<ClientId>) [AppOnly]' when the Graph account is empty.
 
 .NOTES
     Requires PowerShell 5.1+ and Microsoft.Graph.Authentication. Sets
@@ -211,6 +246,9 @@ begin {
     $NormalizedGraphBaseUri = $GraphBaseUri.TrimEnd('/')
     $ProgressActivity = 'M365 Secure Score Extraction'
     $MaxPaginationPages = 500
+    # Kept beside MfaRegistrationSummary. The endpoint returns activity events,
+    # not a point-in-time registration-status snapshot.
+    $MfaRegistrationActivityDescription = 'Authentication methods user registration activity events for period d30 (Graph reports/authenticationMethods/userRegistrationActivity). This is event activity, not a point-in-time MFA registration status.'
 
     $transcriptStarted = $false
     $moduleChecked = $false
@@ -727,6 +765,30 @@ begin {
         }
     }
 
+    function Get-GraphPrincipalLabel {
+        # Delegated sessions expose Account. App-only certificate sessions leave
+        # Account empty; AppName and ClientId still identify the principal.
+        param(
+            [object]$Context
+        )
+
+        $account = [string](Get-SafePropertyValue -InputObject $Context -Name 'Account')
+        if (-not [string]::IsNullOrWhiteSpace($account)) {
+            return $account.Trim()
+        }
+
+        $appName = [string](Get-SafePropertyValue -InputObject $Context -Name 'AppName')
+        if ([string]::IsNullOrWhiteSpace($appName)) {
+            $appName = 'Unknown application'
+        }
+        $clientId = [string](Get-SafePropertyValue -InputObject $Context -Name 'ClientId')
+        if ([string]::IsNullOrWhiteSpace($clientId)) {
+            $clientId = 'unknown-client-id'
+        }
+
+        return ('{0} ({1}) [AppOnly]' -f $appName.Trim(), $clientId.Trim())
+    }
+
     function Connect-TargetTenantGraph {
         [CmdletBinding()]
         param(
@@ -768,7 +830,8 @@ begin {
             try {
                 $matchResult = Test-TenantSessionMatch -Context $context -TargetTenant $TargetTenant -NeededScopes $Scopes -BaseUri $BaseUri
                 if ($matchResult.Matches) {
-                    Write-StatusMessage -Message "Reusing active Microsoft Graph session ($($context.Account), API health check $($matchResult.LatencyMs) ms)."
+                    $sessionLabel = Get-GraphPrincipalLabel -Context $context
+                    Write-StatusMessage -Message "Reusing active Microsoft Graph session ($sessionLabel, API health check $($matchResult.LatencyMs) ms)."
                     $needsConnect = $false
                 }
                 else {
@@ -803,7 +866,8 @@ begin {
             $null = Invoke-MgGraphRequestWithRetry -Uri ('{0}/v1.0/organization?$select=id' -f $BaseUri)
             $healthTimer.Stop()
             $latencyMs = [math]::Round($healthTimer.Elapsed.TotalMilliseconds, 0)
-            Write-StatusMessage -Message "Connected as '$($context.Account)' (Graph API responded in ${latencyMs} ms)."
+            $sessionLabel = Get-GraphPrincipalLabel -Context $context
+            Write-StatusMessage -Message "Connected as '$sessionLabel' (Graph API responded in ${latencyMs} ms)."
             if ($latencyMs -gt 5000) {
                 Write-Warning "Slow Microsoft Graph response (${latencyMs} ms); extraction may take longer than usual."
             }
@@ -854,57 +918,303 @@ begin {
         }
     }
 
+    function ConvertTo-InvariantDouble {
+        # Plain helper so [ref] parsing stays reliable on Windows PowerShell 5.1 and PowerShell 7.
+        param(
+            [object]$Value
+        )
+
+        if ($null -eq $Value) {
+            return $null
+        }
+        if ($Value -is [double] -or $Value -is [float] -or $Value -is [decimal] -or $Value -is [int] -or $Value -is [long]) {
+            return [double]$Value
+        }
+
+        $text = [string]$Value
+        if ([string]::IsNullOrWhiteSpace($text)) {
+            return $null
+        }
+
+        $parsed = [double]0
+        $styles = [System.Globalization.NumberStyles]::Float -bor [System.Globalization.NumberStyles]::AllowThousands
+        if ([double]::TryParse($text, $styles, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+            return $parsed
+        }
+        return $null
+    }
+
+    function Add-ControlAssessmentProperty {
+        param(
+            [object]$InputObject,
+            [string]$Name,
+            [object]$Value
+        )
+
+        if ($null -eq $InputObject -or [string]::IsNullOrWhiteSpace($Name)) {
+            return
+        }
+
+        if ($InputObject -is [System.Collections.IDictionary]) {
+            $InputObject[$Name] = $Value
+            return
+        }
+
+        $existing = $InputObject.PSObject.Properties[$Name]
+        if ($null -ne $existing) {
+            $existing.Value = $Value
+            return
+        }
+
+        $InputObject | Add-Member -MemberType NoteProperty -Name $Name -Value $Value -Force
+    }
+
+    function ConvertTo-NormalizedCostImpact {
+        # Compact output only. Graph returns mixed casing ("low", "MODERATE") which
+        # breaks grouping unless consumers normalise it themselves.
+        param(
+            [object]$Value
+        )
+
+        if ($null -eq $Value) {
+            return $null
+        }
+
+        $text = ([string]$Value).Trim()
+        if ([string]::IsNullOrWhiteSpace($text)) {
+            return $null
+        }
+
+        switch ($text.ToLowerInvariant()) {
+            'low' { return 'Low' }
+            'moderate' { return 'Moderate' }
+            'high' { return 'High' }
+            'unknown' { return 'Unknown' }
+            default {
+                if ($text.Length -eq 1) {
+                    return $text.ToUpperInvariant()
+                }
+                return ($text.Substring(0, 1).ToUpperInvariant() + $text.Substring(1).ToLowerInvariant())
+            }
+        }
+    }
+
+    function Test-SecureScoreControlAddressed {
+        param(
+            [object]$Control,
+            [System.Collections.Generic.HashSet[string]]$AddressedStates
+        )
+
+        $updates = Get-SafePropertyValue -InputObject $Control -Name 'controlStateUpdates'
+        if ($null -eq $updates -or $updates -is [string]) {
+            return $false
+        }
+
+        $updateEntries = if ($updates -is [System.Collections.IDictionary]) { @($updates) } else { @($updates) }
+        foreach ($update in $updateEntries) {
+            if ($null -eq $update) {
+                continue
+            }
+            $updateState = [string](Get-SafePropertyValue -InputObject $update -Name 'state')
+            if (-not [string]::IsNullOrWhiteSpace($updateState) -and $AddressedStates.Contains($updateState)) {
+                return $true
+            }
+        }
+
+        return $false
+    }
+
+    function Get-SecureScoreRankSortKey {
+        # Microsoft leaves rank at 0 or null for some unscored Device controls.
+        # Those must sort after a real rank so they do not crowd out higher-value gaps.
+        param(
+            [object]$Control
+        )
+
+        $rankValue = Get-SafePropertyValue -InputObject $Control -Name 'rank'
+        if ($null -eq $rankValue) {
+            return [int]::MaxValue
+        }
+        if ($rankValue -is [int] -or $rankValue -is [long] -or $rankValue -is [double] -or $rankValue -is [decimal] -or $rankValue -is [float]) {
+            $numericRank = [double]$rankValue
+            if ($numericRank -le 0) {
+                return [int]::MaxValue
+            }
+            return [int][math]::Truncate($numericRank)
+        }
+
+        $rankText = ([string]$rankValue).Trim()
+        if ([string]::IsNullOrWhiteSpace($rankText)) {
+            return [int]::MaxValue
+        }
+
+        $parsedRank = 0
+        $integerStyles = [System.Globalization.NumberStyles]::Integer
+        if (-not [int]::TryParse($rankText, $integerStyles, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsedRank)) {
+            return [int]::MaxValue
+        }
+        if ($parsedRank -le 0) {
+            return [int]::MaxValue
+        }
+        return $parsedRank
+    }
+
     function Get-SecureScoreControlProfile {
         [CmdletBinding()]
         [Alias('Get-SecureScoreControls')]
         [OutputType([pscustomobject])]
         param(
             [Parameter()]
-            [string]$BaseUri = $NormalizedGraphBaseUri
+            [string]$BaseUri = $NormalizedGraphBaseUri,
+
+            [Parameter()]
+            [object]$LatestSecureScore
         )
 
         $uri = '{0}/beta/security/secureScoreControlProfiles?$top=200' -f $BaseUri
         $controls = Invoke-GraphCollection -Uri $uri
 
-        # Use a case-insensitive HashSet and foreach loop instead of nested Where-Object
-        # pipelines (benchmarked 2.1x faster across 250 control profiles).
+        # Addressed states are compared case-insensitively. A profile is addressed
+        # when any controlStateUpdates entry uses one of these states.
         $addressedSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         foreach ($stateName in $AddressedControlStates) {
             $null = $addressedSet.Add($stateName)
         }
 
-        $openList = [System.Collections.Generic.List[object]]::new()
-        foreach ($control in $controls) {
-            $tier = [string](Get-SafePropertyValue -InputObject $control -Name 'tier')
-            if ([string]::Equals($tier, 'informational', [System.StringComparison]::OrdinalIgnoreCase)) {
+        # Join key is controlScore.controlName == secureScoreControlProfile.id.
+        # Only the newest secureScore record is authoritative for what applies today.
+        $scoreByControlName = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $rawControlScores = $null
+        if ($null -ne $LatestSecureScore) {
+            $rawControlScores = Get-SafePropertyValue -InputObject $LatestSecureScore -Name 'controlScores'
+        }
+        foreach ($scoreEntry in @($rawControlScores)) {
+            if ($null -eq $scoreEntry) {
                 continue
             }
+            $scoredName = ([string](Get-SafePropertyValue -InputObject $scoreEntry -Name 'controlName')).Trim()
+            if ([string]::IsNullOrWhiteSpace($scoredName)) {
+                continue
+            }
+            if (-not $scoreByControlName.ContainsKey($scoredName)) {
+                $scoreByControlName[$scoredName] = $scoreEntry
+            }
+        }
 
-            $isAddressed = $false
-            $updates = Get-SafePropertyValue -InputObject $control -Name 'controlStateUpdates'
-            if ($null -ne $updates -and $updates -isnot [string]) {
-                $updateEntries = if ($updates -is [System.Collections.IDictionary]) { @($updates) } else { @($updates) }
-                foreach ($update in $updateEntries) {
-                    $updateState = [string](Get-SafePropertyValue -InputObject $update -Name 'state')
-                    if (-not [string]::IsNullOrWhiteSpace($updateState) -and $addressedSet.Contains($updateState)) {
-                        $isAddressed = $true
-                        break
-                    }
-                }
+        $profileById = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $notApplicableCount = 0
+        foreach ($control in $controls) {
+            $profileId = ([string](Get-SafePropertyValue -InputObject $control -Name 'id')).Trim()
+            if ([string]::IsNullOrWhiteSpace($profileId) -or -not $scoreByControlName.ContainsKey($profileId)) {
+                $notApplicableCount++
+                continue
+            }
+            if (-not $profileById.ContainsKey($profileId)) {
+                $profileById[$profileId] = $control
+            }
+        }
+
+        $openList = [System.Collections.Generic.List[object]]::new()
+        $fullyAchievedCount = 0
+        $addressedWithPointsRemaining = 0
+        $totalPoints = [double]0
+
+        foreach ($controlName in @($scoreByControlName.Keys)) {
+            $scoreEntry = $scoreByControlName[$controlName]
+            $matchedProfile = $null
+            if ($profileById.ContainsKey($controlName)) {
+                $matchedProfile = $profileById[$controlName]
             }
 
-            if (-not $isAddressed) {
-                $openList.Add($control)
+            $currentScore = ConvertTo-InvariantDouble -Value (Get-SafePropertyValue -InputObject $scoreEntry -Name 'score')
+            if ($null -eq $currentScore) {
+                $currentScore = ConvertTo-InvariantDouble -Value (Get-SafePropertyValue -InputObject $scoreEntry -Name 'currentScore')
+            }
+            if ($null -eq $currentScore) {
+                $currentScore = [double]0
+            }
+
+            $maxScore = $null
+            if ($null -ne $matchedProfile) {
+                $maxScore = ConvertTo-InvariantDouble -Value (Get-SafePropertyValue -InputObject $matchedProfile -Name 'maxScore')
+            }
+            if ($null -eq $maxScore) {
+                $maxScore = ConvertTo-InvariantDouble -Value (Get-SafePropertyValue -InputObject $scoreEntry -Name 'maxScore')
+            }
+            if ($null -eq $maxScore) {
+                $maxScore = [double]0
+            }
+
+            # Floor at 0. Secure Score values are reported to 2 decimal places.
+            $pointsAvailable = [math]::Round(($maxScore - $currentScore), 2)
+            if ($pointsAvailable -lt 0) {
+                $pointsAvailable = [double]0
+            }
+            $totalPoints += $pointsAvailable
+
+            $isAddressed = $false
+            if ($null -ne $matchedProfile) {
+                $isAddressed = Test-SecureScoreControlAddressed -Control $matchedProfile -AddressedStates $addressedSet
+                Add-ControlAssessmentProperty -InputObject $matchedProfile -Name 'score' -Value $currentScore
+                Add-ControlAssessmentProperty -InputObject $matchedProfile -Name 'currentScore' -Value $currentScore
+                Add-ControlAssessmentProperty -InputObject $matchedProfile -Name 'pointsAvailable' -Value $pointsAvailable
+            }
+
+            $hasPointsRemaining = $pointsAvailable -gt 0
+            if ($hasPointsRemaining -and -not $isAddressed) {
+                if ($null -ne $matchedProfile) {
+                    $openList.Add($matchedProfile)
+                }
+                else {
+                    $openList.Add([pscustomobject]@{
+                            id                 = $controlName
+                            title              = Get-SafePropertyValue -InputObject $scoreEntry -Name 'description'
+                            rank               = $null
+                            tier               = $null
+                            maxScore           = $maxScore
+                            implementationCost = $null
+                            userImpact         = $null
+                            controlCategory    = Get-SafePropertyValue -InputObject $scoreEntry -Name 'controlCategory'
+                            score              = $currentScore
+                            currentScore       = $currentScore
+                            pointsAvailable    = $pointsAvailable
+                        })
+                }
+            }
+            elseif ($hasPointsRemaining -and $isAddressed) {
+                $addressedWithPointsRemaining++
+            }
+            else {
+                $fullyAchievedCount++
             }
         }
 
         $openArray = $openList.ToArray()
-        $topOpen = @($openArray | Sort-Object -Property { Get-SafePropertyValue -InputObject $_ -Name 'rank' } | Select-Object -First 25)
+        $topOpen = @(
+            $openArray |
+                Sort-Object -Property @{
+                    Expression = {
+                        $parsedPoints = ConvertTo-InvariantDouble -Value (Get-SafePropertyValue -InputObject $_ -Name 'pointsAvailable')
+                        if ($null -eq $parsedPoints) { [double]0 } else { $parsedPoints }
+                    }
+                    Descending = $true
+                }, @{
+                    Expression = { Get-SecureScoreRankSortKey -Control $_ }
+                    Descending = $false
+                } |
+                Select-Object -First 25
+        )
 
         return [pscustomobject]@{
-            All     = $controls
-            Open    = $openArray
-            TopOpen = $topOpen
+            All                          = $controls
+            Open                         = $openArray
+            TopOpen                      = $topOpen
+            ScoredControlCount           = $scoreByControlName.Count
+            OpenControlCount             = $openArray.Length
+            FullyAchievedCount           = $fullyAchievedCount
+            AddressedWithPointsRemaining = $addressedWithPointsRemaining
+            NotApplicableCount           = $notApplicableCount
+            TotalPointsAvailable         = [math]::Round($totalPoints, 2)
         }
     }
 
@@ -971,7 +1281,8 @@ begin {
             [string]$BaseUri = $NormalizedGraphBaseUri
         )
 
-        # Note: userRegistrationActivity(period='d30') is only exposed on the Graph beta endpoint.
+        # Graph beta userRegistrationActivity(period='d30') returns registration activity
+        # events for the period. It is not a point-in-time MFA registration status.
         try {
             $uri = "{0}/beta/reports/authenticationMethods/userRegistrationActivity(period='d30')" -f $BaseUri
             $records = Invoke-GraphCollection -Uri $uri -AllowPartialResults
@@ -981,7 +1292,7 @@ begin {
             }
         }
         catch {
-            Write-Warning "Could not retrieve MFA registration summary (continuing with empty collection): $($_.Exception.Message)"
+            Write-Warning "Could not retrieve MFA registration activity events (continuing with empty collection): $($_.Exception.Message)"
             return [pscustomobject]@{
                 Records   = @()
                 Succeeded = $false
@@ -999,12 +1310,16 @@ begin {
         )
 
         $historyItems = @(Get-SafePropertyValue -InputObject $SecurityData.SecureScore -Name 'History')
+        # Wrap after Sort-Object. A single history date would otherwise unwrap to a scalar
+        # and .Count would throw under Set-StrictMode when -Compact is requested.
         $sortedDates = @(
-            foreach ($entry in $historyItems) {
-                $dt = Get-SafePropertyValue -InputObject $entry -Name 'createdDateTime'
-                if ($null -ne $dt) { $dt }
-            }
-        ) | Sort-Object
+            @(
+                foreach ($entry in $historyItems) {
+                    $dt = Get-SafePropertyValue -InputObject $entry -Name 'createdDateTime'
+                    if ($null -ne $dt) { $dt }
+                }
+            ) | Sort-Object
+        )
 
         $oldestDate = if ($sortedDates.Count -gt 0) { $sortedDates[0] } else { $null }
         $newestDate = if ($sortedDates.Count -gt 0) { $sortedDates[$sortedDates.Count - 1] } else { $null }
@@ -1015,8 +1330,8 @@ begin {
                     id                 = Get-SafePropertyValue -InputObject $ctrl -Name 'id'
                     title              = Get-SafePropertyValue -InputObject $ctrl -Name 'title'
                     rank               = Get-SafePropertyValue -InputObject $ctrl -Name 'rank'
-                    implementationCost = Get-SafePropertyValue -InputObject $ctrl -Name 'implementationCost'
-                    userImpact         = Get-SafePropertyValue -InputObject $ctrl -Name 'userImpact'
+                    implementationCost = ConvertTo-NormalizedCostImpact -Value (Get-SafePropertyValue -InputObject $ctrl -Name 'implementationCost')
+                    userImpact         = ConvertTo-NormalizedCostImpact -Value (Get-SafePropertyValue -InputObject $ctrl -Name 'userImpact')
                     threats            = Get-SafePropertyValue -InputObject $ctrl -Name 'threats'
                     tier               = Get-SafePropertyValue -InputObject $ctrl -Name 'tier'
                     remediation        = Get-SafePropertyValue -InputObject $ctrl -Name 'remediation'
@@ -1024,6 +1339,8 @@ begin {
                     actionUrl          = Get-SafePropertyValue -InputObject $ctrl -Name 'actionUrl'
                     maxScore           = Get-SafePropertyValue -InputObject $ctrl -Name 'maxScore'
                     score              = Get-SafePropertyValue -InputObject $ctrl -Name 'score'
+                    currentScore       = Get-SafePropertyValue -InputObject $ctrl -Name 'currentScore'
+                    pointsAvailable    = Get-SafePropertyValue -InputObject $ctrl -Name 'pointsAvailable'
                 })
         }
 
@@ -1046,13 +1363,20 @@ begin {
                 }
             }
             SecureScoreControls    = @{
-                TotalCount = @($SecurityData.SecureScoreControls.All).Count
-                OpenCount  = @($SecurityData.SecureScoreControls.Open).Count
-                TopOpen    = $topOpenProjected.ToArray()
+                TotalCount                   = @($SecurityData.SecureScoreControls.All).Count
+                OpenCount                    = @($SecurityData.SecureScoreControls.Open).Count
+                ScoredControlCount           = $SecurityData.SecureScoreControls.ScoredControlCount
+                OpenControlCount             = $SecurityData.SecureScoreControls.OpenControlCount
+                FullyAchievedCount           = $SecurityData.SecureScoreControls.FullyAchievedCount
+                AddressedWithPointsRemaining = $SecurityData.SecureScoreControls.AddressedWithPointsRemaining
+                NotApplicableCount           = $SecurityData.SecureScoreControls.NotApplicableCount
+                TotalPointsAvailable         = $SecurityData.SecureScoreControls.TotalPointsAvailable
+                TopOpen                      = $topOpenProjected.ToArray()
             }
             ConditionalAccess      = $caCompact
             SecurityDefaults       = $SecurityData.SecurityDefaults
             MfaRegistrationSummary = $SecurityData.MfaRegistrationSummary
+            MfaRegistrationSummaryDescription = Get-SafePropertyValue -InputObject $SecurityData -Name 'MfaRegistrationSummaryDescription'
         }
     }
     #endregion Helper functions
@@ -1125,15 +1449,16 @@ process {
         $context = Connect-TargetTenantGraph -TargetTenant $targetTenant -Scopes $RequiredScopes -BaseUri $NormalizedGraphBaseUri -Force:$ForceReconnect
 
         $securityData = [pscustomobject]@{
-            Tenant                 = $targetTenant
-            CollectionDate         = $null
-            TenantId               = $context.TenantId
-            CollectedBy            = $context.Account
-            SecureScore            = $null
-            SecureScoreControls    = $null
-            ConditionalAccess      = $null
-            SecurityDefaults       = $null
-            MfaRegistrationSummary = $null
+            Tenant                            = $targetTenant
+            CollectionDate                    = $null
+            TenantId                          = $context.TenantId
+            CollectedBy                       = Get-GraphPrincipalLabel -Context $context
+            SecureScore                       = $null
+            SecureScoreControls               = $null
+            ConditionalAccess                 = $null
+            SecurityDefaults                  = $null
+            MfaRegistrationSummary            = $null
+            MfaRegistrationSummaryDescription = $MfaRegistrationActivityDescription
         }
 
         # Stage 1: Secure Score
@@ -1150,10 +1475,22 @@ process {
         Write-Progress -Id 1 -Activity $ProgressActivity -Status '[2/5] Collecting Secure Score control profiles...' -PercentComplete 35
         Write-StatusMessage -Message '[2/5] Collecting Secure Score control profiles...'
         $stageTimer = [System.Diagnostics.Stopwatch]::StartNew()
-        $securityData.SecureScoreControls = Get-SecureScoreControlProfile -BaseUri $NormalizedGraphBaseUri
+        $securityData.SecureScoreControls = Get-SecureScoreControlProfile -BaseUri $NormalizedGraphBaseUri -LatestSecureScore $securityData.SecureScore.Latest
         $stageTimer.Stop()
         $stagesSucceeded++
-        Write-StatusMessage -Level Detail -Message ("Retrieved {0} controls ({1} open) in {2:N1}s." -f @($securityData.SecureScoreControls.All).Count, @($securityData.SecureScoreControls.Open).Count, $stageTimer.Elapsed.TotalSeconds)
+        $controlSummary = $securityData.SecureScoreControls
+        Write-StatusMessage -Level Detail -Message (
+            'Retrieved {0} catalog controls ({1} scored, {2} open, {3} fully achieved, {4} addressed with points remaining, {5} not applicable, {6} points available) in {7:N1}s.' -f @(
+                @($controlSummary.All).Count,
+                $controlSummary.ScoredControlCount,
+                $controlSummary.OpenControlCount,
+                $controlSummary.FullyAchievedCount,
+                $controlSummary.AddressedWithPointsRemaining,
+                $controlSummary.NotApplicableCount,
+                $controlSummary.TotalPointsAvailable,
+                $stageTimer.Elapsed.TotalSeconds
+            )
+        )
         Save-PartialData -SecurityData $securityData -OutputPath $resolvedDataFile -Stage 'controls'
 
         # Stage 3: Conditional Access Policies
@@ -1177,15 +1514,15 @@ process {
         Write-StatusMessage -Level Detail -Message ("Completed Security Defaults check in {0:N1}s." -f $stageTimer.Elapsed.TotalSeconds)
         Save-PartialData -SecurityData $securityData -OutputPath $resolvedDataFile -Stage 'security-defaults'
 
-        # Stage 5: MFA Registration Summary
-        Write-Progress -Id 1 -Activity $ProgressActivity -Status '[5/5] Collecting 30-day MFA registration summary...' -PercentComplete 88
-        Write-StatusMessage -Message '[5/5] Collecting 30-day MFA registration summary...'
+        # Stage 5: MFA registration activity events (not a registration-status snapshot)
+        Write-Progress -Id 1 -Activity $ProgressActivity -Status '[5/5] Collecting MFA registration activity (events)...' -PercentComplete 88
+        Write-StatusMessage -Message '[5/5] Collecting MFA registration activity (events)...'
         $stageTimer = [System.Diagnostics.Stopwatch]::StartNew()
         $mfaOutcome = Get-MfaRegistrationSummary -BaseUri $NormalizedGraphBaseUri
         $securityData.MfaRegistrationSummary = $mfaOutcome.Records
         $stageTimer.Stop()
         if ($mfaOutcome.Succeeded) { $stagesSucceeded++ } else { $stagesDegraded++ }
-        Write-StatusMessage -Level Detail -Message ("Retrieved {0} MFA activity records in {1:N1}s." -f @($securityData.MfaRegistrationSummary).Count, $stageTimer.Elapsed.TotalSeconds)
+        Write-StatusMessage -Level Detail -Message ("Retrieved {0} MFA registration activity events in {1:N1}s." -f @($securityData.MfaRegistrationSummary).Count, $stageTimer.Elapsed.TotalSeconds)
 
         # Finalize and write JSON output(s) - skips a redundant 5th _partial disk write
         # because the final file is written immediately and _partial is removed next.
@@ -1229,23 +1566,28 @@ process {
         $secDefaultsEnabled = Get-SafePropertyValue -InputObject $securityData.SecurityDefaults -Name 'isEnabled'
 
         [pscustomobject]@{
-            Tenant                  = $securityData.Tenant
-            TenantId                = $securityData.TenantId
-            CollectedBy             = $securityData.CollectedBy
-            CollectionDate          = $securityData.CollectionDate
-            FullDataFile            = $resolvedDataFile
-            FullSizeKB              = $fullSizeKB
-            CompactDataFile         = $compactPathOut
-            CompactSizeKB           = $compactSizeKB
-            LatestScore             = $latestCurrentScore
-            MaxScore                = $latestMaxScore
-            OpenControlCount        = @($securityData.SecureScoreControls.Open).Count
-            ConditionalAccessCount  = @($securityData.ConditionalAccess).Count
-            SecurityDefaultsEnabled = $secDefaultsEnabled
-            MfaRecordCount          = @($securityData.MfaRegistrationSummary).Count
-            StagesSucceeded         = $stagesSucceeded
-            StagesDegraded          = $stagesDegraded
-            ElapsedSeconds          = [math]::Round($tenantStopwatch.Elapsed.TotalSeconds, 2)
+            Tenant                       = $securityData.Tenant
+            TenantId                     = $securityData.TenantId
+            CollectedBy                  = $securityData.CollectedBy
+            CollectionDate               = $securityData.CollectionDate
+            FullDataFile                 = $resolvedDataFile
+            FullSizeKB                   = $fullSizeKB
+            CompactDataFile              = $compactPathOut
+            CompactSizeKB                = $compactSizeKB
+            LatestScore                  = $latestCurrentScore
+            MaxScore                     = $latestMaxScore
+            OpenControlCount             = @($securityData.SecureScoreControls.Open).Count
+            ScoredControlCount           = $securityData.SecureScoreControls.ScoredControlCount
+            FullyAchievedCount           = $securityData.SecureScoreControls.FullyAchievedCount
+            AddressedWithPointsRemaining = $securityData.SecureScoreControls.AddressedWithPointsRemaining
+            NotApplicableCount           = $securityData.SecureScoreControls.NotApplicableCount
+            TotalPointsAvailable         = $securityData.SecureScoreControls.TotalPointsAvailable
+            ConditionalAccessCount       = @($securityData.ConditionalAccess).Count
+            SecurityDefaultsEnabled      = $secDefaultsEnabled
+            MfaRecordCount               = @($securityData.MfaRegistrationSummary).Count
+            StagesSucceeded              = $stagesSucceeded
+            StagesDegraded               = $stagesDegraded
+            ElapsedSeconds               = [math]::Round($tenantStopwatch.Elapsed.TotalSeconds, 2)
         }
     }
     catch {

@@ -1,0 +1,60 @@
+{
+  "value": [
+    {
+      "id": "ControlFull",
+      "title": "Fully achieved control",
+      "rank": 4,
+      "tier": "Core",
+      "maxScore": 10,
+      "implementationCost": "high",
+      "userImpact": "low",
+      "controlStateUpdates": [
+        { "state": "Default" }
+      ]
+    },
+    {
+      "id": "ControlPartial",
+      "title": "Partial control",
+      "rank": 0,
+      "tier": "Core",
+      "maxScore": 10,
+      "implementationCost": "low",
+      "userImpact": "MODERATE",
+      "controlStateUpdates": [
+        { "state": "Default" }
+      ]
+    },
+    {
+      "id": "ControlIgnored",
+      "title": "Ignored with points left",
+      "rank": 2,
+      "tier": "Core",
+      "maxScore": 8,
+      "implementationCost": "MODERATE",
+      "userImpact": "High",
+      "controlStateUpdates": [
+        { "state": "ignored" }
+      ]
+    },
+    {
+      "id": "ControlNA1",
+      "title": "Catalog control absent from the latest score",
+      "rank": 1,
+      "tier": "Core",
+      "maxScore": 5,
+      "implementationCost": "Low",
+      "userImpact": "Low",
+      "controlStateUpdates": []
+    },
+    {
+      "id": "ControlNA2",
+      "title": "Second catalog control absent from the latest score",
+      "rank": 3,
+      "tier": "informational",
+      "maxScore": 1,
+      "implementationCost": "high",
+      "userImpact": "high",
+      "controlStateUpdates": []
+    }
+  ]
+}
