@@ -530,8 +530,16 @@ Assert-True ($labelAdvanced.LabelPoliciesPublished -ne 0) 'A missing label count
             $exchangeIndex = $connectServices.Body.Extent.Text.IndexOf('Connect-ExchangeOnline')
             $ippsIndex = $connectServices.Body.Extent.Text.IndexOf('Connect-IPPSSession')
             $teamsIndex = $connectServices.Body.Extent.Text.IndexOf('Connect-MicrosoftTeams')
+            $exchangeModuleImport = $connectServices.Body.Extent.Text.IndexOf('Import-Module ExchangeOnlineManagement')
+            $teamsModuleImport = $connectServices.Body.Extent.Text.IndexOf('Import-Module MicrosoftTeams')
+            $lastExchangeConnect = $connectServices.Body.Extent.Text.LastIndexOf('Connect-ExchangeOnline')
+            $lastIppsConnect = $connectServices.Body.Extent.Text.LastIndexOf('Connect-IPPSSession')
             Assert-True ($exchangeIndex -ge 0 -and $ippsIndex -ge 0 -and $teamsIndex -ge 0) 'Exchange, Purview, and Teams connections are present.'
             Assert-True ($exchangeIndex -lt $teamsIndex -and $ippsIndex -lt $teamsIndex) 'Exchange and Purview connect before Teams, and before any SharePoint child work.'
+            Assert-True ($exchangeModuleImport -ge 0 -and $teamsModuleImport -gt $exchangeModuleImport) 'ExchangeOnlineManagement is imported before MicrosoftTeams so its MSAL assembly loads first.'
+            Assert-True ($lastExchangeConnect -lt $teamsModuleImport -and $lastIppsConnect -lt $teamsModuleImport) 'Exchange and Purview connect before the MicrosoftTeams module is imported.'
+            Assert-True ($connectServices.Body.Extent.Text -match "Set-ServiceConnectionResult -Name 'Exchange' -Status 'failed'") 'A failed Exchange connection is recorded.'
+            Assert-True ($connectServices.Body.Extent.Text -match "Set-ServiceConnectionResult -Name 'Compliance' -Status 'failed'") 'A failed Purview connection is recorded.'
 
             $silentImport = @($ast.FindAll({
                 param($node)
@@ -842,6 +850,11 @@ Assert-True ($labelAdvanced.LabelPoliciesPublished -ne 0) 'A missing label count
             Assert-Equal $governance.RetentionPolicies[0].Enabled $true 'The retention policy enabled flag is kept.'
             Assert-Equal $governance.RetentionPolicies[0].Mode 'Enforce' 'The retention policy mode is kept.'
             Assert-Equal $governance.RetentionPolicies[0].Workloads 'SharePoint, OneDriveForBusiness' 'Retention workloads are kept.'
+            $policyJson = ([ordered]@{ DlpPolicies = $governance.DlpPolicies; RetentionPolicies = $governance.RetentionPolicies } | ConvertTo-Json -Depth 6 -Compress)
+            Assert-True ($policyJson -match '"DlpPolicies":\[\{') 'DLP policies serialize as one JSON array.'
+            Assert-True ($policyJson -notmatch '"DlpPolicies":\[\[') 'DLP policies are not a nested JSON array.'
+            Assert-True ($policyJson -match '"RetentionPolicies":\[\{') 'Retention policies serialize as one JSON array.'
+            Assert-True ($policyJson -notmatch '"RetentionPolicies":\[\[') 'Retention policies are not a nested JSON array.'
 
             $snapshot = Get-SensitivityLabelSnapshot -GraphCollected $false -ComplianceSessionConnected $true -ComplianceLabels @(
                 [pscustomobject]@{ Name = 'Public' }
@@ -889,6 +902,129 @@ Assert-True ($labelAdvanced.LabelPoliciesPublished -ne 0) 'A missing label count
             Assert-Equal $teams.RecordingEnabled $true 'AllowCloudRecording populates RecordingEnabled.'
             Assert-Equal $teams.TranscriptionEnabled $false 'AllowTranscription still populates TranscriptionEnabled.'
             Assert-Equal $teams.MeetingPolicyState 'enabled' 'Cloud recording makes the meeting policy enabled.'
+        }
+
+        It 'keeps compliance policy lists flat for empty, one, and many policies' {
+            $empty = ConvertTo-CompliancePolicyList -Policies @()
+            Assert-True ($empty -is [System.Array]) 'An empty policy result is an array.'
+            Assert-Equal @($empty).Count 0 'An empty policy result has no items.'
+            Assert-Equal (([ordered]@{ DlpPolicies = $empty } | ConvertTo-Json -Depth 5 -Compress)) '{"DlpPolicies":[]}' 'An empty policy list serializes as [].'
+
+            $one = ConvertTo-CompliancePolicyList -Policies @([pscustomobject]@{ Name = 'One'; Mode = 'Enable'; Workload = 'Exchange' })
+            Assert-Equal $one[0].Name 'One' 'A single policy is the first element, not a nested array.'
+            Assert-True ($one[0] -isnot [System.Array]) 'A single policy element is the policy object.'
+
+            $two = ConvertTo-CompliancePolicyList -Policies @(
+                [pscustomobject]@{ Name = 'One'; Mode = 'Enable'; Workload = 'Exchange' }
+                [pscustomobject]@{ Name = 'Two'; Mode = 'Enforce'; Workload = 'SharePoint' }
+            )
+            Assert-Equal @($two).Count 2 'Two policies stay in one list.'
+            $twoJson = ([ordered]@{ DlpPolicies = $two } | ConvertTo-Json -Depth 5 -Compress)
+            Assert-True ($twoJson -match '"DlpPolicies":\[\{') 'Several policies serialize as one JSON array.'
+            Assert-True ($twoJson -notmatch '"DlpPolicies":\[\[') 'Several policies are not nested.'
+        }
+
+        It 'scores enabled-member MFA and divides adoption by enabled members' {
+            $directoryUsers = [System.Collections.Generic.List[object]]::new()
+            $registration = [System.Collections.Generic.List[object]]::new()
+            foreach ($index in 1..10) {
+                $directoryUsers.Add([pscustomobject]@{ id = "member-$index"; userType = 'Member'; accountEnabled = $true }) | Out-Null
+                $registration.Add([pscustomobject]@{ id = "member-$index"; userType = 'member'; isMfaRegistered = ($index -le 4) }) | Out-Null
+            }
+            $directoryUsers.Add([pscustomobject]@{ id = 'disabled-member'; userType = 'Member'; accountEnabled = $false }) | Out-Null
+            $directoryUsers.Add([pscustomobject]@{ id = 'guest-user'; userType = 'Guest'; accountEnabled = $true }) | Out-Null
+            $registration.Add([pscustomobject]@{ id = 'disabled-member'; userType = 'member'; isMfaRegistered = $true }) | Out-Null
+            $registration.Add([pscustomobject]@{ id = 'guest-user'; userType = 'guest'; isMfaRegistered = $true }) | Out-Null
+            $script:GraphUsersCache = @{ base = $directoryUsers.ToArray() }
+            $enabledMemberMfa = Get-EnabledMemberMfaRegistration -RegistrationDetails $registration.ToArray()
+            Assert-Equal $enabledMemberMfa.Population 10 'The MFA population is the ten enabled members.'
+            Assert-Equal $enabledMemberMfa.Registered 4 'Disabled members and guests are not counted as registered enabled members.'
+            Assert-Equal $enabledMemberMfa.Percent 40 '4 of 10 enabled members is 40 percent.'
+
+            $script:Report = [ordered]@{
+                Metadata = [ordered]@{ TotalUsers = 265 }
+                Licensing = [ordered]@{ PrereqReadyDenominator = 10; PrereqReadyPercent = 'not collected' }
+                Identity = [ordered]@{
+                    MfaRegisteredCount = 7
+                    MfaPopulationUserCount = 251
+                    MfaRegisteredEnabledMemberPercent = 40
+                    MfaRegisteredMemberPercent = 40
+                }
+                ConditionalAccess = [ordered]@{}
+                DataGovernance = [ordered]@{}
+                SharePointOneDrive = [ordered]@{}
+                AdoptionSignals = [ordered]@{ ActiveUsers30Days = 3 }
+            }
+            $flags = Get-ReadinessFlags
+            Assert-Equal $flags.MfaRegisteredPercent 2.79 'The all-user MFA percent, including guests, stays informational.'
+            Assert-Equal $flags.MfaRegisteredEnabledMemberPercent 40 'The enabled-member MFA percent is available for scoring.'
+            Assert-Equal $flags.ActiveUsersInReportPeriodPercent 30 '3 active users over 10 enabled members is 30 percent.'
+            Assert-Equal $flags.ActiveUserPercentByWorkload 30 'The workload adoption percent uses the same enabled-member denominator.'
+            Assert-Equal $flags.ActiveUserPercentDenominator 10 'The adoption denominator is the enabled member count.'
+            Assert-True ($flags.ActiveUsersInReportPeriodPercent -ne 1.13) 'Adoption is not divided by all 265 users.'
+
+            $script:Report.ReadinessFlags = [ordered]@{
+                MfaRegisteredPercent = 2.79
+                MfaRegisteredEnabledMemberPercent = 90
+                CaPoliciesEnabled = 'not collected'
+                SensitivityLabelsPublished = 'not collected'
+                OneDrivePersonalSiteSharePercent = 'not collected'
+                RestrictedSearchEnabled = 'not collected'
+                ActiveUsersInReportPeriodPercent = 30
+            }
+            $script:Report.IdentityAccessAdvanced = [ordered]@{ Status = 'reported'; PhishingResistantMfaCoverage = 'not collected' }
+            $script:Report.DataProtectionAdvanced = [ordered]@{ Status = 'reported' }
+            $script:Report.SharePointExposureAdvanced = [ordered]@{ Status = 'reported' }
+            $script:Report.AppGovernanceAdvanced = [ordered]@{ Status = 'reported' }
+            $script:Report.EndpointAppAdvanced = [ordered]@{ Status = 'reported' }
+            $script:Report.AdoptionAdvanced = [ordered]@{ Status = 'not collected'; TrendSignal = 'not collected' }
+            $script:Report.ReadinessEvidence = [ordered]@{ OverallScore = 'not collected' }
+            $script:ScoringModel = $null
+            $scored = Get-ReadinessEvidence
+            Assert-Equal $scored.IdentityScoreInputs.MfaRegisteredPercent 2.79 'Score inputs keep the all-user MFA percent.'
+            Assert-Equal $scored.IdentityScoreInputs.MfaRegisteredEnabledMemberPercent 90 'Score inputs record the enabled-member MFA percent.'
+            Assert-Equal $scored.IdentityScoreInputs.MfaScoreBasis 'enabled-members' 'The MFA score basis is enabled members.'
+            Assert-Equal $scored.DomainScores.IdentityAccess 100 'An enabled-member MFA percent of 90 scores the MFA weight even though the all-user percent is 2.79.'
+
+            $script:Report.ReadinessFlags.MfaRegisteredEnabledMemberPercent = 40
+            $belowThreshold = Get-ReadinessEvidence
+            Assert-Equal $belowThreshold.DomainScores.IdentityAccess 0 'An enabled-member MFA percent of 40 is below the 80 percent threshold.'
+            Assert-Equal $belowThreshold.IdentityScoreInputs.MfaRegisteredPercent 2.79 'The all-user figure remains informational when the score uses 40 percent.'
+            $recommendations = Get-Recommendations
+            Assert-True ((@($recommendations.TopRisks) -join "`n") -match 'enabled members') 'The MFA recommendation follows the enabled-member percentage.'
+        }
+
+        It 'records a failed Exchange or Purview connection in errors and connection status' {
+            $script:Report = [ordered]@{
+                Errors = [System.Collections.Generic.List[object]]::new()
+                Exchange = [ordered]@{ Status = 'partial'; Reason = 'Exchange Online connection failed: Could not load Microsoft.Identity.Client.dll'; TotalMailboxes = 'not collected' }
+                DataGovernance = [ordered]@{ Status = 'partial'; Reason = 'Purview connection failed: Could not load Microsoft.Identity.Client.dll'; DlpPolicies = 'not collected' }
+            }
+            $script:GraphAccessToken = $null
+            $script:MgContext = $null
+            $script:TeamsConnected = $false
+            $script:SharePointChildCollectionSucceeded = $false
+            $script:GraphMissingScopes = @()
+            $assemblyError = 'Could not load file or assembly Microsoft.Identity.Client.dll'
+            Set-ServiceConnectionResult -Name 'Exchange' -Status 'failed' -Message $assemblyError
+            Set-ServiceConnectionResult -Name 'Compliance' -Status 'failed' -Message $assemblyError
+            Assert-Equal @($script:Report.Errors).Count 2 'Exchange and Purview failures are collector errors.'
+            Assert-Equal $script:Report.Errors[0].Section 'Exchange' 'The Exchange failure is named Exchange.'
+            Assert-Equal $script:Report.Errors[1].Section 'Purview' 'The Purview failure is named Purview.'
+            Assert-Equal $script:ExchangeConnected $false 'Exchange stays disconnected after a failure.'
+            Assert-Equal $script:ComplianceConnected $false 'Purview stays disconnected after a failure.'
+
+            function Get-ConnectionInformation {
+                [pscustomobject]@{ Name = 'ExchangeOnline' }
+                [pscustomobject]@{ Name = 'IPPSSession' }
+            }
+            $gaps = Get-PrerequisitesAndGaps
+            Assert-Equal $gaps.CurrentPrerequisites.SessionAvailability.ExchangeConnected $false 'A recorded Exchange failure is not cleared by a later session probe.'
+            Assert-Equal $gaps.CurrentPrerequisites.SessionAvailability.ComplianceConnected $false 'A recorded Purview failure is not cleared by a later session probe.'
+            Assert-Equal $gaps.CurrentPrerequisites.SessionAvailability.ExchangeConnectionStatus 'failed' 'Exchange connection status is failed.'
+            Assert-Equal $gaps.CurrentPrerequisites.SessionAvailability.ComplianceConnectionStatus 'failed' 'Purview connection status is failed.'
+            Assert-True ($gaps.CurrentPrerequisites.SessionAvailability.ExchangeConnectionError -match 'Microsoft\.Identity\.Client') 'The Exchange connection error is kept.'
+            Assert-True ($gaps.CurrentPrerequisites.SessionAvailability.ComplianceConnectionError -match 'Microsoft\.Identity\.Client') 'The Purview connection error is kept.'
         }
     }
 }

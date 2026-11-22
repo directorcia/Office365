@@ -172,6 +172,13 @@
     permissions are recorded as data gaps.
 
     Change log:
+    - 2026-11-22: Exchange Online and Purview connect before MicrosoftTeams
+      is imported, so Exchange Online Management 3.10.1 can load
+      Microsoft.Identity.Client 4.83.1. A failed Exchange or Purview
+      connection is recorded on Errors and the connection status. DLP and
+      retention policy lists stay flat. Identity scoring uses the
+      enabled-member MFA percentage. Adoption divides by enabled members.
+      PnP.PowerShell stays out of the parent process.
     - 2026-11-22: Parent process no longer loads PnP.PowerShell (SharePoint
       collection stays in the child). Content exposure, Office 365 active
       users, Copilot report fallbacks, Teams recording, retention/DLP,
@@ -732,6 +739,12 @@ $script:GraphAccessToken = $null
 $script:GraphAccessTokenExpiresAtUtc = $null
 $script:MgContext = $null
 $script:TeamsConnected = $false
+$script:ExchangeConnected = $false
+$script:ComplianceConnected = $false
+$script:ExchangeConnectionStatus = 'not attempted'
+$script:ComplianceConnectionStatus = 'not attempted'
+$script:ExchangeConnectionError = ''
+$script:ComplianceConnectionError = ''
 $script:SharePointChildCollectionSucceeded = $false
 $script:GraphMissingScopes = @()
 $script:GraphProvidedScopes = @()
@@ -1813,6 +1826,45 @@ function Get-RegistrationPercent {
     return [math]::Round(((Get-IntValue -Value $Registered -Default 0) / $denominator) * 100, 2)
 }
 
+function Get-EnabledMemberMfaRegistration {
+    # Enabled members come from the directory. Registration details do not
+    # carry accountEnabled, so guests and disabled members in that report
+    # must not set the percentage used for scoring.
+    param([AllowNull()][object[]]$RegistrationDetails)
+
+    $enabledMembers = @(Get-EnabledMemberUsers)
+    $population = @($enabledMembers).Count
+    $enabledIds = @{}
+    foreach ($user in @($enabledMembers)) {
+        $id = Get-DirectoryObjectId -User $user
+        if (-not [string]::IsNullOrWhiteSpace($id)) {
+            $enabledIds[$id.ToLowerInvariant()] = $true
+        }
+    }
+
+    $registeredIds = @{}
+    foreach ($row in @($RegistrationDetails)) {
+        if ($null -eq $row) { continue }
+        $rowId = Get-DirectoryObjectId -User $row
+        if ([string]::IsNullOrWhiteSpace($rowId)) { continue }
+        $key = $rowId.ToLowerInvariant()
+        if (-not $enabledIds.ContainsKey($key)) { continue }
+
+        $isRegistered = (Get-ObjectPropertyValue -InputObject $row -Name 'isMfaRegistered' -Default $false) -eq $true
+        if (-not $isRegistered) {
+            $isRegistered = (Get-ObjectPropertyValue -InputObject $row -Name 'IsMfaRegistered' -Default $false) -eq $true
+        }
+        if ($isRegistered) { $registeredIds[$key] = $true }
+    }
+
+    $registered = @($registeredIds.Keys).Count
+    return [ordered]@{
+        Population = $population
+        Registered = $registered
+        Percent    = if ($population -gt 0) { [math]::Round(($registered / $population) * 100, 2) } else { 'not collected' }
+    }
+}
+
 function Get-RequiredGraphScopes {
     $scopes = @(
         'AuditLog.Read.All'
@@ -2834,6 +2886,49 @@ function Get-DirectoryUsersForReadiness {
     return @(Get-CachedGraphUsers -IncludeSignInActivity:$IncludeSignInActivity)
 }
 
+function Get-DirectoryObjectId {
+    param([AllowNull()][object]$User)
+
+    if ($null -eq $User) { return '' }
+    foreach ($name in @('id', 'Id')) {
+        $value = [string](Get-ObjectPropertyValue -InputObject $User -Name $name -Default '')
+        if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+    }
+    return ''
+}
+
+function Test-IsEnabledMemberUser {
+    # Same population as the licence denominator: guests are excluded, and a
+    # disabled account is excluded only when accountEnabled is present.
+    param([AllowNull()][object]$User)
+
+    if ($null -eq $User) { return $false }
+    $userType = [string](Get-ObjectPropertyValue -InputObject $User -Name 'userType' -Default '')
+    if ([string]::IsNullOrWhiteSpace($userType)) {
+        $userType = [string](Get-ObjectPropertyValue -InputObject $User -Name 'UserType' -Default '')
+    }
+    if ($userType.Equals('Guest', [System.StringComparison]::OrdinalIgnoreCase)) { return $false }
+
+    $accountEnabled = Get-ObjectPropertyValue -InputObject $User -Name 'accountEnabled' -Default $null
+    if ($null -eq $accountEnabled) {
+        $accountEnabled = Get-ObjectPropertyValue -InputObject $User -Name 'AccountEnabled' -Default $null
+    }
+    if ($accountEnabled -eq $false) { return $false }
+    return $true
+}
+
+function Get-EnabledMemberUsers {
+    $eligible = [System.Collections.Generic.List[object]]::new()
+    foreach ($candidateUser in @(Get-DirectoryUsersForReadiness)) {
+        if (Test-IsEnabledMemberUser -User $candidateUser) {
+            $eligible.Add($candidateUser) | Out-Null
+        }
+    }
+
+    # Callers wrap this in @(), which keeps an empty or single-user result as a list.
+    return $eligible.ToArray()
+}
+
 function Get-WorkloadCertificateSelection {
     param(
         [string]$AppId,
@@ -3037,17 +3132,72 @@ function Connect-GraphForExport {
     Write-Step 'Connected to Microsoft Graph.' -Color Green
 }
 
+function Add-ServiceConnectionFailure {
+    param(
+        [Parameter(Mandatory)][string]$Section,
+        [Parameter(Mandatory)][string]$Message,
+        [AllowNull()][object]$ErrorRecord
+    )
+
+    $reportVariable = Get-Variable -Name Report -Scope Script -ErrorAction SilentlyContinue
+    if ($null -eq $reportVariable -or $null -eq $reportVariable.Value) { return }
+    $report = $reportVariable.Value
+    if (-not ($report -is [System.Collections.IDictionary]) -or -not $report.Contains('Errors') -or $null -eq $report.Errors) { return }
+
+    $exceptionName = 'ConnectionFailed'
+    $detail = $Message
+    if ($null -ne $ErrorRecord) {
+        $exception = Get-ObjectPropertyValue -InputObject $ErrorRecord -Name 'Exception' -Default $null
+        if ($null -ne $exception) {
+            $exceptionName = $exception.GetType().FullName
+        }
+        $detailText = ($ErrorRecord | Out-String -Width 200).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($detailText)) { $detail = $detailText }
+    }
+
+    $report.Errors.Add([ordered]@{
+        Section      = $Section
+        Message      = $Message
+        Exception    = $exceptionName
+        Detail       = $detail
+        TimestampUtc = (Get-Date).ToUniversalTime().ToString('o')
+    }) | Out-Null
+}
+
+function Set-ServiceConnectionResult {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions',
+        '',
+        Justification='Records script-scoped connection status and collector errors. It does not change the tenant.')]
+    param(
+        [Parameter(Mandatory)][ValidateSet('Exchange', 'Compliance')][string]$Name,
+        [Parameter(Mandatory)][ValidateSet('connected', 'unavailable', 'failed')][string]$Status,
+        [string]$Message = '',
+        [AllowNull()][object]$ErrorRecord
+    )
+
+    Set-Variable -Name "${Name}Connected" -Scope Script -Value ($Status -eq 'connected')
+    Set-Variable -Name "${Name}ConnectionStatus" -Scope Script -Value $Status
+    Set-Variable -Name "${Name}ConnectionError" -Scope Script -Value $(if ($Status -eq 'failed') { $Message } else { '' })
+    if ($Status -ne 'failed') { return }
+
+    $section = if ($Name -eq 'Compliance') { 'Purview' } else { 'Exchange' }
+    Add-ServiceConnectionFailure -Section $section -Message $Message -ErrorRecord $ErrorRecord
+}
+
 # ----------------------------------------------------------------------------
 # Connections (read-only scopes)
 # ----------------------------------------------------------------------------
 function Connect-Services {
     Write-Step 'Connecting to Microsoft Graph and Microsoft 365 services...' -Color Yellow
 
-    $teamsImportError = $null
-    try { Import-Module MicrosoftTeams -ErrorAction Stop } catch { $teamsImportError = $_.Exception.Message }
     # PnP.PowerShell is loaded only in the SharePoint child process. Importing it
     # here registers an assembly resolver that recurses when Exchange Online loads
     # MSAL and identity assemblies (Linux stack overflow, exit 134).
+    # ExchangeOnlineManagement must load before the MicrosoftTeams module.
+    # Teams pins Microsoft.Identity.Client 4.82; Exchange Online Management 3.10.1
+    # needs 4.83.1. Importing Teams first makes Connect-ExchangeOnline and
+    # Connect-IPPSSession fail to load Microsoft.Identity.Client.dll.
     try { Import-Module ExchangeOnlineManagement -ErrorAction SilentlyContinue } catch { Write-Debug "ExchangeOnlineManagement optional import skipped: $($_.Exception.Message)" }
 
     try {
@@ -3074,9 +3224,11 @@ function Connect-Services {
                 Write-Step 'Connecting to Exchange Online with a certificate...' -Color Cyan
                 Connect-ExchangeOrIppsWithCertificate -CommandName 'Connect-ExchangeOnline' -Selection $exchangeCertificate
                 $exoConnected = $true
+                Set-ServiceConnectionResult -Name 'Exchange' -Status 'connected'
                 Write-Step 'Connected to Exchange Online with a certificate.' -Color Green
             }
             elseif (Test-NonInteractiveMode) {
+                Set-ServiceConnectionResult -Name 'Exchange' -Status 'unavailable'
                 Write-Step 'Headless mode will not start an interactive Exchange Online sign-in. Pass -ExchangeAppId and an Exchange certificate thumbprint or path.' -Color DarkYellow
             }
             else {
@@ -3087,18 +3239,23 @@ function Connect-Services {
                 }
                 Connect-ExchangeOnline @exoParams -WarningAction SilentlyContinue -InformationAction SilentlyContinue 3>$null 6>$null | Out-Null
                 $exoConnected = $true
+                Set-ServiceConnectionResult -Name 'Exchange' -Status 'connected'
                 Write-Step 'Connected to Exchange Online.' -Color Green
             }
         }
         elseif ($exoConnected) {
+            Set-ServiceConnectionResult -Name 'Exchange' -Status 'connected'
             Write-Step 'Reusing existing Exchange Online session.' -Color Green
         }
         else {
+            Set-ServiceConnectionResult -Name 'Exchange' -Status 'unavailable'
             Write-Step 'ExchangeOnlineManagement cmdlets are not available in this session.' -Color DarkYellow
         }
     }
     catch {
-        Write-Warning "Exchange Online sign-in was not available during startup: $($_.Exception.Message)"
+        $exchangeConnectionMessage = [string]$_.Exception.Message
+        Set-ServiceConnectionResult -Name 'Exchange' -Status 'failed' -Message $exchangeConnectionMessage -ErrorRecord $_
+        Write-Warning "Exchange Online sign-in was not available during startup: $exchangeConnectionMessage"
     }
 
     try {
@@ -3117,9 +3274,11 @@ function Connect-Services {
                 Write-Step 'Connecting to Microsoft Purview with a certificate...' -Color Cyan
                 Connect-ExchangeOrIppsWithCertificate -CommandName 'Connect-IPPSSession' -Selection $ippsCertificate
                 $ippsConnected = $true
+                Set-ServiceConnectionResult -Name 'Compliance' -Status 'connected'
                 Write-Step 'Connected to Microsoft Purview compliance session with a certificate.' -Color Green
             }
             elseif (Test-NonInteractiveMode) {
+                Set-ServiceConnectionResult -Name 'Compliance' -Status 'unavailable'
                 Write-Step 'Headless mode will not start an interactive Purview sign-in. Pass -IppsAppId and an IPPS certificate thumbprint or path.' -Color DarkYellow
             }
             else {
@@ -3134,19 +3293,29 @@ function Connect-Services {
                 }
                 Connect-IPPSSession @ippsParams -WarningAction SilentlyContinue -InformationAction SilentlyContinue 3>$null 6>$null | Out-Null
                 $ippsConnected = $true
+                Set-ServiceConnectionResult -Name 'Compliance' -Status 'connected'
                 Write-Step 'Connected to Microsoft Purview compliance session.' -Color Green
             }
         }
         elseif ($ippsConnected) {
+            Set-ServiceConnectionResult -Name 'Compliance' -Status 'connected'
             Write-Step 'Reusing existing Microsoft Purview compliance session.' -Color Green
         }
         else {
+            Set-ServiceConnectionResult -Name 'Compliance' -Status 'unavailable'
             Write-Step 'Compliance cmdlets are not available in this session.' -Color DarkYellow
         }
     }
     catch {
-        Write-Warning "Compliance (IPPS) sign-in was not available during startup: $($_.Exception.Message)"
+        $purviewConnectionMessage = [string]$_.Exception.Message
+        Set-ServiceConnectionResult -Name 'Compliance' -Status 'failed' -Message $purviewConnectionMessage -ErrorRecord $_
+        Write-Warning "Compliance (IPPS) sign-in was not available during startup: $purviewConnectionMessage"
     }
+
+    # Import Teams only after Exchange and Purview have connected, so their
+    # Microsoft.Identity.Client 4.83.1 assembly is already loaded.
+    $teamsImportError = $null
+    try { Import-Module MicrosoftTeams -ErrorAction Stop } catch { $teamsImportError = $_.Exception.Message }
 
     $script:TeamsConnected = $false
     try {
@@ -3532,20 +3701,7 @@ function Get-LicensingReadiness {
 
     $qualifying = @($skus | Where-Object { $_.SkuPartNumber -match 'ENTERPRISEPACK|STANDARDPACK|M365BUSINESSSTANDARD|M365BUSINESSPREMIUM|E3|E5' } | Select-Object -ExpandProperty SkuPartNumber)
 
-    $users = @(Get-DirectoryUsersForReadiness)
-    $eligibleUsers = [System.Collections.Generic.List[object]]::new()
-    foreach ($candidateUser in $users) {
-        if ($null -eq $candidateUser) { continue }
-        $userType = [string](Get-ObjectPropertyValue -InputObject $candidateUser -Name 'userType' -Default '')
-        if ($userType.Equals('Guest', [System.StringComparison]::OrdinalIgnoreCase)) { continue }
-        $accountEnabled = Get-ObjectPropertyValue -InputObject $candidateUser -Name 'accountEnabled' -Default $null
-        if ($null -eq $accountEnabled) {
-            $accountEnabled = Get-ObjectPropertyValue -InputObject $candidateUser -Name 'AccountEnabled' -Default $null
-        }
-        # Disabled accounts are excluded only when the directory property is present.
-        if ($accountEnabled -eq $false) { continue }
-        $eligibleUsers.Add($candidateUser) | Out-Null
-    }
+    $eligibleUsers = @(Get-EnabledMemberUsers)
 
     $ready = 0
     foreach ($u in @($eligibleUsers)) {
@@ -3627,6 +3783,9 @@ function Get-IdentityReadiness {
     $mfaRegisteredMemberPercent = 'not collected'
     $mfaRegisteredGuestPercent = 'not collected'
     $mfaRegisteredAdminPercent = 'not collected'
+    $mfaRegisteredEnabledMemberCount = 'not collected'
+    $mfaEnabledMemberPopulationUserCount = 'not collected'
+    $mfaRegisteredEnabledMemberPercent = 'not collected'
 
     $registrationDenied = $false
     try {
@@ -3660,6 +3819,19 @@ function Get-IdentityReadiness {
         $mfaRegisteredMemberPercent = Get-RegistrationPercent -Registered $cohorts.MemberRegistered -Population $cohorts.MemberPopulation
         $mfaRegisteredGuestPercent = Get-RegistrationPercent -Registered $cohorts.GuestRegistered -Population $cohorts.GuestPopulation
         $mfaRegisteredAdminPercent = Get-RegistrationPercent -Registered $cohorts.AdminRegistered -Population $cohorts.AdminPopulation
+        if ($hasDirectoryRead) {
+            try {
+                $enabledMemberMfa = Get-EnabledMemberMfaRegistration -RegistrationDetails $auth
+                if ($null -ne $enabledMemberMfa -and (Test-ValueCollected -Value $enabledMemberMfa.Percent)) {
+                    $mfaRegisteredEnabledMemberCount = $enabledMemberMfa.Registered
+                    $mfaEnabledMemberPopulationUserCount = $enabledMemberMfa.Population
+                    $mfaRegisteredEnabledMemberPercent = $enabledMemberMfa.Percent
+                }
+            }
+            catch {
+                Write-Debug "Enabled-member MFA percentage was not calculated: $($_.Exception.Message)"
+            }
+        }
 
         if (@($auth).Count -gt 0) {
             $mfaPopulationUserCount = @($auth).Count
@@ -3793,7 +3965,10 @@ function Get-IdentityReadiness {
         MfaRegisteredMemberPercent = $mfaRegisteredMemberPercent
         MfaRegisteredGuestPercent = $mfaRegisteredGuestPercent
         MfaRegisteredAdminPercent = $mfaRegisteredAdminPercent
-        MfaRegistrationPercentNote = 'MfaRegisteredCount and the overall percent include guests. Guests skew that percentage. Use the member, guest, and admin figures separately.'
+        MfaRegisteredEnabledMemberCount = $mfaRegisteredEnabledMemberCount
+        MfaEnabledMemberPopulationUserCount = $mfaEnabledMemberPopulationUserCount
+        MfaRegisteredEnabledMemberPercent = $mfaRegisteredEnabledMemberPercent
+        MfaRegistrationPercentNote = 'MfaRegisteredCount and the overall percent include guests and are informational. Scoring uses MfaRegisteredEnabledMemberPercent: enabled members only. Guests and disabled accounts are excluded.'
         PasswordlessCount    = $passwordless
         MfaPopulationUserCount = $mfaPopulationUserCount
         MfaPopulationSource  = $mfaPopulationSource
@@ -3997,7 +4172,7 @@ function Get-DataGovernanceReadiness {
     $dlp = 'not collected'
     if ($hasIppsSession -and (Get-Command Get-DlpCompliancePolicy -ErrorAction SilentlyContinue)) {
         try {
-            $dlp = @(ConvertTo-CompliancePolicyList -Policies @(Get-DlpCompliancePolicy -ErrorAction Stop))
+            $dlp = ConvertTo-CompliancePolicyList -Policies @(Get-DlpCompliancePolicy -ErrorAction Stop)
         }
         catch {
             $dlp = 'not collected'
@@ -4006,7 +4181,7 @@ function Get-DataGovernanceReadiness {
     $retention = 'not collected'
     if ($hasIppsSession -and (Get-Command Get-RetentionCompliancePolicy -ErrorAction SilentlyContinue)) {
         try {
-            $retention = @(ConvertTo-CompliancePolicyList -Policies @(Get-RetentionCompliancePolicy -ErrorAction Stop))
+            $retention = ConvertTo-CompliancePolicyList -Policies @(Get-RetentionCompliancePolicy -ErrorAction Stop)
         }
         catch {
             $retention = 'not collected'
@@ -4026,7 +4201,12 @@ function Get-DataGovernanceReadiness {
         $reasonParts = [System.Collections.Generic.List[string]]::new()
         if (-not $labelsCollected -and -not [string]::IsNullOrWhiteSpace([string]$labelSnapshot.Reason)) { $reasonParts.Add([string]$labelSnapshot.Reason) }
         if (-not $hasComplianceData) {
-            if (-not $hasIppsSession) { $reasonParts.Add('DLP and retention were not collected because no Purview compliance session was available.') }
+            $purviewConnectionError = Get-ScriptStringParameter -Name 'ComplianceConnectionError'
+            $purviewConnectionStatus = Get-ScriptStringParameter -Name 'ComplianceConnectionStatus'
+            if (-not $hasIppsSession -and $purviewConnectionStatus -eq 'failed' -and -not [string]::IsNullOrWhiteSpace($purviewConnectionError)) {
+                $reasonParts.Add("Purview connection failed: $purviewConnectionError")
+            }
+            elseif (-not $hasIppsSession) { $reasonParts.Add('DLP and retention were not collected because no Purview compliance session was available.') }
             else { $reasonParts.Add('DLP or retention policy data was not collected.') }
         }
         $reason = $reasonParts -join ' '
@@ -4512,7 +4692,14 @@ function Get-ExchangeReadiness {
             $exoCollectionError = 'Exchange Online mailbox collection failed because Get-EXOMailbox is unavailable.'
         }
         else {
-            $exoCollectionError = 'Exchange Online session was unavailable.'
+            $exchangeConnectionError = Get-ScriptStringParameter -Name 'ExchangeConnectionError'
+            $exchangeConnectionStatus = Get-ScriptStringParameter -Name 'ExchangeConnectionStatus'
+            if ($exchangeConnectionStatus -eq 'failed' -and -not [string]::IsNullOrWhiteSpace($exchangeConnectionError)) {
+                $exoCollectionError = "Exchange Online connection failed: $exchangeConnectionError"
+            }
+            else {
+                $exoCollectionError = 'Exchange Online session was unavailable.'
+            }
         }
 
         if (-not (Test-GraphPermissionsAvailable -RequiredPermissions @('Directory.Read.All'))) {
@@ -5119,10 +5306,13 @@ function Get-IdentityAccessAdvanced {
         MfaRegisteredMemberPercent = Get-ObjectPropertyValue -InputObject $identity -Name 'MfaRegisteredMemberPercent' -Default 'not collected'
         MfaRegisteredGuestPercent = Get-ObjectPropertyValue -InputObject $identity -Name 'MfaRegisteredGuestPercent' -Default 'not collected'
         MfaRegisteredAdminPercent = Get-ObjectPropertyValue -InputObject $identity -Name 'MfaRegisteredAdminPercent' -Default 'not collected'
+        MfaRegisteredEnabledMemberPercent = Get-ObjectPropertyValue -InputObject $identity -Name 'MfaRegisteredEnabledMemberPercent' -Default 'not collected'
+        MfaRegisteredEnabledMemberCount = Get-ObjectPropertyValue -InputObject $identity -Name 'MfaRegisteredEnabledMemberCount' -Default 'not collected'
+        MfaEnabledMemberPopulationUserCount = Get-ObjectPropertyValue -InputObject $identity -Name 'MfaEnabledMemberPopulationUserCount' -Default 'not collected'
         MfaRegisteredMemberCount = Get-ObjectPropertyValue -InputObject $identity -Name 'MfaRegisteredMemberCount' -Default 'not collected'
         MfaRegisteredGuestCount = Get-ObjectPropertyValue -InputObject $identity -Name 'MfaRegisteredGuestCount' -Default 'not collected'
         MfaRegisteredAdminCount = Get-ObjectPropertyValue -InputObject $identity -Name 'MfaRegisteredAdminCount' -Default 'not collected'
-        MfaRegistrationPercentNote = 'MfaRegistrationPercent includes guests and can be skewed by them. MfaRegisteredMemberPercent, MfaRegisteredGuestPercent, and MfaRegisteredAdminPercent are separate.'
+        MfaRegistrationPercentNote = 'MfaRegistrationPercent includes guests and is informational. Scoring uses MfaRegisteredEnabledMemberPercent. Guests and disabled accounts are excluded from that percentage.'
         PhishingResistantMfaCoverage = 'not collected'
         PimSignal = 'not collected'
         AdminRoleCoverageNote = 'Admin role counts are derived from activated directory roles and active memberships only; PIM-eligible assignments are not included.'
@@ -5606,10 +5796,26 @@ function Get-ReadinessFlags {
     $mfaPopulationUserCount = if (Test-ValueCollected -Value $mfaPopulationUserCountValue) { Get-IntValue -Value $mfaPopulationUserCountValue -Default 0 } else { 0 }
     $activeUsers30DaysValue = Get-ObjectPropertyValue -InputObject $ad -Name 'ActiveUsers30Days' -Default 'not collected'
     $mfaDenominator = if ($mfaPopulationUserCount -gt 0) { $mfaPopulationUserCount } else { $totalUsers }
+    # All-user percent, including guests. Kept as informational output. Scoring uses
+    # MfaRegisteredEnabledMemberPercent instead.
     $mfaPercent = if ($mfaDenominator -gt 0 -and $mfaRegisteredCountCollected) { [math]::Round(($mfaRegisteredCount / $mfaDenominator) * 100, 2) } else { 'not collected' }
+    $enabledMemberCountValue = Get-ObjectPropertyValue -InputObject $script:Report.Licensing -Name 'PrereqReadyDenominator' -Default 'not collected'
+    $enabledMemberCount = 0
+    if (Test-ValueCollected -Value $enabledMemberCountValue) {
+        $enabledMemberCount = Get-IntValue -Value $enabledMemberCountValue -Default 0
+    }
+    else {
+        try {
+            $enabledMemberCount = @(Get-EnabledMemberUsers).Count
+        }
+        catch {
+            $enabledMemberCount = 0
+        }
+    }
     # NOTE: getOffice365ServicesUserCounts(period='D30') supplies Office 365 Active and
     # the per-service Active columns for the period. Blank cells stay null, not zero.
-    $activeUserPercent = if ($totalUsers -gt 0 -and (Test-ValueCollected -Value $activeUsers30DaysValue)) { [math]::Round((([double](Get-IntValue -Value $activeUsers30DaysValue -Default 0)) / $totalUsers) * 100, 2) } else { 'not collected' }
+    # Divide by enabled members. Guests and disabled accounts are not the adoption base.
+    $activeUserPercent = if ($enabledMemberCount -gt 0 -and (Test-ValueCollected -Value $activeUsers30DaysValue)) { [math]::Round((([double](Get-IntValue -Value $activeUsers30DaysValue -Default 0)) / $enabledMemberCount) * 100, 2) } else { 'not collected' }
 
     $caEnabledPoliciesValue = Get-ObjectPropertyValue -InputObject $ca -Name 'EnabledPolicies' -Default 'not collected'
     $caEnabledPoliciesCollected = Test-ValueCollected -Value $caEnabledPoliciesValue
@@ -5625,6 +5831,7 @@ function Get-ReadinessFlags {
     return [ordered]@{
         LicencePrereqPercent      = if ($licPercentCollected) { $licPercent } else { 'not collected' }
         MfaRegisteredPercent      = $mfaPercent
+        MfaRegisteredEnabledMemberPercent = Get-ObjectPropertyValue -InputObject $id -Name 'MfaRegisteredEnabledMemberPercent' -Default 'not collected'
         MfaRegisteredMemberPercent = Get-ObjectPropertyValue -InputObject $id -Name 'MfaRegisteredMemberPercent' -Default 'not collected'
         MfaRegisteredGuestPercent = Get-ObjectPropertyValue -InputObject $id -Name 'MfaRegisteredGuestPercent' -Default 'not collected'
         MfaRegisteredAdminPercent = Get-ObjectPropertyValue -InputObject $id -Name 'MfaRegisteredAdminPercent' -Default 'not collected'
@@ -5638,6 +5845,8 @@ function Get-ReadinessFlags {
         ExternalSharingLevel      = $spoExternalSharing
         ActiveUsersInReportPeriodPercent = $activeUserPercent
         ActiveUserPercentByWorkload = $activeUserPercent
+        ActiveUserPercentDenominator = if ($enabledMemberCount -gt 0) { $enabledMemberCount } else { 'not collected' }
+        ActiveUserPercentDenominatorDefinition = 'Enabled member users. Guests are excluded. Disabled accounts are excluded when accountEnabled is present.'
     }
 }
 
@@ -5657,18 +5866,21 @@ function Get-ReadinessEvidence {
     $advancedMfaCoverage = Get-ObjectPropertyValue -InputObject $identity -Name 'PhishingResistantMfaCoverage' -Default 'not collected'
 
     $mfaRegisteredPercentValue = Get-ObjectPropertyValue -InputObject $flags -Name 'MfaRegisteredPercent' -Default 'not collected'
+    $mfaEnabledMemberPercentValue = Get-ObjectPropertyValue -InputObject $flags -Name 'MfaRegisteredEnabledMemberPercent' -Default 'not collected'
     $caEnabledPoliciesValue = Get-ObjectPropertyValue -InputObject $flags -Name 'CaPoliciesEnabled' -Default 'not collected'
     $mfaRegisteredPercent = if (Test-ValueCollected -Value $mfaRegisteredPercentValue) { Get-DoubleValue -Value $mfaRegisteredPercentValue -Default 0 } else { $null }
+    $mfaEnabledMemberPercent = if (Test-ValueCollected -Value $mfaEnabledMemberPercentValue) { Get-DoubleValue -Value $mfaEnabledMemberPercentValue -Default 0 } else { $null }
     $caEnabledPolicies = if (Test-ValueCollected -Value $caEnabledPoliciesValue) { Get-IntValue -Value $caEnabledPoliciesValue -Default 0 } else { $null }
     $identityAdvancedMfaPercent = if (Test-ValueCollected -Value $advancedMfaCoverage) { Get-DoubleValue -Value $advancedMfaCoverage -Default 0 } else { $null }
 
     $identityScoreRaw = 0
     $identityMeasuredWeight = 0
     $identityMeasured = $false
-    if ($null -ne $mfaRegisteredPercent) {
+    # Score enabled members. The all-user percent includes guests and stays informational.
+    if ($null -ne $mfaEnabledMemberPercent) {
         $identityMeasured = $true
         $identityMeasuredWeight += [int]$scoring.IdentityAccess.MfaRegisteredWeight
-        if ($mfaRegisteredPercent -ge [double]$scoring.IdentityAccess.MfaRegisteredPercentThreshold) { $identityScoreRaw += [int]$scoring.IdentityAccess.MfaRegisteredWeight }
+        if ($mfaEnabledMemberPercent -ge [double]$scoring.IdentityAccess.MfaRegisteredPercentThreshold) { $identityScoreRaw += [int]$scoring.IdentityAccess.MfaRegisteredWeight }
     }
     if ($null -ne $identityAdvancedMfaPercent) {
         $identityMeasured = $true
@@ -5888,7 +6100,9 @@ function Get-ReadinessEvidence {
             EndpointReadiness = if ($null -ne $deviceScore) { 100 } else { 'not collected' }
         }
         IdentityScoreInputs = [ordered]@{
-            MfaRegisteredPercent = $mfaRegisteredPercent
+            MfaRegisteredPercent = if ($null -ne $mfaRegisteredPercent) { $mfaRegisteredPercent } else { 'not collected' }
+            MfaRegisteredEnabledMemberPercent = if ($null -ne $mfaEnabledMemberPercent) { $mfaEnabledMemberPercent } else { 'not collected' }
+            MfaScoreBasis = 'enabled-members'
             AdvancedMfaCoveragePercent = if ($advancedMfaCoverage -ne 'not collected') { $identityAdvancedMfaPercent } else { 'not collected' }
             AdvancedMfaCoverageSource = if ($advancedMfaCoverage -ne 'not collected') { 'PhishingResistantMfaCoverage' } else { 'not collected' }
             CaEnabledPolicies = if ($null -ne $caEnabledPolicies) { $caEnabledPolicies } else { 'not collected' }
@@ -6052,25 +6266,58 @@ function Get-PrerequisitesAndGaps {
         ComplianceCmdletsAvailable = [bool](Get-Command Connect-IPPSSession -ErrorAction SilentlyContinue)
     }
 
+    $exchangeConnectionStatus = Get-ScriptStringParameter -Name 'ExchangeConnectionStatus'
+    if ([string]::IsNullOrWhiteSpace($exchangeConnectionStatus)) { $exchangeConnectionStatus = 'not attempted' }
+    $complianceConnectionStatus = Get-ScriptStringParameter -Name 'ComplianceConnectionStatus'
+    if ([string]::IsNullOrWhiteSpace($complianceConnectionStatus)) { $complianceConnectionStatus = 'not attempted' }
+    $exchangeConnectedVariable = Get-Variable -Name ExchangeConnected -Scope Script -ErrorAction SilentlyContinue
+    $complianceConnectedVariable = Get-Variable -Name ComplianceConnected -Scope Script -ErrorAction SilentlyContinue
+    $exchangeConnected = $exchangeConnectionStatus -eq 'connected' -or ($null -ne $exchangeConnectedVariable -and [bool]$exchangeConnectedVariable.Value)
+    $complianceConnected = $complianceConnectionStatus -eq 'connected' -or ($null -ne $complianceConnectedVariable -and [bool]$complianceConnectedVariable.Value)
+    if ($exchangeConnectionStatus -eq 'failed') { $exchangeConnected = $false }
+    if ($complianceConnectionStatus -eq 'failed') { $complianceConnected = $false }
+
     $sessionAvailability = [ordered]@{
         GraphAuthenticated = -not [string]::IsNullOrWhiteSpace([string]$script:GraphAccessToken) -or $null -ne $script:MgContext
         TeamsConnected = [bool]$script:TeamsConnected
         SharePointConnected = [bool]$script:SharePointChildCollectionSucceeded
-        ExchangeConnected = $false
-        ComplianceConnected = $false
+        ExchangeConnected = $exchangeConnected
+        ComplianceConnected = $complianceConnected
+        ExchangeConnectionStatus = $exchangeConnectionStatus
+        ComplianceConnectionStatus = $complianceConnectionStatus
+        ExchangeConnectionError = Get-ScriptStringParameter -Name 'ExchangeConnectionError'
+        ComplianceConnectionError = Get-ScriptStringParameter -Name 'ComplianceConnectionError'
     }
 
     try {
         if (Get-Command Get-ConnectionInformation -ErrorAction SilentlyContinue) {
             $connections = @((Get-ConnectionInformation -ErrorAction SilentlyContinue))
-            $sessionAvailability.ExchangeConnected = @($connections | Where-Object {
-                ($_.PSObject.Properties.Name -contains 'Name' -and [string]$_.Name -match 'ExchangeOnline') -or
-                ($_.PSObject.Properties.Name -contains 'ConnectionUri' -and [string]$_.ConnectionUri -match 'outlook\.office365\.com')
-            }).Count -gt 0
-            $sessionAvailability.ComplianceConnected = @($connections | Where-Object {
-                ($_.PSObject.Properties.Name -contains 'Name' -and [string]$_.Name -match 'IPPSSession|SecurityCompliance') -or
-                ($_.PSObject.Properties.Name -contains 'ConnectionUri' -and [string]$_.ConnectionUri -match 'ps\.compliance\.protection\.outlook\.com')
-            }).Count -gt 0
+            # A recorded connection failure stays failed. A later probe must not
+            # hide the assembly or sign-in error that left the session down.
+            if ($exchangeConnectionStatus -ne 'failed') {
+                $exchangeConnected = @($connections | Where-Object {
+                    ($_.PSObject.Properties.Name -contains 'Name' -and [string]$_.Name -match 'ExchangeOnline') -or
+                    ($_.PSObject.Properties.Name -contains 'ConnectionUri' -and [string]$_.ConnectionUri -match 'outlook\.office365\.com')
+                }).Count -gt 0
+                if ($exchangeConnected) {
+                    $sessionAvailability.ExchangeConnected = $true
+                    if ($exchangeConnectionStatus -eq 'not attempted') {
+                        $sessionAvailability.ExchangeConnectionStatus = 'connected'
+                    }
+                }
+            }
+            if ($complianceConnectionStatus -ne 'failed') {
+                $complianceConnected = @($connections | Where-Object {
+                    ($_.PSObject.Properties.Name -contains 'Name' -and [string]$_.Name -match 'IPPSSession|SecurityCompliance') -or
+                    ($_.PSObject.Properties.Name -contains 'ConnectionUri' -and [string]$_.ConnectionUri -match 'ps\.compliance\.protection\.outlook\.com')
+                }).Count -gt 0
+                if ($complianceConnected) {
+                    $sessionAvailability.ComplianceConnected = $true
+                    if ($complianceConnectionStatus -eq 'not attempted') {
+                        $sessionAvailability.ComplianceConnectionStatus = 'connected'
+                    }
+                }
+            }
         }
     }
     catch {
@@ -6147,8 +6394,8 @@ function Get-Recommendations {
 
     $overallScore = Get-ObjectPropertyValue -InputObject $evidence -Name 'OverallScore' -Default 'not collected'
 
-    $mfaRegisteredPercentValue = Get-ObjectPropertyValue -InputObject $flags -Name 'MfaRegisteredPercent' -Default 'not collected'
-    $mfaRegisteredPercent = if (Test-ValueCollected -Value $mfaRegisteredPercentValue) { Get-DoubleValue -Value $mfaRegisteredPercentValue -Default 0 } else { $null }
+    $mfaEnabledMemberPercentValue = Get-ObjectPropertyValue -InputObject $flags -Name 'MfaRegisteredEnabledMemberPercent' -Default 'not collected'
+    $mfaEnabledMemberPercent = if (Test-ValueCollected -Value $mfaEnabledMemberPercentValue) { Get-DoubleValue -Value $mfaEnabledMemberPercentValue -Default 0 } else { $null }
     $labelsPublishedValue = Get-ObjectPropertyValue -InputObject $flags -Name 'SensitivityLabelsPublished' -Default 'not collected'
     $labelsPublished = if (Test-ValueCollected -Value $labelsPublishedValue) { [bool]$labelsPublishedValue } else { $null }
     $activeUserPercentValue = Get-ObjectPropertyValue -InputObject $flags -Name 'ActiveUsersInReportPeriodPercent' -Default (Get-ObjectPropertyValue -InputObject $flags -Name 'ActiveUserPercentByWorkload' -Default 'not collected')
@@ -6160,8 +6407,8 @@ function Get-Recommendations {
     $highRiskGrantCountValue = Get-ObjectPropertyValue -InputObject $apps -Name 'HighRiskGrantCount' -Default 'not collected'
     $highRiskGrantCount = if (Test-ValueCollected -Value $highRiskGrantCountValue) { Get-IntValue -Value $highRiskGrantCountValue -Default 0 } else { $null }
 
-    if ($null -ne $mfaRegisteredPercent -and $mfaRegisteredPercent -lt 80) {
-        $topRisks.Add('MFA registration is below 80% for users; identity posture is insufficient for broad AI rollout.') | Out-Null
+    if ($null -ne $mfaEnabledMemberPercent -and $mfaEnabledMemberPercent -lt 80) {
+        $topRisks.Add('MFA registration is below 80% for enabled members; identity posture is insufficient for broad AI rollout.') | Out-Null
         $quickWins.Add('Increase MFA registration coverage with targeted campaigns and registration policy enforcement.') | Out-Null
     }
 
