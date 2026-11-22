@@ -1,0 +1,26 @@
+{
+  "value": [
+    {
+      "id": "older-score",
+      "createdDateTime": "2026-11-21T00:00:00Z",
+      "currentScore": 1,
+      "maxScore": 28,
+      "controlScores": [
+        { "controlName": "ControlNA1", "score": 0 },
+        { "controlName": "ControlNA2", "score": 0 },
+        { "controlName": "ControlFull", "score": 1 }
+      ]
+    },
+    {
+      "id": "latest-score",
+      "createdDateTime": "2026-11-22T00:00:00Z",
+      "currentScore": 15,
+      "maxScore": 28,
+      "controlScores": [
+        { "controlName": "ControlFull", "score": 10 },
+        { "controlName": "ControlPartial", "score": 3 },
+        { "controlName": "ControlIgnored", "score": 2 }
+      ]
+    }
+  ]
+}
