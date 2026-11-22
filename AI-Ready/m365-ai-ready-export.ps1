@@ -186,6 +186,9 @@
        FailedCollectors is greater than zero.
 
     Change log:
+    - 2026-11-22: DLP and retention cmdlet failures are recorded on Errors.
+      A failed Get-LabelPolicy, including a failed retry, marks Data governance
+      partial when labels were returned.
     - 2026-11-22: Purview label cmdlets use -ErrorAction Stop. A failure is
       not collected and is recorded on Errors. Get-LabelPolicy is retried once
       when labels exist and the first policy read is empty; a second empty
@@ -4227,9 +4230,14 @@ function Get-DataGovernanceReadiness {
         $complianceLabels = Get-PurviewLabelCommandResult -CommandName 'Get-Label'
         $compliancePolicies = Get-PurviewLabelCommandResult -CommandName 'Get-LabelPolicy'
         $labelCount = if ($null -eq $complianceLabels) { 0 } else { @($complianceLabels).Count }
+        $labelPolicyFailureNote = 'Get-LabelPolicy failed; label policy counts are not collected.'
         # A live run returned labels and then an empty policy list. The next run
         # returned the policies. Do not score that first empty list as zero.
-        if ($labelCount -gt 0 -and $null -ne $compliancePolicies -and @($compliancePolicies).Count -eq 0) {
+        # A thrown read is $null. With labels present, that is partial, not a clean report.
+        if ($labelCount -gt 0 -and $null -eq $compliancePolicies) {
+            $labelPolicyNote = $labelPolicyFailureNote
+        }
+        elseif ($labelCount -gt 0 -and @($compliancePolicies).Count -eq 0) {
             $retryDelaySeconds = 2
             $retryDelayVariable = Get-Variable -Name LabelPolicyRetryDelaySeconds -Scope Script -ErrorAction SilentlyContinue
             if ($null -ne $retryDelayVariable -and $null -ne $retryDelayVariable.Value) {
@@ -4239,6 +4247,7 @@ function Get-DataGovernanceReadiness {
             $retriedPolicies = Get-PurviewLabelCommandResult -CommandName 'Get-LabelPolicy'
             if ($null -eq $retriedPolicies) {
                 $compliancePolicies = $null
+                $labelPolicyNote = $labelPolicyFailureNote
             }
             elseif (@($retriedPolicies).Count -eq 0) {
                 $compliancePolicies = $null
@@ -4267,6 +4276,7 @@ function Get-DataGovernanceReadiness {
         }
         catch {
             $dlp = 'not collected'
+            Register-GraphReportDiagnostic -Uri 'Get-DlpCompliancePolicy' -Message $_.Exception.Message -Section 'DataGovernance'
         }
     }
     $retention = 'not collected'
@@ -4276,6 +4286,7 @@ function Get-DataGovernanceReadiness {
         }
         catch {
             $retention = 'not collected'
+            Register-GraphReportDiagnostic -Uri 'Get-RetentionCompliancePolicy' -Message $_.Exception.Message -Section 'DataGovernance'
         }
     }
     $hasComplianceData = (Test-ValueCollected -Value $dlp) -or (Test-ValueCollected -Value $retention)

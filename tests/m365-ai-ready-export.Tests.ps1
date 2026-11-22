@@ -1157,8 +1157,61 @@ Assert-True ($labelAdvanced.LabelPoliciesPublished -ne 0) 'A missing label count
             Assert-Equal $script:Report.Errors[0].Section 'DataGovernance' 'The error is recorded on Data governance.'
             Assert-True ($script:Report.Errors[0].Message -match 'Label policy service timed out') 'The cmdlet error is kept.'
             Assert-Equal $failed.LabelPoliciesTotal $null 'A failed policy read is not collected.'
+            Assert-Equal $failed.Status 'partial' 'A failed Get-LabelPolicy with labels present is partial.'
+            Assert-True ($failed.Reason -match 'Get-LabelPolicy failed; label policy counts are not collected\.') 'The failed policy read explains why the section is partial.'
             Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $true) 3 'FailOnCollectorError exits 3 when the label policy error is counted.'
             Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $false) 0 'The default exit code stays 0 for the same error.'
+
+            $script:Report = [ordered]@{ Errors = [System.Collections.Generic.List[object]]::new() }
+            $script:GraphReportDiagnostics = [System.Collections.Generic.List[object]]::new()
+            $script:LabelPolicyCalls = 0
+            function Get-LabelPolicy {
+                [CmdletBinding()] param()
+                $script:LabelPolicyCalls++
+                if ($script:LabelPolicyCalls -eq 1) { return }
+                throw 'Label policy retry failed.'
+            }
+            $retryFailed = Get-DataGovernanceReadiness
+            Assert-Equal $script:LabelPolicyCalls 2 'An empty first policy read still retries once.'
+            Assert-Equal $retryFailed.Status 'partial' 'A failed policy retry with labels present is partial.'
+            Assert-True ($retryFailed.Reason -match 'Get-LabelPolicy failed; label policy counts are not collected\.') 'The failed retry explains why the section is partial.'
+            Assert-Equal @($script:Report.Errors).Count 1 'The failed retry is one collector error.'
+        }
+
+        It 'records DLP and retention cmdlet failures as collector errors' {
+            $script:Report = [ordered]@{ Errors = [System.Collections.Generic.List[object]]::new() }
+            $script:GraphReportDiagnostics = [System.Collections.Generic.List[object]]::new()
+            $script:GraphLastHttpStatus = 200
+            function Get-ConnectionInformation {
+                [CmdletBinding()] param()
+                [pscustomobject]@{ Name = 'IPPSSession' }
+            }
+            function Get-GraphRestAll {
+                param([string]$Uri, [hashtable]$Query = @{}, [switch]$BypassCache)
+                $script:GraphLastHttpStatus = 200
+                return @([pscustomobject]@{ name = 'Public'; isPublished = $true })
+            }
+            function Get-DlpCompliancePolicy {
+                [CmdletBinding()] param()
+                throw 'DLP query failed.'
+            }
+            function Get-RetentionCompliancePolicy {
+                [CmdletBinding()] param()
+                throw 'Retention query failed.'
+            }
+
+            $governance = Get-DataGovernanceReadiness
+            Assert-Equal $governance.DlpPolicies 'not collected' 'A failed DLP read stays not collected.'
+            Assert-Equal $governance.RetentionPolicies 'not collected' 'A failed retention read stays not collected.'
+            Assert-Equal @($script:Report.Errors).Count 2 'DLP and retention failures are collector errors.'
+            $dlpError = @($script:Report.Errors | Where-Object { $_.Detail -eq 'Get-DlpCompliancePolicy' }) | Select-Object -First 1
+            $retentionError = @($script:Report.Errors | Where-Object { $_.Detail -eq 'Get-RetentionCompliancePolicy' }) | Select-Object -First 1
+            Assert-Equal $dlpError.Section 'DataGovernance' 'The DLP error is recorded on Data governance.'
+            Assert-Equal $dlpError.Message 'DLP query failed.' 'The DLP exception message is kept.'
+            Assert-Equal $retentionError.Section 'DataGovernance' 'The retention error is recorded on Data governance.'
+            Assert-Equal $retentionError.Message 'Retention query failed.' 'The retention exception message is kept.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $true) 3 'FailOnCollectorError exits 3 when DLP and retention errors are counted.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $false) 0 'The default exit code stays 0 for the same DLP and retention errors.'
         }
     }
 }
