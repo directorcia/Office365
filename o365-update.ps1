@@ -2283,9 +2283,25 @@ function Remove-OldModuleVersions {
                     }
                     Write-ColorOutput "      ✅ Removed version $($versionToRemove.Version) (via $($forcedResult.Method))" -Type Process
                 } else {
-                    # Use Uninstall-Module with specific version
-                    Uninstall-Module -Name $ModuleName -RequiredVersion $versionToRemove.Version -Confirm:$false -ErrorAction Stop
-                    Write-ColorOutput "      ✅ Removed version $($versionToRemove.Version)" -Type Process
+                    try {
+                        Uninstall-Module -Name $ModuleName -RequiredVersion $versionToRemove.Version -Confirm:$false -ErrorAction Stop
+                        Write-ColorOutput "      ✅ Removed version $($versionToRemove.Version)" -Type Process
+                    }
+                    catch {
+                        if ($_.Exception.Message -notmatch 'Administrator rights are required') {
+                            throw
+                        }
+                        # PowerShellGet's own elevation check can report a false negative in an
+                        # elevated session (observed under ConstrainedLanguage mode). The folder ACL
+                        # is the real authority, so try deleting that exact version folder instead.
+                        $uninstallError = $_.Exception.Message
+                        Write-Verbose "Uninstall-Module reported missing admin rights for $ModuleName v$($versionToRemove.Version); trying direct folder removal"
+                        $fallbackResult = Remove-ModuleVersionForced -ModuleName $ModuleName -Version $versionToRemove.Version -ModuleBase $versionToRemove.ModuleBase -Confirm:$false
+                        if (-not $fallbackResult.Success) {
+                            throw "$uninstallError Direct folder removal also failed: $($fallbackResult.ErrorMessage)"
+                        }
+                        Write-ColorOutput "      ✅ Removed version $($versionToRemove.Version) (via $($fallbackResult.Method))" -Type Process
+                    }
                 }
 
                 $result.RemovedVersions += $versionToRemove.Version.ToString()

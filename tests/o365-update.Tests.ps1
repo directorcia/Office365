@@ -260,6 +260,45 @@ exit 1
             Assert-Equal $Script:uninstalled.Count 0 'Uninstall-Module calls'
             Assert-Equal $result.RemovedCount 0 'RemovedCount'
         }
+        It 'deletes the version folder when PowerShellGet wrongly reports missing admin rights' {
+            $root = Join-Path ([System.IO.Path]::GetTempPath()) ("o365-cleanup-" + [guid]::NewGuid())
+            $oldVersionPath = Join-Path $root '1.0.0'
+            $null = New-Item -ItemType Directory -Path $oldVersionPath -Force
+            function Get-ModuleVersionCleanupEntries {
+                [CmdletBinding()] param($ModuleName, [switch]$IncludeAvailable)
+                [pscustomobject]@{ Version = [version]'2.0.0'; ModuleBase = (Join-Path $root '2.0.0'); ModuleRoot = $root }
+                [pscustomobject]@{ Version = [version]'1.0.0'; ModuleBase = $oldVersionPath; ModuleRoot = $root }
+            }
+            function Uninstall-Module { [CmdletBinding(SupportsShouldProcess)] param($Name, $RequiredVersion, [switch]$Force) throw 'Administrator rights are required to uninstall from that folder.' }
+            try {
+                $result = Remove-OldModuleVersions -ModuleName 'Az' -KeepLatestOnly
+                Assert-Equal (Test-Path -LiteralPath $oldVersionPath) $false 'old version folder exists'
+                Assert-Equal $result.RemovedCount 1 'RemovedCount'
+                Assert-Equal $result.Success $true 'Success'
+            }
+            finally {
+                Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+        It 'does not delete folders for other uninstall failures' {
+            $root = Join-Path ([System.IO.Path]::GetTempPath()) ("o365-cleanup-" + [guid]::NewGuid())
+            $oldVersionPath = Join-Path $root '1.0.0'
+            $null = New-Item -ItemType Directory -Path $oldVersionPath -Force
+            function Get-ModuleVersionCleanupEntries {
+                [CmdletBinding()] param($ModuleName, [switch]$IncludeAvailable)
+                [pscustomobject]@{ Version = [version]'2.0.0'; ModuleBase = (Join-Path $root '2.0.0'); ModuleRoot = $root }
+                [pscustomobject]@{ Version = [version]'1.0.0'; ModuleBase = $oldVersionPath; ModuleRoot = $root }
+            }
+            function Uninstall-Module { [CmdletBinding(SupportsShouldProcess)] param($Name, $RequiredVersion, [switch]$Force) throw 'Module is in use.' }
+            try {
+                $result = Remove-OldModuleVersions -ModuleName 'Az' -KeepLatestOnly
+                Assert-Equal (Test-Path -LiteralPath $oldVersionPath) $true 'old version folder exists'
+                Assert-Equal $result.Success $false 'Success'
+            }
+            finally {
+                Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 
     Context 'Final cleanup failure accounting' {
