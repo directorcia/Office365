@@ -186,6 +186,9 @@
        FailedCollectors is greater than zero.
 
     Change log:
+    - 2026-11-23: PhishingResistantMfaCoverage is the percent of enabled
+      members with a phishing-resistant method. PimSignal reports eligible
+      privileged assignments. ScriptVersion is 1.3.
     - 2026-11-22: A failed DLP or retention read marks Data governance partial
       and names the failed cmdlet. Tenant settings that block anyone links
       earn the no-anyone-links score, with the same reduced completeness as
@@ -789,6 +792,8 @@ $script:GraphAppClientId = $null
 $script:GraphAppDisplayName = $null
 $script:GraphAuthenticationCertificate = $null
 $script:GraphLastHttpStatus = $null
+$script:GraphLastErrorMessage = $null
+$script:GraphLastErrorCode = $null
 $script:GraphReportLastError = $null
 $script:GraphReportDiagnostics = [System.Collections.Generic.List[object]]::new()
 
@@ -1261,6 +1266,19 @@ function Get-CertificateAssertionAccessToken {
         try { $detail = ($_.ErrorDetails.Message | ConvertFrom-Json).error_description } catch { $detail = $null }
         throw "Certificate client-credentials token request failed: $(if ($detail) { $detail } else { $_.Exception.Message })"
     }
+}
+
+function Get-GraphErrorCode {
+    param([AllowNull()][object]$ErrorRecord)
+
+    $payload = Get-GraphErrorPayload -ErrorRecord $ErrorRecord
+    if ($null -eq $payload) { return '' }
+    $graphError = Get-ObjectPropertyValue -InputObject $payload -Name 'error' -Default $null
+    $code = [string](Get-ObjectPropertyValue -InputObject $graphError -Name 'code' -Default '')
+    if ([string]::IsNullOrWhiteSpace($code)) {
+        $code = [string](Get-ObjectPropertyValue -InputObject $payload -Name 'code' -Default '')
+    }
+    return $code
 }
 
 function Get-GraphHttpStatusCode {
@@ -2783,12 +2801,16 @@ function Get-GraphRest {
                 $result = Invoke-MgGraphRequest -Method GET -Uri $requestUri -ErrorAction Stop
             }
             $script:GraphLastHttpStatus = 200
+            $script:GraphLastErrorMessage = $null
+            $script:GraphLastErrorCode = $null
             return $result
         }
         catch {
             $message = $_.Exception.Message
             $statusCode = Get-GraphHttpStatusCode -ErrorRecord $_
             $script:GraphLastHttpStatus = $statusCode
+            $script:GraphLastErrorMessage = [string]$message
+            $script:GraphLastErrorCode = Get-GraphErrorCode -ErrorRecord $_
 
             if (($statusCode -eq 429 -or ($statusCode -ge 500 -and $statusCode -lt 600)) -and $attempt -lt ($maxAttempts - 1)) {
                 $delaySeconds = Get-GraphRetryDelaySeconds -ErrorRecord $_ -Attempt $attempt
@@ -3637,7 +3659,7 @@ function Get-TenantMetadata {
         TenantId           = if (Test-ValueCollected -Value $tenantIdValue) { $tenantIdValue } else { 'not collected' }
         DefaultDomain      = if (Test-ValueCollected -Value $defaultDomain) { $defaultDomain } else { 'not collected' }
         GeoLocation        = $geoLocation
-        ScriptVersion      = '1.2'
+        ScriptVersion      = '1.3'
         RunTimestampUtc    = (Get-Date).ToUniversalTime().ToString('o')
         ExecutingAdmin     = Get-ExecutingAdminLabel
         GrantedScopes      = if ($script:MgContext -and $script:MgContext.Scopes) { @($script:MgContext.Scopes) } elseif (@($script:GraphProvidedScopes).Count -gt 0) { @($script:GraphProvidedScopes) } else { 'not collected' }
@@ -3891,6 +3913,18 @@ function Get-IdentityReadiness {
         }
     }
 
+    $phishingFailureReason = ''
+    if ($registrationDenied -or (@($auth).Count -eq 0 -and $script:GraphLastHttpStatus -eq 403)) {
+        $phishingFailureReason = Get-ScriptStringParameter -Name 'GraphLastErrorMessage'
+        if ([string]::IsNullOrWhiteSpace($phishingFailureReason)) {
+            $phishingFailureReason = 'HTTP 403. UserAuthenticationMethod.Read.All or AuditLog.Read.All is required.'
+        }
+    }
+    elseif (-not ($hasAuditLogRead -or @($auth).Count -gt 0 -or $script:GraphLastHttpStatus -eq 200)) {
+        $phishingFailureReason = 'Authentication method registration details were not returned.'
+    }
+    $phishingCoverage = Get-PhishingResistantMfaCoverageResult -RegistrationDetails $(if ($phishingFailureReason) { $null } else { $auth }) -FailureReason $phishingFailureReason
+
     $globalAdminCount = 'not collected'
     $privilegedRoleCount = 'not collected'
     $guestUsers = 'not collected'
@@ -4001,6 +4035,10 @@ function Get-IdentityReadiness {
         MfaEnabledMemberPopulationUserCount = $mfaEnabledMemberPopulationUserCount
         MfaRegisteredEnabledMemberPercent = $mfaRegisteredEnabledMemberPercent
         MfaRegistrationPercentNote = 'MfaRegisteredCount and the overall percent include guests and are informational. Scoring uses MfaRegisteredEnabledMemberPercent: enabled members only. Guests and disabled accounts are excluded.'
+        PhishingResistantMfaCoverage = $phishingCoverage.Coverage
+        PhishingResistantMfaUserCount = $phishingCoverage.UserCount
+        PhishingResistantMfaDenominator = $phishingCoverage.Denominator
+        PhishingResistantMfaReason = $phishingCoverage.Reason
         PasswordlessCount    = $passwordless
         MfaPopulationUserCount = $mfaPopulationUserCount
         MfaPopulationSource  = $mfaPopulationSource
@@ -5388,6 +5426,200 @@ function Get-AdoptionSignals {
     }
 }
 
+function Test-PhishingResistantAuthenticationMethod {
+    param([AllowNull()][object]$Methods)
+
+    foreach ($method in @($Methods)) {
+        $name = [string]$method
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        if ($name -match '^(fido2|windowsHelloForBusiness|passKeyDeviceBound|passKeyDeviceBoundAuthenticator|certificateBasedAuthentication)$') {
+            return $true
+        }
+        if ($name -like 'x509Certificate*') { return $true }
+    }
+    return $false
+}
+
+function Get-PhishingResistantMfaCoverageResult {
+    param(
+        [AllowNull()][object[]]$RegistrationDetails,
+        [string]$FailureReason = ''
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($FailureReason)) {
+        Register-GraphReportDiagnostic -Uri 'https://graph.microsoft.com/v1.0/reports/authenticationMethods/userRegistrationDetails' -Message $FailureReason -Section 'IdentityAccessAdvanced' -DiagnosticOnly
+        return [ordered]@{
+            Coverage    = 'not collected'
+            UserCount   = 'not collected'
+            Denominator = 'not collected'
+            Reason      = $FailureReason
+        }
+    }
+
+    $enabledMembers = @(Get-EnabledMemberUsers)
+    $population = @($enabledMembers).Count
+    $enabledIds = @{}
+    foreach ($user in @($enabledMembers)) {
+        $id = Get-DirectoryObjectId -User $user
+        if (-not [string]::IsNullOrWhiteSpace($id)) { $enabledIds[$id.ToLowerInvariant()] = $true }
+    }
+
+    $coveredIds = @{}
+    foreach ($row in @($RegistrationDetails)) {
+        if ($null -eq $row) { continue }
+        $rowId = Get-DirectoryObjectId -User $row
+        if ([string]::IsNullOrWhiteSpace($rowId)) { continue }
+        $key = $rowId.ToLowerInvariant()
+        if (-not $enabledIds.ContainsKey($key)) { continue }
+        $methods = Get-ObjectPropertyValue -InputObject $row -Name 'methodsRegistered' -Default $null
+        if ($null -eq $methods) { $methods = Get-ObjectPropertyValue -InputObject $row -Name 'MethodsRegistered' -Default $null }
+        if (Test-PhishingResistantAuthenticationMethod -Methods $methods) { $coveredIds[$key] = $true }
+    }
+
+    $covered = @($coveredIds.Keys).Count
+    if ($population -le 0) {
+        return [ordered]@{
+            Coverage    = 'not collected'
+            UserCount   = $covered
+            Denominator = 'not collected'
+            Reason      = 'Enabled member users were not available, so phishing-resistant MFA coverage was not collected.'
+        }
+    }
+
+    return [ordered]@{
+        Coverage    = [math]::Round(($covered / $population) * 100, 2)
+        UserCount   = $covered
+        Denominator = $population
+        Reason      = ''
+    }
+}
+
+function Get-PrivilegedDirectoryRoleTemplateIds {
+    return @(
+        '62e90394-69f5-4237-9190-012177145e10' # Global Administrator
+        'e8611ab8-c189-46e8-94e1-60213ab1f814' # Privileged Role Administrator
+        '194ae4cb-b126-40b2-bd5b-6091b380977d' # Security Administrator
+        '29232cdf-9323-42fd-ade2-1d097af3e4de' # Exchange Administrator
+        'f28a1f50-f6e7-4571-818b-6a12f2af6b6c' # SharePoint Administrator
+        'fe930be7-5e62-47db-91af-98c3a49a38b1' # User Administrator
+        '69091246-20e8-4a56-aa4d-066075b2a7a8' # Teams Administrator
+        '17315797-102d-40b4-93e0-432062caca18' # Compliance Administrator
+        'b1be1c3e-b65d-4f19-8427-f6fa0d97feb9' # Conditional Access Administrator
+        'c4e39bd9-1100-46d3-8c65-fb160da0071f' # Authentication Administrator
+        '7be44c8a-adaf-4e2a-84d6-ab2649e08a13' # Privileged Authentication Administrator
+    )
+}
+
+function Get-DirectoryRoleDefinitionId {
+    param([AllowNull()][object]$Assignment)
+
+    $roleId = [string](Get-ObjectPropertyValue -InputObject $Assignment -Name 'roleDefinitionId' -Default '')
+    if ([string]::IsNullOrWhiteSpace($roleId)) {
+        $roleId = [string](Get-ObjectPropertyValue -InputObject $Assignment -Name 'RoleDefinitionId' -Default '')
+    }
+    return $roleId.ToLowerInvariant()
+}
+
+function Get-PimDirectorySignal {
+    $notCollected = [ordered]@{
+        Signal = 'not collected'
+        EligibleAssignmentCount = 'not collected'
+        PrivilegedRoleEligibleCount = 'not collected'
+        PermanentPrivilegedAssignmentCount = 'not collected'
+        ActiveAssignmentScheduleCount = 'not collected'
+        Reason = 'PIM role eligibility was not collected.'
+    }
+
+    try {
+        $eligibility = @(Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/roleManagement/directory/roleEligibilitySchedules')
+    }
+    catch {
+        $eligibility = @()
+        $script:GraphLastErrorMessage = [string]$_.Exception.Message
+    }
+
+    $eligibilityStatusVariable = Get-Variable -Name GraphLastHttpStatus -Scope Script -ErrorAction SilentlyContinue
+    $eligibilityStatus = if ($null -ne $eligibilityStatusVariable) { $eligibilityStatusVariable.Value } else { $null }
+    $eligibilityError = Get-ScriptStringParameter -Name 'GraphLastErrorMessage'
+    $eligibilityCode = Get-ScriptStringParameter -Name 'GraphLastErrorCode'
+    $licenseOrDenied = ($eligibilityStatus -in @(400, 401, 403)) -or (
+        $eligibilityStatus -ne 200 -and "$eligibilityError $eligibilityCode" -match 'AadPremiumLicenseRequired|Premium license|AadPremium'
+    )
+    $eligibilityFailed = (@($eligibility).Count -eq 0) -and ($licenseOrDenied -or $null -eq $eligibilityStatus -or $eligibilityStatus -ne 200)
+    if ($eligibilityFailed) {
+        $reason = $eligibilityError
+        if ([string]::IsNullOrWhiteSpace($reason)) {
+            if (-not [string]::IsNullOrWhiteSpace($eligibilityCode)) { $reason = $eligibilityCode }
+            elseif ($eligibilityStatus) { $reason = "HTTP $eligibilityStatus. RoleEligibilitySchedule.Read.Directory is required, or the tenant does not have Entra ID P2." }
+            else { $reason = 'Role eligibility schedules were not returned.' }
+        }
+        Register-GraphReportDiagnostic -Uri 'https://graph.microsoft.com/v1.0/roleManagement/directory/roleEligibilitySchedules' -Message $reason -StatusCode $eligibilityStatus -Section 'IdentityAccessAdvanced' -DiagnosticOnly
+        $notCollected.Reason = $reason
+        return $notCollected
+    }
+
+    $privileged = @{}
+    foreach ($roleId in @(Get-PrivilegedDirectoryRoleTemplateIds)) { $privileged[$roleId.ToLowerInvariant()] = $true }
+
+    $privilegedRoles = @{}
+    $privilegedEligible = 0
+    foreach ($schedule in @($eligibility)) {
+        if ($null -eq $schedule) { continue }
+        $roleId = Get-DirectoryRoleDefinitionId -Assignment $schedule
+        if ($privileged.ContainsKey($roleId)) {
+            $privilegedEligible++
+            $privilegedRoles[$roleId] = $true
+        }
+    }
+
+    $activeScheduleCount = 'not collected'
+    try {
+        $activeSchedules = @(Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignmentSchedules')
+        $activeStatusVariable = Get-Variable -Name GraphLastHttpStatus -Scope Script -ErrorAction SilentlyContinue
+        $activeStatus = if ($null -ne $activeStatusVariable) { $activeStatusVariable.Value } else { $null }
+        if (@($activeSchedules).Count -gt 0 -or $activeStatus -eq 200) {
+            $activeScheduleCount = @($activeSchedules).Count
+        }
+        else {
+            $activeError = Get-ScriptStringParameter -Name 'GraphLastErrorMessage'
+            if ([string]::IsNullOrWhiteSpace($activeError)) { $activeError = "HTTP $activeStatus" }
+            Register-GraphReportDiagnostic -Uri 'https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignmentSchedules' -Message $activeError -StatusCode $activeStatus -Section 'IdentityAccessAdvanced' -DiagnosticOnly
+        }
+    }
+    catch {
+        Register-GraphReportDiagnostic -Uri 'https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignmentSchedules' -Message $_.Exception.Message -Section 'IdentityAccessAdvanced' -DiagnosticOnly
+    }
+
+    $permanentCount = 'not collected'
+    $permanentReason = ''
+    try {
+        $assignments = @(Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments')
+        $assignmentStatusVariable = Get-Variable -Name GraphLastHttpStatus -Scope Script -ErrorAction SilentlyContinue
+        $assignmentStatus = if ($null -ne $assignmentStatusVariable) { $assignmentStatusVariable.Value } else { $null }
+        if (@($assignments).Count -gt 0 -or $assignmentStatus -eq 200) {
+            $permanentCount = @($assignments | Where-Object { $privileged.ContainsKey((Get-DirectoryRoleDefinitionId -Assignment $_)) }).Count
+        }
+        else {
+            $permanentReason = Get-ScriptStringParameter -Name 'GraphLastErrorMessage'
+            if ([string]::IsNullOrWhiteSpace($permanentReason)) { $permanentReason = "HTTP $assignmentStatus. Permanent role assignments were not collected." }
+            Register-GraphReportDiagnostic -Uri 'https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments' -Message $permanentReason -StatusCode $assignmentStatus -Section 'IdentityAccessAdvanced' -DiagnosticOnly
+        }
+    }
+    catch {
+        $permanentReason = [string]$_.Exception.Message
+        Register-GraphReportDiagnostic -Uri 'https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments' -Message $permanentReason -Section 'IdentityAccessAdvanced' -DiagnosticOnly
+    }
+
+    return [ordered]@{
+        Signal = if ($privilegedEligible -gt 0) { 'in use' } else { 'not in use' }
+        EligibleAssignmentCount = @($eligibility).Count
+        PrivilegedRoleEligibleCount = @($privilegedRoles.Keys).Count
+        PermanentPrivilegedAssignmentCount = $permanentCount
+        ActiveAssignmentScheduleCount = $activeScheduleCount
+        Reason = $permanentReason
+    }
+}
+
 function Get-IdentityAccessAdvanced {
     $identity = $script:Report.Identity
     $metadata = $script:Report.Metadata
@@ -5404,7 +5636,14 @@ function Get-IdentityAccessAdvanced {
             MfaPopulationSource  = 'not collected'
             MfaRegistrationPercent = 'not collected'
             PhishingResistantMfaCoverage = 'not collected'
+            PhishingResistantMfaUserCount = 'not collected'
+            PhishingResistantMfaDenominator = 'not collected'
+            PhishingResistantMfaReason = 'Identity baseline data was not collected.'
             PimSignal            = 'not collected'
+            PimEligibleAssignmentCount = 'not collected'
+            PimPrivilegedRoleEligibleCount = 'not collected'
+            PimPermanentPrivilegedAssignmentCount = 'not collected'
+            PimCollectionReason = 'Identity baseline data was not collected.'
         }
     }
 
@@ -5418,9 +5657,39 @@ function Get-IdentityAccessAdvanced {
     $fallbackTotalUsers = Get-IntValue -Value (Get-ObjectPropertyValue -InputObject $metadata -Name 'TotalUsers') -Default 0
     $mfaDenominator = if ($mfaPopulationUserCount -gt 0) { $mfaPopulationUserCount } else { $fallbackTotalUsers }
 
+    $phishingCoverage = Get-ObjectPropertyValue -InputObject $identity -Name 'PhishingResistantMfaCoverage' -Default $null
+    $phishingCount = Get-ObjectPropertyValue -InputObject $identity -Name 'PhishingResistantMfaUserCount' -Default $null
+    $phishingDenominator = Get-ObjectPropertyValue -InputObject $identity -Name 'PhishingResistantMfaDenominator' -Default $null
+    $phishingReason = [string](Get-ObjectPropertyValue -InputObject $identity -Name 'PhishingResistantMfaReason' -Default '')
+    if ($null -eq $phishingCoverage) {
+        $registrationRows = @(Get-GraphRestAll -Uri 'https://graph.microsoft.com/v1.0/reports/authenticationMethods/userRegistrationDetails')
+        $fallbackFailure = ''
+        if (@($registrationRows).Count -eq 0 -and $script:GraphLastHttpStatus -eq 403) {
+            $fallbackFailure = Get-ScriptStringParameter -Name 'GraphLastErrorMessage'
+            if ([string]::IsNullOrWhiteSpace($fallbackFailure)) {
+                $fallbackFailure = 'HTTP 403. UserAuthenticationMethod.Read.All or AuditLog.Read.All is required.'
+            }
+        }
+        $phishing = Get-PhishingResistantMfaCoverageResult -RegistrationDetails $(if ($fallbackFailure) { $null } else { $registrationRows }) -FailureReason $fallbackFailure
+        $phishingCoverage = $phishing.Coverage
+        $phishingCount = $phishing.UserCount
+        $phishingDenominator = $phishing.Denominator
+        $phishingReason = [string]$phishing.Reason
+    }
+
+    $pim = Get-PimDirectorySignal
+    $advancedReasons = [System.Collections.Generic.List[string]]::new()
+    if (-not (Test-ValueCollected -Value $phishingCoverage)) {
+        $advancedReasons.Add($(if ($phishingReason) { $phishingReason } else { 'Phishing-resistant MFA coverage was not collected.' })) | Out-Null
+    }
+    if (-not (Test-ValueCollected -Value $pim.Signal)) {
+        $advancedReasons.Add([string]$pim.Reason) | Out-Null
+    }
+    $advancedStatus = if ($advancedReasons.Count -eq 0) { 'reported' } else { 'partial' }
+
     return [ordered]@{
-        Status               = 'partial'
-        Reason               = 'Advanced MFA and PIM signals were not collected.'
+        Status               = $advancedStatus
+        Reason               = ($advancedReasons -join ' ')
         AdminRoleObjectsCount = $adminRoleCount
         MfaCapableUsers       = $mfaCapable
         MfaRegisteredUsers    = $mfaRegistered
@@ -5438,8 +5707,16 @@ function Get-IdentityAccessAdvanced {
         MfaRegisteredGuestCount = Get-ObjectPropertyValue -InputObject $identity -Name 'MfaRegisteredGuestCount' -Default 'not collected'
         MfaRegisteredAdminCount = Get-ObjectPropertyValue -InputObject $identity -Name 'MfaRegisteredAdminCount' -Default 'not collected'
         MfaRegistrationPercentNote = 'MfaRegistrationPercent includes guests and is informational. Scoring uses MfaRegisteredEnabledMemberPercent. Guests and disabled accounts are excluded from that percentage.'
-        PhishingResistantMfaCoverage = 'not collected'
-        PimSignal = 'not collected'
+        PhishingResistantMfaCoverage = $phishingCoverage
+        PhishingResistantMfaUserCount = $phishingCount
+        PhishingResistantMfaDenominator = $phishingDenominator
+        PhishingResistantMfaReason = if ($phishingReason) { $phishingReason } else { 'reported' }
+        PimSignal = $pim.Signal
+        PimEligibleAssignmentCount = $pim.EligibleAssignmentCount
+        PimPrivilegedRoleEligibleCount = $pim.PrivilegedRoleEligibleCount
+        PimPermanentPrivilegedAssignmentCount = $pim.PermanentPrivilegedAssignmentCount
+        PimActiveAssignmentScheduleCount = $pim.ActiveAssignmentScheduleCount
+        PimCollectionReason = if ([string]::IsNullOrWhiteSpace([string]$pim.Reason)) { 'reported' } else { $pim.Reason }
         AdminRoleCoverageNote = 'Admin role counts are derived from activated directory roles and active memberships only; PIM-eligible assignments are not included.'
     }
 }
