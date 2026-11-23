@@ -1,0 +1,1639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Explore Microsoft 365 license coverage, feature gaps, and potential overlaps.">
+  <title>Microsoft 365 License Coverage Simulator</title>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("scoutTheme");
+      let stored = null;
+      try { stored = localStorage.getItem("m365Simulator.theme"); } catch { /* storage unavailable */ }
+      const theme =
+        param || stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--cp-text);
+      background: var(--cp-bg);
+      font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.5;
+    }
+    a { color: var(--cp-link); }
+    button, select, input { font: inherit; }
+    button, select {
+      min-height: 40px;
+      border: 1px solid var(--cp-border-strong);
+      border-radius: 0.625rem;
+      padding: 8px 12px;
+      color: var(--cp-text);
+      background: var(--cp-surface);
+    }
+    button { cursor: pointer; }
+    button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible {
+      outline: 3px solid var(--cp-accent);
+      outline-offset: 2px;
+    }
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 24px auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+    .topbar, .panel, .footer {
+      border: 1px solid var(--cp-border);
+      border-radius: 16px;
+      background: var(--cp-surface);
+      box-shadow: 0 0 2px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.14);
+    }
+    .brand-row {
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 10px 12px;
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      background: linear-gradient(120deg, var(--cp-bg-elevated), var(--cp-surface));
+    }
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--cp-text);
+      font-weight: 700;
+      font-size: 0.82rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .brand-mark::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      border: 1px solid var(--cp-accent);
+      background: var(--cp-accent);
+      box-shadow: 0 0 0 4px var(--cp-accent-soft);
+    }
+    .brand-links { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .brand-link, .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      border: 1px solid var(--cp-border-strong);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 0.74rem;
+      color: var(--cp-link);
+      background: var(--cp-surface);
+      text-decoration: none;
+    }
+    .theme-toggle { color: var(--cp-text); font-weight: 600; }
+    .brand-link:hover, .theme-toggle:hover { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
+    .support-note { margin-top: 8px; color: var(--cp-text-muted); font-size: 0.88rem; max-width: 82ch; }
+    .support-note a { text-decoration: none; }
+    .support-note a:hover { text-decoration: underline; }
+    .ciaops-footer {
+      display: grid;
+      gap: 8px;
+      border: 1px solid var(--cp-border);
+      border-radius: 16px;
+      background: linear-gradient(180deg, var(--cp-surface-soft), var(--cp-bg-elevated));
+      padding: 14px 16px;
+    }
+    .ciaops-footer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .ciaops-footer-title { margin: 0; font-size: 0.84rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--cp-text); }
+    .ciaops-footer-copy { margin: 0; border-top: 1px dashed var(--cp-border); padding-top: 8px; font-size: 0.76rem; color: var(--cp-text-soft); }
+    .ciaops-footer-version { margin: 0; font-size: 0.72rem; color: var(--cp-text-muted); }
+    .preset-strip {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px dashed var(--cp-border);
+    }
+    .preset-strip-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .preset-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+    .preset-btn {
+      min-height: 34px;
+      padding: 6px 11px;
+      font-size: 0.8rem;
+      background: var(--cp-surface-soft);
+      border-color: var(--cp-border-strong);
+    }
+    .preset-btn:hover { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
+    .preset-btn.active {
+      border-color: var(--cp-accent);
+      background: var(--cp-accent-soft);
+      font-weight: 700;
+    }
+    .domain-bars {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+      border-top: 1px solid var(--cp-border);
+      padding-top: 10px;
+    }
+    .domain-bar-row { display: grid; gap: 4px; }
+    .domain-bar-top { display: flex; justify-content: space-between; gap: 8px; font-size: 0.76rem; color: var(--cp-text-muted); }
+    .domain-bar-top strong { color: var(--cp-text); }
+    .domain-track { height: 6px; border-radius: 999px; background: var(--cp-border); overflow: hidden; }
+    .domain-fill { height: 100%; border-radius: 999px; background: var(--cp-accent); transition: width 180ms ease; }
+    .domain-fill.complete { background: var(--cp-success); }
+    .selected-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .product-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--cp-accent);
+      border-radius: 999px;
+      padding: 3px 9px;
+      background: var(--cp-accent-soft);
+      font-size: 0.76rem;
+      font-weight: 600;
+    }
+    .product-chip button {
+      min-height: 20px;
+      width: 20px;
+      padding: 0;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--cp-text);
+      font-size: 0.84rem;
+      line-height: 1;
+    }
+    .product-chip button:hover { background: var(--cp-highlight); }
+    .license-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .mini-badge {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--cp-border);
+      border-radius: 999px;
+      padding: 1px 7px;
+      font-size: 0.69rem;
+      color: var(--cp-text-soft);
+      background: var(--cp-surface);
+    }
+    .advisory-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+    .advisory-list { display: grid; gap: 8px; }
+    .advisory-card {
+      border: 1px solid var(--cp-border);
+      border-left: 4px solid var(--cp-accent);
+      border-radius: 0.625rem;
+      padding: 10px 12px;
+      background: var(--cp-surface-soft);
+      display: grid;
+      gap: 6px;
+    }
+    .advisory-card.warn { border-left-color: var(--cp-warning); }
+    .advisory-card.good { border-left-color: var(--cp-success); }
+    .advisory-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .advisory-title { font-size: 0.86rem; font-weight: 700; }
+    .advisory-copy { font-size: 0.78rem; color: var(--cp-text-muted); }
+    .quick-action-btn {
+      min-height: 30px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: var(--cp-surface);
+    }
+    .quick-action-btn:hover { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
+    .domain-tag {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--cp-border);
+      border-radius: 999px;
+      padding: 1px 7px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--cp-text-soft);
+      background: var(--cp-surface);
+    }
+    .requirement-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+    .req-state { font-size: 0.7rem; font-weight: 700; }
+    .req-state.covered { color: var(--cp-success); }
+    .req-state.gap { color: var(--cp-danger); }
+    .report-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--cp-border);
+    }
+    .report-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .status-feedback { font-size: 0.78rem; color: var(--cp-text-muted); min-height: 1.2em; }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 12px 16px;
+      min-width: 0;
+    }
+    .brand { margin: 0; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+    .topbar nav { display: flex; flex-wrap: wrap; gap: 12px; min-width: 0; }
+    .topbar a { font-size: 0.85rem; text-decoration: none; }
+    .panel { min-width: 0; padding: 20px; }
+    .hero {
+      background: var(--cp-bg-elevated);
+      border-color: var(--cp-border-strong);
+    }
+    .eyebrow {
+      margin-bottom: 6px;
+      color: var(--cp-accent);
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); line-height: 1.2; }
+    h2 { margin: 0; font-size: 1.15rem; }
+    h3 { margin: 0; font-size: 0.98rem; }
+    p { margin: 0; }
+    .subtitle { margin-top: 8px; max-width: 78ch; color: var(--cp-text-muted); }
+    .notice {
+      margin-top: 14px;
+      border: 1px solid var(--cp-border);
+      border-left: 4px solid var(--cp-warning);
+      border-radius: 0.625rem;
+      padding: 10px 12px;
+      background: var(--cp-surface);
+      color: var(--cp-text-muted);
+      font-size: 0.86rem;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(250px, 0.72fr) minmax(0, 2fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .profile-field {
+      position: sticky;
+      top: 12px;
+      display: grid;
+      gap: 8px;
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      padding: 14px;
+      background: var(--cp-surface-soft);
+    }
+    .profile-field label { font-weight: 700; }
+    .profile-field select { width: 100%; }
+    .muted { color: var(--cp-text-muted); font-size: 0.84rem; }
+    .live-score {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+      border-top: 1px solid var(--cp-border);
+      padding-top: 12px;
+    }
+    .score-line {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .score-value { font-size: 1.45rem; font-weight: 700; color: var(--cp-success); }
+    .score-value.has-gaps { color: var(--cp-warning); }
+    .progress-track {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--cp-border);
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0;
+      background: var(--cp-success);
+      transition: width 180ms ease;
+    }
+    .score-message {
+      color: var(--cp-text-muted);
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+    .license-heading {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .license-list {
+      display: grid;
+      gap: 14px;
+    }
+    .license-tools {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .license-tools input {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--cp-border-strong);
+      border-radius: 0.625rem;
+      padding: 8px 12px;
+      color: var(--cp-text);
+      background: var(--cp-surface);
+    }
+    .selection-count {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--cp-border);
+      border-radius: 999px;
+      padding: 4px 10px;
+      color: var(--cp-text-muted);
+      background: var(--cp-surface-soft);
+      font-size: 0.76rem;
+      font-weight: 700;
+    }
+    .license-group {
+      display: grid;
+      gap: 8px;
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      padding: 10px;
+      background: var(--cp-surface-soft);
+    }
+    .license-group summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: pointer;
+      font-weight: 700;
+      list-style: none;
+    }
+    .license-group summary::-webkit-details-marker { display: none; }
+    .license-group summary::after { content: "+"; color: var(--cp-text-muted); }
+    .license-group[open] summary::after { content: "−"; }
+    .group-meta { margin-left: auto; color: var(--cp-text-muted); font-size: 0.74rem; font-weight: 400; }
+    .license-group-items {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+      gap: 8px;
+    }
+    .license-option {
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr);
+      gap: 9px;
+      align-items: start;
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      padding: 10px;
+      background: var(--cp-surface-soft);
+      cursor: pointer;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .license-option:has(input:checked) {
+      border-color: var(--cp-accent);
+      background: var(--cp-accent-soft);
+    }
+    .license-option input, .requirement input { accent-color: var(--cp-accent); }
+    .license-option input { margin: 3px 0 0; }
+    .license-name { display: block; font-weight: 700; font-size: 0.88rem; }
+    .license-detail { display: block; margin-top: 3px; color: var(--cp-text-muted); font-size: 0.78rem; line-height: 1.35; }
+    .button-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    .btn-primary { border-color: var(--cp-accent); color: var(--cp-accent-fg); background: var(--cp-accent); font-weight: 700; }
+    .btn-primary:hover { background: var(--cp-accent-hover); }
+    .btn-secondary { background: var(--cp-surface-soft); }
+    .results { display: grid; gap: 16px; }
+    .summary-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .metric {
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      padding: 12px;
+      background: var(--cp-surface-soft);
+    }
+    .metric-label { display: block; color: var(--cp-text-muted); font-size: 0.78rem; }
+    .metric-value { display: block; margin-top: 3px; font-size: 1.35rem; font-weight: 700; }
+    .metric-value.good { color: var(--cp-success); }
+    .metric-value.warn { color: var(--cp-warning); }
+    .metric-value.bad { color: var(--cp-danger); }
+    .coverage-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(260px, 0.75fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .subpanel {
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      padding: 14px;
+      background: var(--cp-surface);
+    }
+    .subpanel-header { margin-bottom: 10px; }
+    .requirement-list, .coverage-list, .overlap-list { display: grid; gap: 8px; }
+    .requirement-list, .coverage-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .requirement {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      padding: 9px;
+      background: var(--cp-surface-soft);
+      cursor: pointer;
+    }
+    .requirement input { margin: 4px 0 0; flex: 0 0 auto; }
+    .requirement-name { display: block; font-size: 0.86rem; font-weight: 700; }
+    .requirement-description { display: block; color: var(--cp-text-muted); font-size: 0.77rem; }
+    .coverage-item {
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      padding: 10px;
+      background: var(--cp-surface);
+    }
+    .coverage-item.is-gap { border-left: 4px solid var(--cp-danger); }
+    .coverage-item.is-covered { border-left: 4px solid var(--cp-success); }
+    .coverage-item.is-optional { border-left: 4px solid var(--cp-border-strong); }
+    .coverage-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .coverage-title { font-size: 0.86rem; font-weight: 700; }
+    .status {
+      flex: 0 0 auto;
+      border: 1px solid var(--cp-border);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+    .status.good { color: var(--cp-success); }
+    .status.bad { color: var(--cp-danger); }
+    .coverage-detail, .coverage-source { margin-top: 4px; color: var(--cp-text-muted); font-size: 0.78rem; }
+    .coverage-source strong { color: var(--cp-text); }
+    .matrix-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+    .matrix-tools label { color: var(--cp-text-muted); font-size: 0.78rem; }
+    .matrix-tools select { min-height: 34px; padding: 5px 28px 5px 8px; font-size: 0.8rem; }
+    .matrix-header { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+    .overlap-item {
+      border-bottom: 1px solid var(--cp-border);
+      padding: 8px 0;
+    }
+    .overlap-item:last-child { border-bottom: 0; }
+    .overlap-title { font-size: 0.84rem; font-weight: 700; }
+    .overlap-source { margin-top: 3px; color: var(--cp-text-muted); font-size: 0.77rem; }
+    .empty-state {
+      border: 1px dashed var(--cp-border-strong);
+      border-radius: 0.625rem;
+      padding: 12px;
+      color: var(--cp-text-muted);
+      font-size: 0.82rem;
+    }
+    .footnote { margin-top: 12px; color: var(--cp-text-muted); font-size: 0.78rem; }
+    .references { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
+    .references a { font-size: 0.82rem; }
+    .footer { padding: 12px 16px; color: var(--cp-text-muted); font-size: 0.78rem; }
+    @media (max-width: 760px) {
+      .controls, .coverage-layout, .advisory-grid { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .profile-field { position: static; }
+      .requirement-list, .coverage-list { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 420px) {
+      .shell { width: min(100% - 20px, 1180px); margin: 10px auto; }
+      .panel { padding: 14px; }
+      .metrics { grid-template-columns: 1fr 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="panel hero" aria-labelledby="pageTitle">
+      <div class="brand-row" aria-label="CIAOPS branding and navigation">
+        <div class="brand-mark">CIAOPS Security and Microsoft 365 Advisory</div>
+        <nav class="brand-links" aria-label="Simulator and CIAOPS links">
+          <a class="brand-link" href="index.html">Docs Hub</a>
+          <a class="brand-link" href="m365-login-sim.html">Sign-In Sim</a>
+          <a class="brand-link" href="m365-mail-security-sim.html">Mail Security Sim</a>
+          <a class="brand-link" href="https://blog.ciaops.com/" target="_blank" rel="noopener noreferrer">CIAOPS Blog</a>
+          <a class="brand-link" href="https://github.com/directorcia/Office365" target="_blank" rel="noopener noreferrer">GitHub Scripts</a>
+          <button type="button" class="theme-toggle" id="themeToggleBtn" aria-label="Toggle color theme">Theme</button>
+        </nav>
+      </div>
+      <p class="eyebrow">Plan, rightsize, and validate coverage</p>
+      <h1 id="pageTitle">Microsoft 365 License and Feature Coverage Simulator</h1>
+      <p class="subtitle">Compare a user's assigned Microsoft 365 base plans and add-ons against role-based security, compliance, device, and governance requirements—highlighting missing capabilities, prerequisite warnings, and stacked SKU overlaps.</p>
+      <p class="support-note">
+        Use and source made available for free. Support these projects via
+        <a href="https://ko-fi.com/ciaops" target="_blank" rel="noopener noreferrer">https://ko-fi.com/ciaops</a>.
+      </p>
+      <p class="notice"><strong>Illustrative planning aid only.</strong> Product bundles, service plans, add-ons, and feature rights change and can vary by agreement, geography, workload, tenant-level deployment, and user eligibility. This simulator runs locally, does not inspect a tenant, and does not confirm legal entitlement. Verify exact SKUs, prerequisites, and per-user licensing rules in current Microsoft Product Terms before purchasing, removing, or relying on a license.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="setupTitle">
+      <div class="preset-strip">
+        <div class="preset-strip-head">
+          <h2>Scenario presets</h2>
+          <span class="muted">Load a common real-world licensing scenario to inspect gaps, prerequisite checks, or stacked SKU overlaps.</span>
+        </div>
+        <div class="preset-buttons" id="presetButtons" role="group" aria-label="Licensing scenario presets"></div>
+      </div>
+
+      <div class="controls">
+        <div class="profile-field">
+          <label for="profileSelect">Requirement profile</label>
+          <select id="profileSelect">
+            <option value="business">Small business secure user</option>
+            <option value="enterprise">Enterprise standard user</option>
+            <option value="privileged">Privileged / high-risk admin</option>
+            <option value="regulated">Regulated &amp; sensitive data user</option>
+            <option value="frontline">Frontline / shift worker</option>
+            <option value="aiReady">AI / Copilot governance ready</option>
+            <option value="custom">Custom requirements</option>
+          </select>
+          <p class="muted" id="profileDescription"></p>
+          <div class="live-score" aria-live="polite">
+            <div class="score-line">
+              <span class="muted">Requirement coverage</span>
+              <strong class="score-value" id="coveragePercent">0%</strong>
+            </div>
+            <div class="progress-track" role="progressbar" aria-label="Requirement coverage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="coverageProgress">
+              <div class="progress-fill" id="coverageProgressFill"></div>
+            </div>
+            <p class="score-message" id="scoreMessage"></p>
+            <div class="domain-bars" id="domainBars" aria-label="Coverage by security domain"></div>
+          </div>
+        </div>
+        <div>
+          <div class="license-heading">
+            <h2 id="setupTitle">Assigned products</h2>
+            <span class="selection-count" id="selectionCount">1 product selected</span>
+          </div>
+          <div class="selected-chips" id="selectedChips" aria-label="Currently selected products"></div>
+          <div class="license-tools">
+            <input type="search" id="productSearch" aria-label="Search available products" placeholder="Search plans, suites, and add-ons (e.g., Business Premium, Defender, Purview, F3)">
+          </div>
+          <div id="licenseList" class="license-list" aria-label="Available Microsoft 365 products"></div>
+          <div class="button-row">
+            <button type="button" class="btn-primary" id="resetButton">Reset baseline</button>
+            <button type="button" class="btn-secondary" id="clearButton">Clear selected products</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="results" aria-label="License coverage results">
+      <section class="panel" aria-labelledby="summaryTitle" aria-live="polite">
+        <div class="summary-head">
+          <h2 id="summaryTitle">Coverage summary</h2>
+          <span class="muted" id="selectedProductsSummary"></span>
+        </div>
+        <div class="metrics">
+          <div class="metric"><span class="metric-label">Requirements selected</span><strong class="metric-value" id="requiredCount">0</strong></div>
+          <div class="metric"><span class="metric-label">Covered</span><strong class="metric-value good" id="coveredCount">0</strong></div>
+          <div class="metric"><span class="metric-label">Missing gaps</span><strong class="metric-value bad" id="gapCount">0</strong></div>
+          <div class="metric"><span class="metric-label">Overlaps &amp; alerts</span><strong class="metric-value warn" id="overlapCount">0</strong></div>
+        </div>
+        <div class="report-bar">
+          <span class="status-feedback" id="actionFeedback" aria-live="polite">Tip: Click any suggested remediation option below to test how adding or removing a SKU changes posture.</span>
+          <div class="report-actions">
+            <button type="button" class="btn-secondary" id="copySummaryBtn">Copy Markdown summary</button>
+            <button type="button" class="btn-secondary" id="exportJsonBtn">Export JSON report</button>
+            <button type="button" class="btn-secondary" id="shareLinkBtn">Copy shareable link</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="advisory-grid">
+        <section class="panel" aria-labelledby="remediationTitle">
+          <div class="subpanel-header">
+            <h2 id="remediationTitle">Gap remediation &amp; prerequisite checks</h2>
+            <p class="muted">Smallest modeled options to close missing requirements or satisfy add-on prerequisites.</p>
+          </div>
+          <div class="advisory-list" id="remediationList" aria-live="polite"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="overlapsTitle">
+          <div class="subpanel-header">
+            <h2 id="overlapsTitle">Stacking &amp; consolidation insights</h2>
+            <p class="muted">Redundant add-ons, multiple base plans, and overlapping capabilities across selected SKUs.</p>
+          </div>
+          <div class="overlap-list" id="overlapList" aria-live="polite"></div>
+          <p class="footnote">Consolidation signals highlight potential license rightsizing candidates. Confirm active service plans, legal/litigation holds, and renewal terms before removing any SKU.</p>
+        </section>
+      </div>
+
+      <section class="panel" aria-labelledby="requirementsTitle">
+        <div class="subpanel-header matrix-header">
+          <div>
+            <h2 id="requirementsTitle">Required capabilities</h2>
+            <p class="muted">Toggle capabilities to build a custom user requirement set across identity, email, endpoint, data, and AI governance.</p>
+          </div>
+          <div class="matrix-tools">
+            <label for="domainFilter">Domain</label>
+            <select id="domainFilter">
+              <option value="all">All domains</option>
+            </select>
+          </div>
+        </div>
+        <div class="requirement-list" id="requirementList"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="matrixTitle">
+        <div class="subpanel-header matrix-header">
+          <div>
+            <h2 id="matrixTitle">Capability coverage matrix</h2>
+            <p class="muted">Detailed capability mapping showing which assigned products satisfy each requirement.</p>
+          </div>
+          <div class="matrix-tools">
+            <label for="coverageFilter">Show</label>
+            <select id="coverageFilter">
+              <option value="required">Required capabilities</option>
+              <option value="gaps">Required gaps only</option>
+              <option value="overlaps">Overlapping capabilities</option>
+              <option value="all">All modeled capabilities</option>
+            </select>
+          </div>
+        </div>
+        <div class="coverage-list" id="coverageList" aria-live="polite"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="referencesTitle">
+        <h2 id="referencesTitle">Official Microsoft references</h2>
+        <div class="references">
+          <a href="https://learn.microsoft.com/en-us/office365/servicedescriptions/office-365-platform-service-description/office-365-plan-options" target="_blank" rel="noopener noreferrer">Microsoft 365 and Office 365 plan options</a>
+          <a href="https://www.microsoft.com/en-us/microsoft-365/business/microsoft-365-business-premium" target="_blank" rel="noopener noreferrer">Microsoft 365 Business Premium</a>
+          <a href="https://www.microsoft.com/en-us/microsoft-365/enterprise/microsoft-365-plans-and-pricing" target="_blank" rel="noopener noreferrer">Microsoft 365 enterprise plans</a>
+          <a href="https://learn.microsoft.com/en-us/entra/fundamentals/licensing" target="_blank" rel="noopener noreferrer">Microsoft Entra licensing</a>
+          <a href="https://learn.microsoft.com/en-us/defender-office-365/mdo-about" target="_blank" rel="noopener noreferrer">Defender for Office 365 plans</a>
+          <a href="https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-endpoint" target="_blank" rel="noopener noreferrer">Defender for Endpoint overview</a>
+          <a href="https://learn.microsoft.com/en-us/copilot/microsoft-365/microsoft-365-copilot-licensing" target="_blank" rel="noopener noreferrer">Microsoft 365 Copilot licensing</a>
+        </div>
+        <p class="footnote">Use current Microsoft Product Terms, service descriptions, and workload-specific licensing guidance for final procurement or compliance decisions. Runs locally in your browser—no tenant connection, credentials, or telemetry are transmitted.</p>
+      </section>
+    </section>
+
+    <section class="ciaops-footer" aria-label="CIAOPS footer branding">
+      <div class="ciaops-footer-head">
+        <p class="ciaops-footer-title">CIAOPS</p>
+        <nav class="brand-links" aria-label="CIAOPS contact and training links">
+          <a class="brand-link" href="mailto:director@ciaops.com">Contact</a>
+          <a class="brand-link" href="https://www.ciaopspatron.com/" target="_blank" rel="noopener noreferrer">Training and Resources</a>
+          <a class="brand-link" href="https://blog.ciaops.com/" target="_blank" rel="noopener noreferrer">Blog</a>
+          <a class="brand-link" href="https://github.com/directorcia/Office365" target="_blank" rel="noopener noreferrer">Scripts</a>
+        </nav>
+      </div>
+      <p class="ciaops-footer-copy">Copyright &copy; <span id="ciaopsYear"></span> CIAOPS. All rights reserved.</p>
+      <p class="ciaops-footer-version" id="footerVersion">Version: loading...</p>
+    </section>
+  </main>
+
+  <script>
+    const domains = [
+      "Productivity & Collaboration",
+      "Identity & Access",
+      "Email & Collaboration Security",
+      "Device & Endpoint Security",
+      "Data Security & Purview",
+      "AI & Governance"
+    ];
+
+    const features = [
+      { id: "cloudCollab", domain: "Productivity & Collaboration", name: "Cloud mailbox & collaboration (Exchange, SharePoint, OneDrive, Teams)", description: "Cloud email, file collaboration, and baseline Exchange Online Protection (EOP) filtering." },
+      { id: "desktopApps", domain: "Productivity & Collaboration", name: "Desktop Microsoft 365 Apps (Word, Excel, PowerPoint, Outlook)", description: "Locally installed Microsoft 365 desktop applications on supported devices." },
+      { id: "entraP1", domain: "Identity & Access", name: "Conditional Access & dynamic groups (Entra ID P1)", description: "Policy-based Conditional Access, group-based licensing, and self-service password reset." },
+      { id: "entraP2", domain: "Identity & Access", name: "Risk-based Identity Protection, PIM & Access Reviews (Entra ID P2)", description: "User/sign-in risk policies, Privileged Identity Management (PIM), and recurring access reviews." },
+      { id: "entraSuite", domain: "Identity & Access", name: "Identity-centric SSE & Internet/Private Access (Entra Suite)", description: "Entra Private Access, Entra Internet Access, Lifecycle Workflows, and Verified ID premium capabilities." },
+      { id: "mdoP1", domain: "Email & Collaboration Security", name: "Safe Links, Safe Attachments & impersonation protection (MDO Plan 1)", description: "Time-of-click URL protection, attachment detonation, and anti-phishing impersonation controls across email and Teams." },
+      { id: "mdoP2", domain: "Email & Collaboration Security", name: "AIR automated investigation, Threat Explorer & Attack Simulation (MDO Plan 2)", description: "Post-delivery Automated Investigation and Response (AIR), hunting, threat campaigns, and phishing simulation training." },
+      { id: "intuneP1", domain: "Device & Endpoint Security", name: "Cloud MDM/MAM & compliance policies (Intune Plan 1)", description: "Mobile device management, app protection policies (MAM), and device compliance signals for Conditional Access." },
+      { id: "endpointP1", domain: "Device & Endpoint Security", name: "Next-gen endpoint protection & ASR (Defender for Business / Endpoint P1)", description: "Cloud-delivered antimalware, attack surface reduction (ASR) rules, and web/network protection." },
+      { id: "endpointP2", domain: "Device & Endpoint Security", name: "Advanced EDR, Threat & Vulnerability Management & hunting (Endpoint P2)", description: "Deep behavioral EDR telemetry, live response, automated endpoint investigation, and advanced hunting." },
+      { id: "cloudApps", domain: "Device & Endpoint Security", name: "Full SaaS CASB & OAuth app governance (Defender for Cloud Apps)", description: "Shadow IT discovery, real-time conditional access app control sessions, and malicious OAuth app governance." },
+      { id: "exchangeArchive", domain: "Data Security & Purview", name: "Archival mailbox, litigation hold & large mailbox (Exchange Plan 2)", description: "100 GB primary mailbox, expandable In-Place Archive, and litigation hold support for retention scenarios." },
+      { id: "purviewCore", domain: "Data Security & Purview", name: "Manual sensitivity labels, message encryption & Office DLP (Purview Core)", description: "Information protection labels, Purview Message Encryption, and DLP across Exchange, SharePoint, OneDrive, and Teams." },
+      { id: "endpointDlpAutoLabel", domain: "Data Security & Purview", name: "Endpoint DLP & automatic sensitivity labeling (Purview Information Protection)", description: "Service/client auto-labeling based on sensitive info types plus Endpoint DLP copy/print/upload controls." },
+      { id: "purviewAdvanced", domain: "Data Security & Purview", name: "Insider Risk, Audit (Premium) & eDiscovery (Premium)", description: "High-water-mark forensic audit logging (1-year+ retention), Insider Risk Management, and eDiscovery Premium workflows." },
+      { id: "copilotWork", domain: "AI & Governance", name: "Work-grounded Microsoft 365 Copilot & AI oversharing readiness", description: "In-app Microsoft 365 Copilot grounded in Microsoft Graph, best paired with sensitivity labels and least-privilege SharePoint governance." }
+    ];
+
+    const products = [
+      { id: "exoP1", group: "Base plans", isBase: true, badge: "Mailbox only", name: "Exchange Online Plan 1", detail: "50 GB cloud mailbox with built-in EOP only; no desktop apps, Conditional Access, or Defender add-ons.", features: ["cloudCollab"] },
+      { id: "exoP2", group: "Base plans", isBase: true, badge: "Mailbox + Hold", name: "Exchange Online Plan 2", detail: "100 GB mailbox, archiving, litigation hold, and Exchange DLP; no Conditional Access or MDO.", features: ["cloudCollab", "exchangeArchive"] },
+      { id: "m365F3", group: "Base plans", isBase: true, badge: "Frontline", name: "Microsoft 365 F3", detail: "Frontline web/mobile apps with Entra ID P1, Intune Plan 1, and baseline Windows/endpoint capabilities (eligibility limits apply).", features: ["cloudCollab", "entraP1", "intuneP1"] },
+      { id: "businessBasic", group: "Base plans", isBase: true, badge: "SMB <=300", name: "Microsoft 365 Business Basic", detail: "Cloud mailbox, Teams, SharePoint, and web/mobile apps (up to 300 users); no Conditional Access or Intune.", features: ["cloudCollab"] },
+      { id: "businessStandard", group: "Base plans", isBase: true, badge: "SMB <=300", name: "Microsoft 365 Business Standard", detail: "Business Basic plus desktop Microsoft 365 Apps (up to 300 users); security add-ons still required for Zero Trust.", features: ["cloudCollab", "desktopApps"] },
+      { id: "businessPremium", group: "Base plans", isBase: true, badge: "SMB <=300", name: "Microsoft 365 Business Premium", detail: "SMB flagship bundle (up to 300 users) with desktop apps, Entra ID P1, Intune P1, Defender for Business, MDO P1, and Purview core.", features: ["cloudCollab", "desktopApps", "entraP1", "intuneP1", "endpointP1", "mdoP1", "exchangeArchive", "purviewCore"] },
+      { id: "officeE3", group: "Base plans", isBase: true, badge: "Enterprise", name: "Office 365 E3", detail: "Enterprise productivity suite with desktop apps, Exchange Plan 2 archiving, and core Purview DLP/encryption; no Entra P1 or Intune.", features: ["cloudCollab", "desktopApps", "exchangeArchive", "purviewCore"] },
+      { id: "officeE5", group: "Base plans", isBase: true, badge: "Enterprise", name: "Office 365 E5", detail: "Office 365 E3 plus Defender for Office 365 Plan 2 and advanced Office compliance; still lacks Entra ID and Intune device management.", features: ["cloudCollab", "desktopApps", "exchangeArchive", "purviewCore", "mdoP1", "mdoP2", "endpointDlpAutoLabel", "purviewAdvanced"] },
+      { id: "m365E3", group: "Base plans", isBase: true, badge: "Enterprise", name: "Microsoft 365 E3", detail: "Enterprise baseline combining Office 365 E3, Windows Enterprise, Entra ID P1, Intune Plan 1, and Defender for Endpoint Plan 1.", features: ["cloudCollab", "desktopApps", "entraP1", "intuneP1", "endpointP1", "exchangeArchive", "purviewCore"] },
+      { id: "m365E5", group: "Base plans", isBase: true, badge: "Enterprise", name: "Microsoft 365 E5", detail: "Comprehensive enterprise suite adding Entra ID P2, MDO P2, Endpoint P2, Cloud Apps, auto-labeling, Endpoint DLP, and Purview Premium.", features: ["cloudCollab", "desktopApps", "entraP1", "entraP2", "intuneP1", "endpointP1", "endpointP2", "cloudApps", "mdoP1", "mdoP2", "exchangeArchive", "purviewCore", "endpointDlpAutoLabel", "purviewAdvanced"] },
+      { id: "m365E7", group: "Base plans", isBase: true, badge: "Frontier Suite", name: "Microsoft 365 E7", detail: "Modeled Frontier Suite combining Microsoft 365 E5, Microsoft Entra Suite, and Microsoft 365 Copilot; confirm availability and terms.", features: ["cloudCollab", "desktopApps", "entraP1", "entraP2", "entraSuite", "intuneP1", "endpointP1", "endpointP2", "cloudApps", "mdoP1", "mdoP2", "exchangeArchive", "purviewCore", "endpointDlpAutoLabel", "purviewAdvanced", "copilotWork"] },
+
+      { id: "emsE3", group: "Security & compliance suites", isBase: false, badge: "Suite add-on", name: "Enterprise Mobility + Security (EMS) E3", detail: "Bundles Entra ID P1, Intune Plan 1, and core Azure Information Protection; often paired with Office 365 E3.", features: ["entraP1", "intuneP1", "purviewCore"] },
+      { id: "emsE5", group: "Security & compliance suites", isBase: false, badge: "Suite add-on", name: "Enterprise Mobility + Security (EMS) E5", detail: "Bundles Entra ID P2, Intune Plan 1, Defender for Cloud Apps, and Purview information protection.", features: ["entraP1", "entraP2", "intuneP1", "cloudApps", "purviewCore", "endpointDlpAutoLabel"] },
+      { id: "defenderSuiteE5", group: "Security & compliance suites", isBase: false, badge: "E3 step-up", requiresAnyFeature: ["entraP1"], prereqNote: "Typically requires Microsoft 365 E3 or Business Premium (SMB variant) prerequisite.", name: "Microsoft Defender Suite (E5 Security)", detail: "Adds Entra ID P2, Defender for Office 365 P2, Defender for Endpoint P2, and Defender for Cloud Apps onto eligible base plans.", features: ["entraP1", "entraP2", "mdoP1", "mdoP2", "endpointP1", "endpointP2", "cloudApps"] },
+      { id: "purviewSuiteE5", group: "Security & compliance suites", isBase: false, badge: "Compliance step-up", requiresAnyFeature: ["entraP1"], prereqNote: "Typically requires Microsoft 365 E3 or Business Premium (SMB variant) prerequisite.", name: "Microsoft Purview Suite (E5 Compliance)", detail: "Adds auto-labeling, Endpoint DLP, Insider Risk Management, Audit Premium, and eDiscovery Premium onto eligible base plans.", features: ["purviewCore", "endpointDlpAutoLabel", "purviewAdvanced"] },
+      { id: "entraSuiteAddon", group: "Security & compliance suites", isBase: false, badge: "Requires Entra P1", requiresAnyFeature: ["entraP1"], prereqNote: "Requires an underlying Entra ID P1 license or bundle containing Entra ID P1.", name: "Microsoft Entra Suite", detail: "Adds Private Access, Internet Access, Identity Governance, and Verified ID premium capabilities.", features: ["entraSuite"] },
+
+      { id: "entraP1Addon", group: "Standalone add-ons", isBase: false, badge: "Identity", name: "Microsoft Entra ID P1", detail: "Standalone Conditional Access and hybrid/group identity management add-on.", features: ["entraP1"] },
+      { id: "entraP2Addon", group: "Standalone add-ons", isBase: false, badge: "Identity", name: "Microsoft Entra ID P2", detail: "Standalone Identity Protection, PIM, and Access Reviews (includes P1 capabilities).", features: ["entraP1", "entraP2"] },
+      { id: "intuneAddon", group: "Standalone add-ons", isBase: false, badge: "Device", name: "Microsoft Intune Plan 1", detail: "Standalone cloud MDM and MAM app protection add-on.", features: ["intuneP1"] },
+      { id: "mdoP1Addon", group: "Standalone add-ons", isBase: false, badge: "Email", requiresAnyFeature: ["cloudCollab"], prereqNote: "Protects cloud mailboxes/collaboration; pair with an Exchange Online or M365 plan.", name: "Defender for Office 365 Plan 1", detail: "Standalone Safe Links, Safe Attachments, and impersonation protection.", features: ["mdoP1"] },
+      { id: "mdoP2Addon", group: "Standalone add-ons", isBase: false, badge: "Email", requiresAnyFeature: ["cloudCollab"], prereqNote: "Protects cloud mailboxes/collaboration; pair with an Exchange Online or M365 plan.", name: "Defender for Office 365 Plan 2", detail: "Standalone AIR automation, Threat Explorer, and Attack Simulation Training (includes Plan 1).", features: ["mdoP1", "mdoP2"] },
+      { id: "endpointP2Addon", group: "Standalone add-ons", isBase: false, badge: "Endpoint", name: "Defender for Endpoint Plan 2", detail: "Standalone enterprise EDR, vulnerability management, and threat hunting (includes Plan 1).", features: ["endpointP1", "endpointP2"] },
+      { id: "cloudAppsAddon", group: "Standalone add-ons", isBase: false, badge: "CASB", name: "Microsoft Defender for Cloud Apps", detail: "Standalone SaaS discovery, session control, and OAuth app governance.", features: ["cloudApps"] },
+      { id: "copilotAddon", group: "Standalone add-ons", isBase: false, badge: "AI add-on", requiresAnyFeature: ["cloudCollab"], prereqNote: "Requires an eligible Microsoft 365 or Office 365 base license.", name: "Microsoft 365 Copilot", detail: "Work-grounded AI assistant across Microsoft 365 apps and Graph content.", features: ["copilotWork"] }
+    ];
+
+    const profiles = {
+      business: {
+        description: "Recommended Zero Trust baseline for an SMB user (<=300 seats): Conditional Access, managed devices, endpoint protection, Safe Links/Attachments, and core DLP.",
+        requirements: ["cloudCollab", "desktopApps", "entraP1", "intuneP1", "endpointP1", "mdoP1", "purviewCore"]
+      },
+      enterprise: {
+        description: "Managed enterprise knowledge worker baseline with Conditional Access, Intune compliance, endpoint protection, archiving, and core Purview.",
+        requirements: ["cloudCollab", "desktopApps", "entraP1", "intuneP1", "endpointP1", "mdoP1", "exchangeArchive", "purviewCore"]
+      },
+      privileged: {
+        description: "High-assurance target for global/security admins and VIPs: PIM, Identity Protection, EDR, AIR investigation, CASB, and forensic audit logs.",
+        requirements: ["entraP1", "entraP2", "intuneP1", "endpointP2", "cloudApps", "mdoP2", "purviewAdvanced"]
+      },
+      regulated: {
+        description: "Legal, healthcare, or financial data handler needing archival holds, auto-labeling, Endpoint DLP, Insider Risk, and eDiscovery Premium.",
+        requirements: ["cloudCollab", "entraP1", "mdoP1", "exchangeArchive", "purviewCore", "endpointDlpAutoLabel", "purviewAdvanced"]
+      },
+      frontline: {
+        description: "Shift or field worker using web/mobile apps on shared or mobile devices with Conditional Access, Intune MAM/MDM, and phishing protection.",
+        requirements: ["cloudCollab", "entraP1", "intuneP1", "mdoP1"]
+      },
+      aiReady: {
+        description: "Copilot-enabled user with oversharing guardrails: sensitivity auto-labeling, Endpoint DLP, Conditional Access, and audit visibility.",
+        requirements: ["cloudCollab", "desktopApps", "entraP1", "intuneP1", "purviewCore", "endpointDlpAutoLabel", "purviewAdvanced", "copilotWork"]
+      },
+      custom: {
+        description: "Custom capability checklist tailored to a specific user persona or audit finding.",
+        requirements: []
+      }
+    };
+
+    const scenarioPresets = [
+      {
+        id: "smbBestPractice",
+        label: "SMB Zero Trust (Business Premium)",
+        profile: "business",
+        products: ["businessPremium"],
+        note: "Shows why Business Premium is the standard SMB Zero Trust baseline with 100% coverage and zero add-on clutter."
+      },
+      {
+        id: "smbStandardGap",
+        label: "Business Standard security gap",
+        profile: "business",
+        products: ["businessStandard"],
+        note: "Common SMB audit finding: desktop apps are licensed, but Conditional Access, Intune, MDO, Endpoint, and DLP are all missing."
+      },
+      {
+        id: "e3EmailGap",
+        label: "M365 E3 enterprise mail gap",
+        profile: "enterprise",
+        products: ["m365E3"],
+        note: "Classic enterprise surprise: Microsoft 365 E3 covers identity, Intune, and Endpoint P1, but lacks Defender for Office 365 Plan 1."
+      },
+      {
+        id: "stackedWaste",
+        label: "Over-licensed / stacked add-ons",
+        profile: "enterprise",
+        products: ["m365E5", "exoP1", "mdoP1Addon", "entraP1Addon"],
+        note: "Rightsizing scenario: standalone Exchange, MDO P1, and Entra P1 add-ons remain assigned after upgrading the user to Microsoft 365 E5."
+      },
+      {
+        id: "adminStepUp",
+        label: "Business Premium + Defender/Purview step-up",
+        profile: "privileged",
+        products: ["businessPremium", "defenderSuiteE5", "purviewSuiteE5"],
+        note: "High-risk admin pattern using E5 Security and Compliance suites to close PIM, EDR, AIR, and Audit Premium gaps."
+      },
+      {
+        id: "copilotUnready",
+        label: "Copilot without data governance",
+        profile: "aiReady",
+        products: ["m365E3", "copilotAddon"],
+        note: "AI readiness check: Copilot is licensed on M365 E3, highlighting missing auto-labeling, Endpoint DLP, and Purview Premium controls."
+      }
+    ];
+
+    const productById = Object.fromEntries(products.map((product) => [product.id, product]));
+    const featureById = Object.fromEntries(features.map((feature) => [feature.id, feature]));
+    const selectedProducts = new Set(["businessPremium"]);
+    const requiredFeatures = new Set(profiles.business.requirements);
+    let activePresetId = "smbBestPractice";
+
+    const licenseList = document.getElementById("licenseList");
+    const requirementList = document.getElementById("requirementList");
+    const coverageList = document.getElementById("coverageList");
+    const overlapList = document.getElementById("overlapList");
+    const remediationList = document.getElementById("remediationList");
+    const profileSelect = document.getElementById("profileSelect");
+    const domainFilter = document.getElementById("domainFilter");
+    const presetButtons = document.getElementById("presetButtons");
+    const selectedChips = document.getElementById("selectedChips");
+    const domainBars = document.getElementById("domainBars");
+    const actionFeedback = document.getElementById("actionFeedback");
+
+    function setFeedback(message) {
+      actionFeedback.textContent = message;
+    }
+
+    function initFooterAndTheme() {
+      const yearEl = document.getElementById("ciaopsYear");
+      const versionEl = document.getElementById("footerVersion");
+      if (yearEl) yearEl.textContent = String(new Date().getFullYear());
+      if (versionEl) {
+        const lastModifiedValue = new Date(document.lastModified);
+        const modifiedDate = Number.isNaN(lastModifiedValue.getTime()) ? new Date() : lastModifiedValue;
+        const y = modifiedDate.getFullYear();
+        const m = String(modifiedDate.getMonth() + 1).padStart(2, "0");
+        const d = String(modifiedDate.getDate()).padStart(2, "0");
+        versionEl.textContent = `Version: v${y}.${m}.${d} | Client-side planning model`;
+      }
+      const themeBtn = document.getElementById("themeToggleBtn");
+      const syncThemeLabel = () => {
+        const current = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+        themeBtn.textContent = current === "dark" ? "Light mode" : "Dark mode";
+      };
+      syncThemeLabel();
+      themeBtn.addEventListener("click", () => {
+        const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        try { localStorage.setItem("m365Simulator.theme", next); } catch { /* ignore */ }
+        syncThemeLabel();
+      });
+    }
+
+    function initDomainFilter() {
+      for (const domain of domains) {
+        const opt = document.createElement("option");
+        opt.value = domain;
+        opt.textContent = domain;
+        domainFilter.append(opt);
+      }
+    }
+
+    function renderPresets() {
+      presetButtons.replaceChildren();
+      for (const preset of scenarioPresets) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `preset-btn ${activePresetId === preset.id ? "active" : ""}`;
+        btn.textContent = preset.label;
+        btn.addEventListener("click", () => {
+          activePresetId = preset.id;
+          selectedProducts.clear();
+          preset.products.forEach((id) => selectedProducts.add(id));
+          profileSelect.value = preset.profile;
+          requiredFeatures.clear();
+          profiles[preset.profile].requirements.forEach((id) => requiredFeatures.add(id));
+          document.getElementById("profileDescription").textContent = profiles[preset.profile].description;
+          renderPresets();
+          renderProducts(document.getElementById("productSearch").value);
+          renderRequirements();
+          renderResults();
+          setFeedback(preset.note);
+        });
+        presetButtons.append(btn);
+      }
+    }
+
+    function renderSelectedChips() {
+      selectedChips.replaceChildren();
+      for (const productId of selectedProducts) {
+        const product = productById[productId];
+        if (!product) continue;
+        const chip = document.createElement("span");
+        chip.className = "product-chip";
+        const text = document.createElement("span");
+        text.textContent = product.name;
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.setAttribute("aria-label", `Remove ${product.name}`);
+        removeBtn.textContent = "×";
+        removeBtn.addEventListener("click", () => {
+          selectedProducts.delete(productId);
+          activePresetId = "";
+          renderPresets();
+          renderProducts(document.getElementById("productSearch").value);
+          renderRequirements();
+          renderResults();
+          setFeedback(`Removed ${product.name}.`);
+        });
+        chip.append(text, removeBtn);
+        selectedChips.append(chip);
+      }
+    }
+
+    function getProviders(featureId) {
+      return [...selectedProducts]
+        .map((productId) => productById[productId])
+        .filter((product) => product && product.features.includes(featureId));
+    }
+
+    function getPrerequisiteWarnings() {
+      const warnings = [];
+      for (const productId of selectedProducts) {
+        const product = productById[productId];
+        if (!product || !product.requiresAnyFeature) continue;
+        const satisfied = product.requiresAnyFeature.some((featureId) =>
+          [...selectedProducts].some((otherId) => otherId !== productId && productById[otherId]?.features.includes(featureId))
+        );
+        if (!satisfied) {
+          warnings.push({
+            product,
+            message: product.prereqNote || "Requires an eligible base plan."
+          });
+        }
+      }
+      return warnings;
+    }
+
+    function getRedundantProducts() {
+      const redundant = [];
+      const selectedList = [...selectedProducts].map((id) => productById[id]).filter(Boolean);
+      for (const candidate of selectedList) {
+        const others = selectedList.filter((item) => item.id !== candidate.id);
+        if (!others.length) continue;
+        const otherFeatures = new Set(others.flatMap((item) => item.features));
+        if (candidate.features.every((f) => otherFeatures.has(f))) {
+          const coveringNames = others
+            .filter((item) => candidate.features.some((f) => item.features.includes(f)))
+            .map((item) => item.name);
+          redundant.push({ product: candidate, coveredBy: coveringNames });
+        }
+      }
+      return redundant;
+    }
+
+    function renderProducts(searchTerm = "") {
+      licenseList.replaceChildren();
+      const normalizedSearch = searchTerm.trim().toLowerCase();
+      for (const groupName of [...new Set(products.map((product) => product.group))]) {
+        const allInGroup = products.filter((item) => item.group === groupName);
+        const groupProducts = allInGroup.filter((item) =>
+          !normalizedSearch || `${item.name} ${item.detail} ${item.badge || ""}`.toLowerCase().includes(normalizedSearch)
+        );
+        if (!groupProducts.length) continue;
+        const selectedInGroup = allInGroup.filter((product) => selectedProducts.has(product.id)).length;
+        const group = document.createElement("details");
+        group.className = "license-group";
+        group.open = groupName === "Base plans" || Boolean(normalizedSearch) || selectedInGroup > 0;
+        const heading = document.createElement("summary");
+        const headingText = document.createElement("span");
+        headingText.textContent = groupName;
+        const meta = document.createElement("span");
+        meta.className = "group-meta";
+        meta.textContent = `${selectedInGroup} selected / ${allInGroup.length}`;
+        heading.append(headingText, meta);
+        const items = document.createElement("div");
+        items.className = "license-group-items";
+        for (const product of groupProducts) {
+          const label = document.createElement("label");
+          label.className = "license-option";
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = selectedProducts.has(product.id);
+          checkbox.setAttribute("aria-label", product.name);
+          checkbox.addEventListener("change", () => {
+            if (checkbox.checked) selectedProducts.add(product.id);
+            else selectedProducts.delete(product.id);
+            activePresetId = "";
+            renderPresets();
+            const currentGroup = checkbox.closest("details");
+            const count = allInGroup.filter((item) => selectedProducts.has(item.id)).length;
+            currentGroup.querySelector(".group-meta").textContent = `${count} selected / ${allInGroup.length}`;
+            renderRequirements();
+            renderResults();
+            setFeedback(`${checkbox.checked ? "Added" : "Removed"} ${product.name}.`);
+          });
+          const copy = document.createElement("span");
+          const name = document.createElement("span");
+          name.className = "license-name";
+          name.textContent = product.name;
+          const detail = document.createElement("span");
+          detail.className = "license-detail";
+          detail.textContent = product.detail;
+          const badges = document.createElement("span");
+          badges.className = "license-badges";
+          if (product.badge) {
+            const typeBadge = document.createElement("span");
+            typeBadge.className = "mini-badge";
+            typeBadge.textContent = product.badge;
+            badges.append(typeBadge);
+          }
+          const countBadge = document.createElement("span");
+          countBadge.className = "mini-badge";
+          countBadge.textContent = `${product.features.length} modeled ${product.features.length === 1 ? "capability" : "capabilities"}`;
+          badges.append(countBadge);
+          copy.append(name, detail, badges);
+          label.append(checkbox, copy);
+          items.append(label);
+        }
+        group.append(heading, items);
+        licenseList.append(group);
+      }
+    }
+
+    function renderRequirements() {
+      requirementList.replaceChildren();
+      const selectedDomain = domainFilter.value;
+      const visible = features.filter((f) => selectedDomain === "all" || f.domain === selectedDomain);
+      for (const feature of visible) {
+        const isReq = requiredFeatures.has(feature.id);
+        const covered = getProviders(feature.id).length > 0;
+        const label = document.createElement("label");
+        label.className = "requirement";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = isReq;
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) requiredFeatures.add(feature.id);
+          else requiredFeatures.delete(feature.id);
+          activePresetId = "";
+          profileSelect.value = "custom";
+          document.getElementById("profileDescription").textContent = profiles.custom.description;
+          renderPresets();
+          renderRequirements();
+          renderResults();
+        });
+        const copy = document.createElement("span");
+        copy.style.width = "100%";
+        const head = document.createElement("span");
+        head.className = "requirement-head";
+        const domainBadge = document.createElement("span");
+        domainBadge.className = "domain-tag";
+        domainBadge.textContent = feature.domain;
+        const stateSpan = document.createElement("span");
+        stateSpan.className = `req-state ${covered ? "covered" : (isReq ? "gap" : "")}`;
+        stateSpan.textContent = covered ? "Covered" : (isReq ? "Gap" : "Optional");
+        head.append(domainBadge, stateSpan);
+
+        const name = document.createElement("span");
+        name.className = "requirement-name";
+        name.textContent = feature.name;
+        const description = document.createElement("span");
+        description.className = "requirement-description";
+        description.textContent = feature.description;
+        copy.append(head, name, description);
+        label.append(checkbox, copy);
+        requirementList.append(label);
+      }
+    }
+
+    function renderDomainBars() {
+      domainBars.replaceChildren();
+      for (const domain of domains) {
+        const domainReq = features.filter((f) => f.domain === domain && requiredFeatures.has(f.id));
+        if (!domainReq.length) continue;
+        const covered = domainReq.filter((f) => getProviders(f.id).length > 0).length;
+        const pct = Math.round((covered / domainReq.length) * 100);
+        const row = document.createElement("div");
+        row.className = "domain-bar-row";
+        const top = document.createElement("div");
+        top.className = "domain-bar-top";
+        const label = document.createElement("span");
+        label.textContent = domain;
+        const val = document.createElement("strong");
+        val.textContent = `${covered}/${domainReq.length}`;
+        top.append(label, val);
+        const track = document.createElement("div");
+        track.className = "domain-track";
+        const fill = document.createElement("div");
+        fill.className = `domain-fill ${pct === 100 ? "complete" : ""}`;
+        fill.style.width = `${pct}%`;
+        track.append(fill);
+        row.append(top, track);
+        domainBars.append(row);
+      }
+    }
+
+    function renderRemediation() {
+      remediationList.replaceChildren();
+      const missingIds = [...requiredFeatures].filter((id) => getProviders(id).length === 0);
+      const prereqWarnings = getPrerequisiteWarnings();
+
+      for (const warning of prereqWarnings) {
+        const card = document.createElement("div");
+        card.className = "advisory-card warn";
+        const top = document.createElement("div");
+        top.className = "advisory-card-top";
+        const title = document.createElement("span");
+        title.className = "advisory-title";
+        title.textContent = `Prerequisite check: ${warning.product.name}`;
+        top.append(title);
+        const copy = document.createElement("p");
+        copy.className = "advisory-copy";
+        copy.textContent = warning.message;
+        card.append(top, copy);
+        remediationList.append(card);
+      }
+
+      if (!missingIds.length) {
+        const ok = document.createElement("div");
+        ok.className = "advisory-card good";
+        const title = document.createElement("span");
+        title.className = "advisory-title";
+        title.textContent = requiredFeatures.size
+          ? "No capability gaps for this requirement profile"
+          : "No requirements selected";
+        const copy = document.createElement("p");
+        copy.className = "advisory-copy";
+        copy.textContent = requiredFeatures.size
+          ? "Every required capability has at least one modeled product assigned."
+          : "Choose a requirement profile or toggle capabilities below to evaluate gaps.";
+        ok.append(title, copy);
+        remediationList.append(ok);
+        return;
+      }
+
+      const candidates = products
+        .filter((p) => !selectedProducts.has(p.id))
+        .map((product) => {
+          const closes = missingIds.filter((id) => product.features.includes(id));
+          const overlapCount = product.features.filter((id) => getProviders(id).length > 0).length;
+          return { product, closes, overlapCount };
+        })
+        .filter((item) => item.closes.length > 0)
+        .sort((a, b) => b.closes.length - a.closes.length || a.overlapCount - b.overlapCount || a.product.features.length - b.product.features.length)
+        .slice(0, 4);
+
+      for (const { product, closes, overlapCount } of candidates) {
+        const card = document.createElement("div");
+        card.className = "advisory-card";
+        const top = document.createElement("div");
+        top.className = "advisory-card-top";
+        const title = document.createElement("span");
+        title.className = "advisory-title";
+        title.textContent = `${product.name} (${closes.length}/${missingIds.length} ${closes.length === 1 ? "gap" : "gaps"} closed)`;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "quick-action-btn";
+        btn.textContent = "+ Add to test";
+        btn.addEventListener("click", () => {
+          selectedProducts.add(product.id);
+          activePresetId = "";
+          renderPresets();
+          renderProducts(document.getElementById("productSearch").value);
+          renderRequirements();
+          renderResults();
+          setFeedback(`Added ${product.name} to test gap closure.`);
+        });
+        top.append(title, btn);
+        const copy = document.createElement("p");
+        copy.className = "advisory-copy";
+        const closedNames = closes.map((id) => featureById[id].name).join("; ");
+        copy.textContent = `Covers: ${closedNames}.${overlapCount ? ` Introduces ${overlapCount} overlapping ${overlapCount === 1 ? "capability" : "capabilities"} with current selection.` : ""}`;
+        card.append(top, copy);
+        remediationList.append(card);
+      }
+    }
+
+    function renderCoverage() {
+      coverageList.replaceChildren();
+      const filter = document.getElementById("coverageFilter").value;
+      const visibleFeatures = features.filter((feature) => {
+        const providers = getProviders(feature.id);
+        const required = requiredFeatures.has(feature.id);
+        if (filter === "all") return true;
+        if (filter === "gaps") return required && providers.length === 0;
+        if (filter === "overlaps") return providers.length > 1;
+        return required;
+      });
+      if (!visibleFeatures.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-state";
+        empty.textContent = filter === "gaps"
+          ? "No gaps found for the selected requirement profile."
+          : filter === "overlaps"
+            ? "No overlapping capabilities across the currently selected products."
+            : "No capabilities match this filter.";
+        coverageList.append(empty);
+        return;
+      }
+      for (const feature of visibleFeatures) {
+        const providers = getProviders(feature.id);
+        const required = requiredFeatures.has(feature.id);
+        const covered = providers.length > 0;
+        const item = document.createElement("article");
+        item.className = `coverage-item ${required ? (covered ? "is-covered" : "is-gap") : "is-optional"}`;
+        const top = document.createElement("div");
+        top.className = "coverage-top";
+        const title = document.createElement("span");
+        title.className = "coverage-title";
+        title.textContent = feature.name;
+        const status = document.createElement("span");
+        status.className = `status ${covered ? "good" : "bad"}`;
+        status.textContent = providers.length > 1
+          ? `Covered (${providers.length}x)`
+          : covered
+            ? "Covered"
+            : (required ? "Gap" : "Not included");
+        top.append(title, status);
+        const description = document.createElement("p");
+        description.className = "coverage-detail";
+        description.textContent = `[${feature.domain}] ${required ? "Required" : "Optional"}: ${feature.description}`;
+        const source = document.createElement("p");
+        source.className = "coverage-source";
+        const sourceTitle = document.createElement("strong");
+        sourceTitle.textContent = covered ? "Selected source(s): " : "Gap: ";
+        source.append(sourceTitle, document.createTextNode(
+          covered ? providers.map((product) => product.name).join("; ") : "No selected product in this model includes this capability."
+        ));
+        item.append(top, description, source);
+        coverageList.append(item);
+      }
+    }
+
+    function renderOverlaps() {
+      overlapList.replaceChildren();
+      const basePlans = [...selectedProducts].map((id) => productById[id]).filter((p) => p && p.isBase);
+      const redundant = getRedundantProducts();
+      const overlaps = features
+        .map((feature) => ({ feature, providers: getProviders(feature.id) }))
+        .filter(({ providers }) => providers.length > 1);
+      const prereqWarnings = getPrerequisiteWarnings();
+
+      const totalAlerts = overlaps.length + (basePlans.length > 1 ? 1 : 0) + prereqWarnings.length;
+      document.getElementById("overlapCount").textContent = String(totalAlerts);
+
+      if (basePlans.length > 1) {
+        const card = document.createElement("div");
+        card.className = "advisory-card warn";
+        const title = document.createElement("span");
+        title.className = "advisory-title";
+        title.textContent = `Multiple base plans assigned (${basePlans.length})`;
+        const copy = document.createElement("p");
+        copy.className = "advisory-copy";
+        copy.textContent = `${basePlans.map((p) => p.name).join(" + ")} are assigned together. Most users only need a single base productivity/mailbox SKU.`;
+        card.append(title, copy);
+        overlapList.append(card);
+      }
+
+      for (const item of redundant) {
+        const card = document.createElement("div");
+        card.className = "advisory-card warn";
+        const top = document.createElement("div");
+        top.className = "advisory-card-top";
+        const title = document.createElement("span");
+        title.className = "advisory-title";
+        title.textContent = `Redundant SKU candidate: ${item.product.name}`;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "quick-action-btn";
+        btn.textContent = "Remove SKU";
+        btn.addEventListener("click", () => {
+          selectedProducts.delete(item.product.id);
+          activePresetId = "";
+          renderPresets();
+          renderProducts(document.getElementById("productSearch").value);
+          renderRequirements();
+          renderResults();
+          setFeedback(`Removed redundant SKU ${item.product.name}.`);
+        });
+        top.append(title, btn);
+        const copy = document.createElement("p");
+        copy.className = "advisory-copy";
+        copy.textContent = `All modeled capabilities in ${item.product.name} are already covered by ${item.coveredBy.join(" + ")}.`;
+        card.append(top, copy);
+        overlapList.append(card);
+      }
+
+      if (!overlaps.length && basePlans.length <= 1 && !redundant.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-state";
+        empty.textContent = selectedProducts.size
+          ? "Clean stack: no overlapping capabilities or redundant SKUs detected."
+          : "Select one or more products to check for overlaps and rightsizing candidates.";
+        overlapList.append(empty);
+        return;
+      }
+
+      for (const { feature, providers } of overlaps) {
+        const item = document.createElement("div");
+        item.className = "overlap-item";
+        const title = document.createElement("p");
+        title.className = "overlap-title";
+        title.textContent = `${feature.name} (${providers.length}x)`;
+        const source = document.createElement("p");
+        source.className = "overlap-source";
+        source.textContent = providers.map((product) => product.name).join("; ");
+        item.append(title, source);
+        overlapList.append(item);
+      }
+    }
+
+    function renderSummary() {
+      const required = [...requiredFeatures];
+      const covered = required.filter((featureId) => getProviders(featureId).length > 0).length;
+      const gaps = required.length - covered;
+      const percentage = required.length ? Math.round((covered / required.length) * 100) : 0;
+      document.getElementById("requiredCount").textContent = String(required.length);
+      document.getElementById("coveredCount").textContent = String(covered);
+      document.getElementById("gapCount").textContent = String(gaps);
+      document.getElementById("coveragePercent").textContent = `${percentage}%`;
+      document.getElementById("coveragePercent").classList.toggle("has-gaps", gaps > 0);
+      document.getElementById("coverageProgress").setAttribute("aria-valuenow", String(percentage));
+      document.getElementById("coverageProgressFill").style.width = `${percentage}%`;
+      document.getElementById("scoreMessage").textContent = required.length === 0
+        ? "Choose a profile or select custom requirements to start the assessment."
+        : gaps === 0
+          ? `All ${required.length} selected requirements have a modeled licensing source.`
+          : `${gaps} required ${gaps === 1 ? "capability is" : "capabilities are"} missing from the current selection.`;
+      document.getElementById("selectionCount").textContent =
+        `${selectedProducts.size} ${selectedProducts.size === 1 ? "product" : "products"} selected`;
+      document.getElementById("selectedProductsSummary").textContent = selectedProducts.size
+        ? [...selectedProducts].map((id) => productById[id]?.name).filter(Boolean).join(" + ")
+        : "No products selected";
+    }
+
+    function buildAssessmentReport() {
+      const required = [...requiredFeatures].map((id) => featureById[id]).filter(Boolean);
+      const covered = required.filter((f) => getProviders(f.id).length > 0);
+      const gaps = required.filter((f) => getProviders(f.id).length === 0);
+      const overlaps = features
+        .map((f) => ({ id: f.id, name: f.name, providers: getProviders(f.id).map((p) => p.name) }))
+        .filter((item) => item.providers.length > 1);
+      return {
+        generatedAt: new Date().toISOString(),
+        simulator: "Microsoft 365 License and Feature Coverage Simulator",
+        disclaimer: "Illustrative planning model only. Verify with Microsoft Product Terms before licensing changes.",
+        profile: {
+          id: profileSelect.value,
+          label: profileSelect.options[profileSelect.selectedIndex]?.text || profileSelect.value
+        },
+        assignedProducts: [...selectedProducts].map((id) => productById[id]?.name).filter(Boolean),
+        metrics: {
+          requiredCount: required.length,
+          coveredCount: covered.length,
+          gapCount: gaps.length,
+          coveragePercent: required.length ? Math.round((covered.length / required.length) * 100) : 0,
+          overlapCount: overlaps.length
+        },
+        missingCapabilities: gaps.map((f) => ({ id: f.id, domain: f.domain, name: f.name })),
+        redundantSkuCandidates: getRedundantProducts().map((r) => ({
+          product: r.product.name,
+          alreadyCoveredBy: r.coveredBy
+        })),
+        prerequisiteWarnings: getPrerequisiteWarnings().map((w) => ({
+          product: w.product.name,
+          note: w.message
+        })),
+        overlappingCapabilities: overlaps
+      };
+    }
+
+    function buildMarkdownSummary() {
+      const report = buildAssessmentReport();
+      const lines = [
+        `# Microsoft 365 License Coverage Assessment`,
+        `- **Profile:** ${report.profile.label}`,
+        `- **Assigned SKUs:** ${report.assignedProducts.length ? report.assignedProducts.join(", ") : "None"}`,
+        `- **Coverage:** ${report.metrics.coveragePercent}% (${report.metrics.coveredCount}/${report.metrics.requiredCount} required capabilities)`,
+        ``
+      ];
+      if (report.missingCapabilities.length) {
+        lines.push(`## Missing Capabilities (${report.missingCapabilities.length})`);
+        report.missingCapabilities.forEach((g) => lines.push(`- [ ] **${g.name}** (${g.domain})`));
+        lines.push(``);
+      } else {
+        lines.push(`## Missing Capabilities`, `- None for selected profile.`, ``);
+      }
+      if (report.redundantSkuCandidates.length) {
+        lines.push(`## Potential Consolidation Candidates`);
+        report.redundantSkuCandidates.forEach((r) =>
+          lines.push(`- **${r.product}** — modeled capabilities already covered by ${r.alreadyCoveredBy.join(" + ")}`)
+        );
+        lines.push(``);
+      }
+      if (report.prerequisiteWarnings.length) {
+        lines.push(`## Prerequisite Checks`);
+        report.prerequisiteWarnings.forEach((w) => lines.push(`- **${w.product}:** ${w.note}`));
+        lines.push(``);
+      }
+      lines.push(`> _Illustrative planning summary only; confirm exact Microsoft Product Terms and active service plans._`);
+      return lines.join("\n");
+    }
+
+    function applyUrlState() {
+      const params = new URLSearchParams(window.location.search);
+      const skuParam = params.get("skus");
+      const profParam = params.get("profile");
+      const reqParam = params.get("reqs");
+      if (!skuParam && !profParam && !reqParam) return;
+      activePresetId = "";
+      if (profParam && profiles[profParam]) {
+        profileSelect.value = profParam;
+        requiredFeatures.clear();
+        profiles[profParam].requirements.forEach((id) => requiredFeatures.add(id));
+      }
+      if (reqParam) {
+        requiredFeatures.clear();
+        reqParam.split(",").filter((id) => featureById[id]).forEach((id) => requiredFeatures.add(id));
+      }
+      if (skuParam !== null) {
+        selectedProducts.clear();
+        skuParam.split(",").filter((id) => productById[id]).forEach((id) => selectedProducts.add(id));
+      }
+    }
+
+    function renderResults() {
+      renderSelectedChips();
+      renderSummary();
+      renderDomainBars();
+      renderRemediation();
+      renderCoverage();
+      renderOverlaps();
+    }
+
+    profileSelect.addEventListener("change", () => {
+      activePresetId = "";
+      const profile = profiles[profileSelect.value];
+      requiredFeatures.clear();
+      profile.requirements.forEach((featureId) => requiredFeatures.add(featureId));
+      document.getElementById("profileDescription").textContent = profile.description;
+      renderPresets();
+      renderRequirements();
+      renderResults();
+      setFeedback(`Loaded requirement profile: ${profileSelect.options[profileSelect.selectedIndex].text}.`);
+    });
+
+    document.getElementById("productSearch").addEventListener("input", (event) => {
+      renderProducts(event.target.value);
+    });
+
+    domainFilter.addEventListener("change", renderRequirements);
+    document.getElementById("coverageFilter").addEventListener("change", renderCoverage);
+
+    document.getElementById("resetButton").addEventListener("click", () => {
+      activePresetId = "smbBestPractice";
+      selectedProducts.clear();
+      selectedProducts.add("businessPremium");
+      profileSelect.value = "business";
+      requiredFeatures.clear();
+      profiles.business.requirements.forEach((featureId) => requiredFeatures.add(featureId));
+      document.getElementById("profileDescription").textContent = profiles.business.description;
+      document.getElementById("productSearch").value = "";
+      domainFilter.value = "all";
+      document.getElementById("coverageFilter").value = "required";
+      renderPresets();
+      renderProducts();
+      renderRequirements();
+      renderResults();
+      setFeedback("Reset to SMB Zero Trust baseline (Microsoft 365 Business Premium).");
+    });
+
+    document.getElementById("clearButton").addEventListener("click", () => {
+      activePresetId = "";
+      selectedProducts.clear();
+      renderPresets();
+      renderProducts(document.getElementById("productSearch").value);
+      renderRequirements();
+      renderResults();
+      setFeedback("Cleared all assigned products.");
+    });
+
+    document.getElementById("copySummaryBtn").addEventListener("click", async () => {
+      const md = buildMarkdownSummary();
+      try {
+        await navigator.clipboard.writeText(md);
+        setFeedback("Copied Markdown assessment summary to clipboard.");
+      } catch {
+        setFeedback("Clipboard unavailable in this browser context; use Export JSON report instead.");
+      }
+    });
+
+    document.getElementById("exportJsonBtn").addEventListener("click", () => {
+      const report = buildAssessmentReport();
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `m365-license-coverage-${report.profile.id}.json`;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setFeedback(`Downloaded JSON report (${anchor.download}).`);
+    });
+
+    document.getElementById("shareLinkBtn").addEventListener("click", async () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("profile", profileSelect.value);
+      url.searchParams.set("skus", [...selectedProducts].join(","));
+      if (profileSelect.value === "custom") {
+        url.searchParams.set("reqs", [...requiredFeatures].join(","));
+      } else {
+        url.searchParams.delete("reqs");
+      }
+      try {
+        await navigator.clipboard.writeText(url.toString());
+        setFeedback("Copied shareable scenario link to clipboard.");
+      } catch {
+        window.history.replaceState(null, "", url.toString());
+        setFeedback("Updated page URL with shareable scenario parameters.");
+      }
+    });
+
+    initFooterAndTheme();
+    initDomainFilter();
+    applyUrlState();
+    document.getElementById("profileDescription").textContent = profiles[profileSelect.value].description;
+    renderPresets();
+    renderProducts();
+    renderRequirements();
+    renderResults();
+  </script>
+</body>
+</html>
