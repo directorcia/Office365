@@ -77,11 +77,13 @@
     }
     .shell {
       width: min(1200px, 100% - 32px);
+      min-width: 0;
       margin: 24px auto;
       display: grid;
       gap: 16px;
     }
     .panel {
+      min-width: 0;
       background: var(--cp-surface);
       border: 1px solid var(--cp-border);
       border-radius: 16px;
@@ -120,7 +122,7 @@
     .support-note { margin-top: 6px; color: var(--cp-text-muted); font-size: 0.92rem; line-height: 1.5; max-width: 900px; }
     .support-link { color: var(--cp-link); text-decoration: none; }
     .support-link:hover { text-decoration: underline; }
-    .controls { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; align-items: start; }
+    .controls { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px; align-items: start; }
     .field { display: grid; gap: 6px; min-width: 0; }
     .field label { color: var(--cp-text-muted); font-size: 0.86rem; font-weight: 600; }
     .field-note { margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; width: fit-content; border: 1px solid var(--cp-border); border-radius: 999px; padding: 2px 8px; font-size: 0.72rem; color: var(--cp-text-soft); background: var(--cp-surface-soft); }
@@ -132,12 +134,16 @@
     .profile-hint { margin-top: 6px; display: none; border: 1px solid var(--cp-border); border-radius: 0.5rem; padding: 6px 8px; font-size: 0.76rem; line-height: 1.35; color: var(--cp-text-muted); background: var(--cp-surface-soft); }
     .profile-hint.show { display: block; }
     select, button, input { height: 40px; border-radius: 0.625rem; border: 1px solid var(--cp-border-strong); background: var(--cp-surface); color: var(--cp-text); padding: 0 12px; font: inherit; width: 100%; min-width: 0; }
-    select:focus, button:focus, input:focus { outline: 2px solid var(--cp-accent-soft); outline-offset: 1px; }
+    :focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
+    .skip-link { position: fixed; top: 8px; left: 8px; z-index: 10; padding: 10px 14px; border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-link); box-shadow: var(--cp-shadow); transform: translateY(calc(-100% - 12px)); }
+    .skip-link:focus { transform: translateY(0); }
+    .simulation-status { grid-column: 1 / -1; min-height: 1.2em; color: var(--cp-text-muted); font-size: 0.82rem; line-height: 1.4; }
     .btn-primary { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); cursor: pointer; font-weight: 600; }
     .btn-primary:hover { background: var(--cp-accent-hover); }
     .btn-secondary { cursor: pointer; background: var(--cp-surface-soft); color: var(--cp-text); }
     .row-span-4 { grid-column: span 4; }
     .row-span-2 { grid-column: span 2; }
+    .row-span-12 { grid-column: 1 / -1; }
     .action-field { align-self: end; }
     .toggles { display: grid; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--cp-border); }
     .toggle-section {
@@ -208,7 +214,7 @@
     }
     .toggle-subsection[open] > .toggle-subsection-summary::after { transform: rotate(180deg); }
     .toggle-subsection-body { padding: 10px; }
-    .toggle-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px; }
+    .toggle-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .toggle-note-inline {
       grid-column: 1 / -1;
       margin: 0;
@@ -238,7 +244,7 @@
     .whatif-diff-list { display: flex; flex-wrap: wrap; gap: 6px; }
     .whatif-diff-item { display: inline-flex; align-items: center; border: 1px solid var(--cp-warning); border-radius: 999px; padding: 2px 8px; font-size: 0.72rem; color: var(--cp-warning); background: var(--cp-surface-soft); }
     .whatif-diff-empty { display: inline-flex; align-items: center; border: 1px solid var(--cp-border); border-radius: 999px; padding: 2px 8px; font-size: 0.72rem; color: var(--cp-text-soft); background: var(--cp-surface-soft); }
-    .whatif-grid { display: grid; grid-template-columns: repeat(5, minmax(140px, 1fr)); gap: 8px; }
+    .whatif-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
     .whatif-field { display: grid; gap: 4px; }
     .whatif-field label { font-size: 0.74rem; color: var(--cp-text-soft); font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
     .whatif-field input, .whatif-field select { height: 34px; font-size: 0.82rem; }
@@ -438,12 +444,14 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; scroll-behavior: auto !important; }
     }
-    @media (max-width: 900px) { .row-span-4 { grid-column: span 12; } .row-span-2 { grid-column: span 6; } .outcomes { grid-template-columns: 1fr; } .flow-track { max-width: 100%; padding-right: 146px; } .summary-grid { grid-template-columns: 1fr; } .coach { top: 8px; } .brand-row { padding: 10px; } .ciaops-footer { padding: 10px; } .whatif-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); } }
-    @media (max-width: 700px) { .log-entry { grid-template-columns: 1fr; gap: 6px; } .log-tag { justify-self: start; } .toggles { grid-template-columns: 1fr; } .mfa-legend-row { grid-template-columns: 1fr; gap: 5px; } .mfa-legend-tag { width: fit-content; } }
+    @media (max-width: 900px) { .row-span-4 { grid-column: 1 / -1; } .row-span-2 { grid-column: span 6; } .outcomes { grid-template-columns: 1fr; } .flow-track { max-width: 100%; padding-right: 146px; } .summary-grid { grid-template-columns: 1fr; } .coach { top: 8px; } .brand-row { padding: 10px; } .ciaops-footer { padding: 10px; } .whatif-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 700px) { .toggle-grid, .whatif-grid { grid-template-columns: 1fr; } .whatif-preset { min-width: 0; max-width: none; width: 100%; } .whatif-controls, .validation-controls { width: 100%; } .whatif-controls > *, .validation-controls > * { width: 100%; } .flow-track { padding-right: 0; } .packet-trail { display: none; } .log-entry { grid-template-columns: 1fr; gap: 6px; } .log-tag { justify-self: start; } .toggles { grid-template-columns: 1fr; } .mfa-legend-row { grid-template-columns: 1fr; gap: 5px; } .mfa-legend-tag { width: fit-content; } }
+    @media (max-width: 520px) { .shell { width: min(100% - 20px, 1200px); margin: 10px auto; gap: 10px; } .panel { padding: 14px; border-radius: 12px; } .row-span-2 { grid-column: 1 / -1; } .brand-mark { min-width: 0; font-size: 0.76rem; } .brand-links { width: 100%; } .brand-link { flex: 1 1 calc(50% - 6px); justify-content: center; text-align: center; } .toggle { align-items: flex-start; } .validation-controls .btn-secondary, .signin-log-download, .coach-btn { min-width: 0; } .summary-head, .signin-log-head, .outcome-head, .coach-head, .story-head, .misconfig-head, .confidence-head, .validation-head { align-items: flex-start; flex-direction: column; } }
     @media (max-width: 780px) { .signin-log-table, .signin-log-table tbody, .signin-log-table tr, .signin-log-table th, .signin-log-table td { display: block; width: 100%; } .signin-log-table tr { border-bottom: 1px solid var(--cp-border); } .signin-log-table tr:last-child { border-bottom: 0; } .signin-log-table th { border-bottom: 0; padding-bottom: 2px; background: transparent; } .signin-log-table td { padding-top: 0; } .signin-log-detail-item { grid-template-columns: 1fr; gap: 2px; } }
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#simulationControls">Skip to simulation controls</a>
   <main class="shell">
     <section class="panel">
       <div class="brand-row" aria-label="CIAOPS branding">
@@ -467,7 +475,7 @@
     </section>
 
     <section class="panel">
-      <div class="controls">
+      <div class="controls" id="simulationControls" tabindex="-1">
         <div class="field row-span-4">
           <label for="scenario">Sign-In Scenario</label>
           <select id="scenario">
@@ -569,6 +577,7 @@
         <div class="field row-span-12">
           <span class="field-note" id="shareFeedback" aria-live="polite"></span>
         </div>
+        <div class="simulation-status" id="simulationStatus" role="status" aria-live="polite" aria-atomic="true">Ready to run a simulation.</div>
       </div>
 
       <section class="summary-card" id="summaryCard" aria-live="polite">
@@ -1570,6 +1579,7 @@
     const toggleGrid = document.getElementById("toggleGrid");
     const runBtn = document.getElementById("runBtn");
     const resetBtn = document.getElementById("resetBtn");
+    const simulationStatus = document.getElementById("simulationStatus");
     const shareLinkBtn = document.getElementById("shareLinkBtn");
     const copySummaryBtn = document.getElementById("copySummaryBtn");
     const surpriseBtn = document.getElementById("surpriseBtn");
@@ -3742,7 +3752,8 @@
 
     function scrollStageIntoView(stageEl) {
       if (!stageEl) return;
-      stageEl.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+      const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+      stageEl.scrollIntoView({ behavior, block: "start", inline: "nearest" });
     }
 
     flowTrack.addEventListener("click", (event) => {
@@ -3823,115 +3834,126 @@
       running = true;
       incrementRunCounters();
       runBtn.disabled = true;
-      clearVisualState();
-      const runState = serializeSimState();
-      const baseScenario = scenarios[scenarioSelect.value];
-      const scenarioKey = scenarioSelect.value;
-      const clientValue = clientSelect.value;
-      const clientAdjustedScenario = applyClientTypeOverrides(baseScenario, clientValue);
-      const whatIfParams = getWhatIfParameters();
-      const scenario = applyWhatIfOverrides(clientAdjustedScenario, whatIfParams);
-      const profileLabel = profileSelect.options[profileSelect.selectedIndex]?.text || profileSelect.value;
-      const selectedSettings = getSettings();
-      const selectedJourney = evaluateJourney(scenario, selectedSettings);
-      const compareKey = profiles[compareProfileSelect?.value] ? compareProfileSelect.value : "secure";
-      const compareSettings = Object.assign({}, profileBase, profiles[compareKey]);
-      const bestJourney = evaluateJourney(scenario, compareSettings);
-      const bestProfileLabel = compareProfileSelect?.options[compareProfileSelect.selectedIndex]?.text || "Secure baseline";
-      let currentRisk = getBaseThreatRisk(scenario);
-      const topLineReason = getTopLineOutcomeReason(scenario, selectedSettings, selectedJourney);
-      const clientLabel = getClientTypeLabel(clientValue);
-      const selectedInsight = topLineReason ? `${topLineReason} Current policy result for ${clientLabel}.` : `Current policy result for ${clientLabel}.`;
-      renderOutcome(selectedOutcome, `Scenario: ${scenario.name}`, selectedJourney, selectedInsight);
-      renderComparisonOutcome(comparisonOutcome, `Reference: ${bestProfileLabel}`, selectedJourney, bestJourney, scenario, selectedSettings, compareSettings, bestProfileLabel);
-      const story = buildOutcomeStory(scenarioKey, scenario, selectedJourney, profileLabel);
-      storyPill.className = `pill ${story.pillClass}`;
-      storyPill.textContent = story.pillText;
-      storyBody.textContent = story.body;
-      storyFootnote.textContent = story.footnote;
-      renderMisconfigCallouts(selectedSettings, scenario, selectedJourney);
-      renderConfidenceIndicators(selectedJourney, scenario, selectedSettings);
-      const runFindings = getMisconfigFindings(selectedSettings, scenario, selectedJourney);
-      const signInLogRecord = buildSimulatedSignInLogRecord(scenario, selectedSettings, selectedJourney, profileLabel, clientLabel, currentRisk, runState, whatIfParams);
-      renderSignInLogRecord(signInLogRecord);
-      updateThreatMeter(currentRisk, 0, "Initial risk based on the selected identity signals.");
-      eventLog.innerHTML = "";
-      appendLog("SCENARIO", scenario.name, "info");
-      if (whatIfParams.enabled) {
-        const whatIfSummary = [
-          `ip=${whatIfParams.ip || "inherit"}`,
-          `country=${whatIfParams.country}`,
-          `userType=${whatIfParams.userType}`,
-          `signInRisk=${whatIfParams.signInRisk}`,
-          `userRisk=${whatIfParams.userRisk}`,
-          `deviceState=${whatIfParams.deviceState}`,
-          `authType=${whatIfParams.authType}`,
-          `mfaMethod=${whatIfParams.mfaMethod}`,
-          `userRole=${whatIfParams.userRole}`,
-          `trustedNetwork=${whatIfParams.trustedNetwork}`
-        ].join(", ");
-        appendLog("WHAT-IF", whatIfSummary, "info");
-      }
-      const clientMessages = {
-        browser: "Browser client selected. Device trust depends on policy and available endpoint signals.",
-        mobile: "Mobile client selected. App-based controls may be required for stronger assurance.",
-        managedDevice: "Managed Windows client selected. Device compliance is treated as healthy unless What-If overrides it.",
-        mac: "Managed Mac client selected. Device compliance is treated as healthy unless What-If overrides it.",
-        unmanagedDevice: "Unmanaged device selected. Device is treated as non-compliant and potentially unsupported unless What-If overrides it."
-      };
-      appendLog("CLIENT", clientMessages[clientValue] || `Client type selected: ${clientLabel}.`, clientValue === "unmanagedDevice" ? "warn" : "info");
-      for (let index = 0; index < selectedJourney.results.length; index += 1) {
-        const item = selectedJourney.results[index];
-        const stageEl = document.getElementById(`stage-${item.stage}`);
-        const resultEl = document.getElementById(`result-${item.stage}`);
-        const nextItem = selectedJourney.results[index + 1];
-        const isTerminalStep = item.status === "block" || !nextItem;
-        packetTrail.classList.remove("moving");
-        void packetTrail.offsetWidth;
-        packetTrail.classList.add("moving");
-        stageEl.classList.add("active");
-        setStageAnalyzing(item.stage);
-        movePacketToStage(item.stage);
-        scrollStageIntoView(stageEl);
-        await stepDelay(650);
-        const threatDelta = getThreatDeltaForStage(item.stage, item.status, scenario, selectedSettings);
-        currentRisk = threatDelta <= -100 ? 0 : clampRisk(currentRisk + threatDelta);
-        stageEl.classList.remove("active");
-        stageEl.classList.add(item.status);
-        setStageDecisionVisual(item.stage, item.status);
-        setStageRule(item.stage, item.rule || "No specific rule fired", item.status);
-        setStageEvidence(item.stage, scenario, selectedSettings, item);
-        updateBadges(item.stage, item.status);
-        updateThreatMeter(currentRisk, threatDelta, item.text);
-        resultEl.classList.remove("result-pop");
-        void resultEl.offsetWidth;
-        resultEl.classList.add("result-pop");
-        resultEl.textContent = item.text;
-        const logTone = item.status === "pass" ? "good" : item.status === "warn" ? "warn" : item.status === "na" ? "muted" : "bad";
-        appendLog(formatStageLabel(item.stage), item.text, logTone);
-        if (isLearningMode()) {
-          setCoachStage(item.stage, item.status, nextItem?.stage, isTerminalStep, runFindings);
+      resetBtn.disabled = true;
+      simulationStatus.textContent = "Running sign-in simulation.";
+      try {
+        clearVisualState();
+        const runState = serializeSimState();
+        const baseScenario = scenarios[scenarioSelect.value];
+        const scenarioKey = scenarioSelect.value;
+        const clientValue = clientSelect.value;
+        const clientAdjustedScenario = applyClientTypeOverrides(baseScenario, clientValue);
+        const whatIfParams = getWhatIfParameters();
+        const scenario = applyWhatIfOverrides(clientAdjustedScenario, whatIfParams);
+        const profileLabel = profileSelect.options[profileSelect.selectedIndex]?.text || profileSelect.value;
+        const selectedSettings = getSettings();
+        const selectedJourney = evaluateJourney(scenario, selectedSettings);
+        const compareKey = profiles[compareProfileSelect?.value] ? compareProfileSelect.value : "secure";
+        const compareSettings = Object.assign({}, profileBase, profiles[compareKey]);
+        const bestJourney = evaluateJourney(scenario, compareSettings);
+        const bestProfileLabel = compareProfileSelect?.options[compareProfileSelect.selectedIndex]?.text || "Secure baseline";
+        let currentRisk = getBaseThreatRisk(scenario);
+        const topLineReason = getTopLineOutcomeReason(scenario, selectedSettings, selectedJourney);
+        const clientLabel = getClientTypeLabel(clientValue);
+        const selectedInsight = topLineReason ? `${topLineReason} Current policy result for ${clientLabel}.` : `Current policy result for ${clientLabel}.`;
+        renderOutcome(selectedOutcome, `Scenario: ${scenario.name}`, selectedJourney, selectedInsight);
+        renderComparisonOutcome(comparisonOutcome, `Reference: ${bestProfileLabel}`, selectedJourney, bestJourney, scenario, selectedSettings, compareSettings, bestProfileLabel);
+        const story = buildOutcomeStory(scenarioKey, scenario, selectedJourney, profileLabel);
+        storyPill.className = `pill ${story.pillClass}`;
+        storyPill.textContent = story.pillText;
+        storyBody.textContent = story.body;
+        storyFootnote.textContent = story.footnote;
+        renderMisconfigCallouts(selectedSettings, scenario, selectedJourney);
+        renderConfidenceIndicators(selectedJourney, scenario, selectedSettings);
+        const runFindings = getMisconfigFindings(selectedSettings, scenario, selectedJourney);
+        const signInLogRecord = buildSimulatedSignInLogRecord(scenario, selectedSettings, selectedJourney, profileLabel, clientLabel, currentRisk, runState, whatIfParams);
+        renderSignInLogRecord(signInLogRecord);
+        updateThreatMeter(currentRisk, 0, "Initial risk based on the selected identity signals.");
+        eventLog.innerHTML = "";
+        appendLog("SCENARIO", scenario.name, "info");
+        if (whatIfParams.enabled) {
+          const whatIfSummary = [
+            `ip=${whatIfParams.ip || "inherit"}`,
+            `country=${whatIfParams.country}`,
+            `userType=${whatIfParams.userType}`,
+            `signInRisk=${whatIfParams.signInRisk}`,
+            `userRisk=${whatIfParams.userRisk}`,
+            `deviceState=${whatIfParams.deviceState}`,
+            `authType=${whatIfParams.authType}`,
+            `mfaMethod=${whatIfParams.mfaMethod}`,
+            `userRole=${whatIfParams.userRole}`,
+            `trustedNetwork=${whatIfParams.trustedNetwork}`
+          ].join(", ");
+          appendLog("WHAT-IF", whatIfSummary, "info");
         }
-        await stepDelay(180);
-        if (item.status === "block") {
-          appendLog("STOP", "The session ended and access was denied.", "bad");
-          break;
+        const clientMessages = {
+          browser: "Browser client selected. Device trust depends on policy and available endpoint signals.",
+          mobile: "Mobile client selected. App-based controls may be required for stronger assurance.",
+          managedDevice: "Managed Windows client selected. Device compliance is treated as healthy unless What-If overrides it.",
+          mac: "Managed Mac client selected. Device compliance is treated as healthy unless What-If overrides it.",
+          unmanagedDevice: "Unmanaged device selected. Device is treated as non-compliant and potentially unsupported unless What-If overrides it."
+        };
+        appendLog("CLIENT", clientMessages[clientValue] || `Client type selected: ${clientLabel}.`, clientValue === "unmanagedDevice" ? "warn" : "info");
+        for (let index = 0; index < selectedJourney.results.length; index += 1) {
+          const item = selectedJourney.results[index];
+          const stageEl = document.getElementById(`stage-${item.stage}`);
+          const resultEl = document.getElementById(`result-${item.stage}`);
+          const nextItem = selectedJourney.results[index + 1];
+          const isTerminalStep = item.status === "block" || !nextItem;
+          simulationStatus.textContent = `Processing stage ${index + 1} of ${selectedJourney.results.length}: ${formatStageLabel(item.stage)}.`;
+          packetTrail.classList.remove("moving");
+          void packetTrail.offsetWidth;
+          packetTrail.classList.add("moving");
+          stageEl.classList.add("active");
+          setStageAnalyzing(item.stage);
+          movePacketToStage(item.stage);
+          scrollStageIntoView(stageEl);
+          await stepDelay(650);
+          const threatDelta = getThreatDeltaForStage(item.stage, item.status, scenario, selectedSettings);
+          currentRisk = threatDelta <= -100 ? 0 : clampRisk(currentRisk + threatDelta);
+          stageEl.classList.remove("active");
+          stageEl.classList.add(item.status);
+          setStageDecisionVisual(item.stage, item.status);
+          setStageRule(item.stage, item.rule || "No specific rule fired", item.status);
+          setStageEvidence(item.stage, scenario, selectedSettings, item);
+          updateBadges(item.stage, item.status);
+          updateThreatMeter(currentRisk, threatDelta, item.text);
+          resultEl.classList.remove("result-pop");
+          void resultEl.offsetWidth;
+          resultEl.classList.add("result-pop");
+          resultEl.textContent = item.text;
+          const logTone = item.status === "pass" ? "good" : item.status === "warn" ? "warn" : item.status === "na" ? "muted" : "bad";
+          appendLog(formatStageLabel(item.stage), item.text, logTone);
+          if (isLearningMode()) {
+            setCoachStage(item.stage, item.status, nextItem?.stage, isTerminalStep, runFindings);
+          }
+          await stepDelay(180);
+          if (item.status === "block") {
+            appendLog("STOP", "The session ended and access was denied.", "bad");
+            break;
+          }
         }
+        appendLog("INSIGHT", "Strong sign-in controls combine password quality, MFA strength, Conditional Access, and device trust to reduce account takeover risk.", "good");
+        lastRunSnapshot = {
+          state: runState,
+          scenarioName: scenario.name,
+          profileLabel,
+          clientLabel,
+          terminal: selectedJourney.terminal,
+          threatScore: currentRisk,
+          findings: runFindings,
+          signInLogRecord,
+          results: selectedJourney.results.map((item) => ({ stage: formatStageLabel(item.stage), status: item.status, text: item.text }))
+        };
+        simulationStatus.textContent = `Simulation complete. Outcome: ${selectedJourney.terminal}.`;
+      } catch (error) {
+        console.error("Sign-in simulation failed.", error);
+        simulationStatus.textContent = "The simulation stopped unexpectedly. Check the browser console for details.";
+      } finally {
+        runBtn.disabled = false;
+        resetBtn.disabled = false;
+        running = false;
       }
-      appendLog("INSIGHT", "Strong sign-in controls combine password quality, MFA strength, Conditional Access, and device trust to reduce account takeover risk.", "good");
-      lastRunSnapshot = {
-        state: runState,
-        scenarioName: scenario.name,
-        profileLabel,
-        clientLabel,
-        terminal: selectedJourney.terminal,
-        threatScore: currentRisk,
-        findings: runFindings,
-        signInLogRecord,
-        results: selectedJourney.results.map((item) => ({ stage: formatStageLabel(item.stage), status: item.status, text: item.text }))
-      };
-      runBtn.disabled = false;
-      running = false;
     }
 
     function formatStageLabel(stageKey) {
@@ -3957,19 +3979,23 @@
           // fall through to legacy fallback below
         }
       }
+      let textarea;
+      let previousFocus;
       try {
-        const textarea = document.createElement("textarea");
+        textarea = document.createElement("textarea");
+        previousFocus = document.activeElement;
         textarea.value = text;
         textarea.setAttribute("readonly", "");
         textarea.style.position = "fixed";
         textarea.style.opacity = "0";
         document.body.appendChild(textarea);
         textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
-        return true;
+        return document.execCommand("copy");
       } catch {
         return false;
+      } finally {
+        textarea?.remove();
+        if (previousFocus instanceof HTMLElement && previousFocus !== document.body) previousFocus.focus();
       }
     }
 
@@ -4095,6 +4121,7 @@
 
     function resetAll() {
       clearVisualState();
+      simulationStatus.textContent = "Ready to run a simulation.";
       selectedOutcome.textContent = "Run a simulation to populate outcomes.";
       comparisonOutcome.textContent = "Run a simulation to compare with the secure baseline.";
       renderSummary();
