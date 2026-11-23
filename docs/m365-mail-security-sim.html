@@ -130,7 +130,29 @@
     .brand-links {
       display: flex;
       flex-wrap: wrap;
+      align-items: center;
       gap: 6px;
+    }
+
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: auto;
+      width: auto;
+      border: 1px solid var(--cp-border-strong);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: var(--cp-text);
+      background: var(--cp-surface);
+      cursor: pointer;
+    }
+
+    .theme-toggle:hover {
+      border-color: var(--cp-accent);
+      background: var(--cp-accent-soft);
     }
 
     .brand-link {
@@ -360,16 +382,27 @@
 
     .toggles {
       display: grid;
-      grid-template-columns: repeat(2, minmax(180px, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
       margin-top: 12px;
       padding-top: 12px;
       border-top: 1px dashed var(--cp-border);
     }
 
+    .toggles-hint {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 0.78rem;
+      color: var(--cp-text-soft);
+    }
+
     .auth-signal-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(170px, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
       margin-top: 10px;
       padding-top: 10px;
@@ -407,10 +440,22 @@
       background: var(--cp-surface-soft);
       color: var(--cp-text-muted);
       font-size: 0.86rem;
+      cursor: pointer;
+      min-width: 0;
+    }
+
+    .toggle:hover {
+      border-color: var(--cp-border-strong);
+    }
+
+    .toggle.unavailable {
+      opacity: 0.58;
+      cursor: not-allowed;
     }
 
     .toggle input {
       accent-color: var(--cp-accent);
+      flex: 0 0 auto;
     }
 
     .mode-row {
@@ -703,6 +748,16 @@
       display: none;
     }
 
+    .sim-wrap.fast-mode .stage.active::before,
+    .sim-wrap.fast-mode .stage.active .stage-icon,
+    .sim-wrap.fast-mode .stage .result.result-pop {
+      animation-duration: 180ms;
+    }
+
+    .sim-wrap.fast-mode .stage.active .stage-icon {
+      animation-iteration-count: 1;
+    }
+
     .stage.active {
       border-color: var(--cp-accent);
       transform: translateY(-2px);
@@ -911,6 +966,17 @@
       z-index: 4;
     }
 
+    .sim-wrap.fast-mode .packet-trail {
+      transition-duration: 180ms;
+    }
+
+    .sim-wrap.fast-mode .packet-trail.moving .packet,
+    .sim-wrap.fast-mode .packet-trail.impact-good .packet,
+    .sim-wrap.fast-mode .packet-trail.impact-warn .packet,
+    .sim-wrap.fast-mode .packet-trail.impact-bad .packet {
+      animation-duration: 180ms;
+    }
+
     .packet-trail.moving .packet {
       animation: mailTravel 520ms ease;
     }
@@ -1093,13 +1159,13 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .stage,
-      .packet-trail,
-      .packet,
-      .auth-badge,
-      .stage .result {
-        animation: none !important;
-        transition: none !important;
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
       }
     }
 
@@ -1648,7 +1714,7 @@
       position: sticky;
       top: 12px;
       z-index: 4;
-      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+      box-shadow: var(--cp-shadow);
     }
 
     .coach-head {
@@ -1774,6 +1840,62 @@
         padding: 10px;
       }
     }
+
+    @media (max-width: 640px) {
+      .shell {
+        width: calc(100% - 20px);
+        margin: 12px auto;
+      }
+
+      .panel {
+        padding: 14px;
+      }
+
+      .toggles {
+        grid-template-columns: 1fr;
+      }
+
+      .flow-track {
+        padding-right: 0;
+      }
+
+      .packet-trail {
+        position: sticky;
+        top: 8px;
+        transform: none !important;
+        transition: none !important;
+        margin-bottom: 10px;
+        padding: 8px 10px;
+        border: 1px solid var(--cp-border);
+        border-radius: 12px;
+        background: var(--cp-panel-strong);
+        box-shadow: var(--cp-shadow);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        pointer-events: auto;
+      }
+
+      .auth-badges {
+        margin-top: 0;
+      }
+
+      .threat-meter {
+        margin-top: 0;
+        width: 100%;
+      }
+
+      .bar-row {
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .bar-row > span:first-child {
+        flex: 1 1 auto;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1786,6 +1908,7 @@
           <a class="brand-link" href="https://github.com/directorcia/Office365/wiki/Exchange-Online-and-Defender-for-Office-365-Policy-Flow-Simulation-Guide" target="_blank" rel="noopener noreferrer">Simulation Guide</a>
           <a class="brand-link" href="https://github.com/directorcia/Office365" target="_blank" rel="noopener noreferrer">GitHub Scripts</a>
           <a class="brand-link" href="https://www.ciaopspatron.com/" target="_blank" rel="noopener noreferrer">CIAOPS Patron</a>
+          <button type="button" class="theme-toggle" id="themeToggleBtn" aria-label="Toggle color theme">Theme</button>
         </nav>
       </div>
       <h1>Exchange Online + Defender for Office 365 Policy Flow Simulator</h1>
@@ -1878,6 +2001,9 @@
       </section>
 
       <div class="toggles" id="toggleGrid">
+        <div class="toggles-hint" id="togglesHint">
+          <span>Tip: Toggle any control below to automatically switch to Custom profile.</span>
+        </div>
         <label class="toggle"><input type="checkbox" data-key="enforceSpf"> SPF enforcement</label>
         <label class="toggle"><input type="checkbox" data-key="enforceDkim"> DKIM enforcement</label>
         <label class="toggle"><input type="checkbox" data-key="enforceDmarc"> DMARC enforcement</label>
@@ -2684,6 +2810,7 @@
     };
 
     const flowTrack = document.getElementById("flowTrack");
+    const simWrap = document.getElementById("simWrap");
     const packetTrail = document.getElementById("packetTrail");
     const authBadges = document.getElementById("authBadges");
     const badgeSpf = document.getElementById("badge-spf");
@@ -2733,6 +2860,27 @@
     const referenceHub = document.getElementById("referenceHub");
     const ciaopsYear = document.getElementById("ciaopsYear");
     const footerVersion = document.getElementById("footerVersion");
+    const themeToggleBtn = document.getElementById("themeToggleBtn");
+    const togglesHint = document.getElementById("togglesHint");
+
+    function updateThemeToggleLabel() {
+      if (!themeToggleBtn) return;
+      const currentTheme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+      themeToggleBtn.textContent = currentTheme === "dark" ? "☀ Light theme" : "🌙 Dark theme";
+      themeToggleBtn.setAttribute(
+        "aria-label",
+        `Switch to ${currentTheme === "dark" ? "light" : "dark"} theme`
+      );
+    }
+
+    if (themeToggleBtn) {
+      updateThemeToggleLabel();
+      themeToggleBtn.addEventListener("click", () => {
+        const nextTheme = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", nextTheme);
+        updateThemeToggleLabel();
+      });
+    }
 
     if (ciaopsYear) {
       ciaopsYear.textContent = String(new Date().getFullYear());
@@ -2755,6 +2903,7 @@
     let running = false;
     let learningContinueResolver = null;
     let lastRunReport = null;
+    let currentPacketStageKey = stages[0].key;
 
     function setReportActionsEnabled(enabled) {
       copyReportBtn.disabled = !enabled;
@@ -2928,12 +3077,43 @@
       return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
+    function prefersReducedMotion() {
+      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    }
+
     function isLearningMode() {
       return simMode.value === "learning";
     }
 
     function syncModeUI() {
-      coachPanel.style.display = isLearningMode() ? "grid" : "none";
+      const learningMode = isLearningMode();
+      coachPanel.style.display = learningMode ? "grid" : "none";
+      simWrap.classList.toggle("fast-mode", !learningMode);
+    }
+
+    function setSimulationRunning(isRunning) {
+      [
+        scenarioSelect,
+        profileSelect,
+        licenseSelect,
+        spfSignalSelect,
+        dkimSignalSelect,
+        dmarcSignalSelect,
+        dmarcPolicySelect,
+        simMode,
+        resetBtn,
+        ...toggleGrid.querySelectorAll("input")
+      ].forEach((control) => {
+        control.disabled = isRunning;
+      });
+
+      runBtn.disabled = isRunning;
+      runBtn.textContent = isRunning ? "Running simulation..." : "Run Simulation";
+      runBtn.setAttribute("aria-busy", String(isRunning));
+
+      if (!isRunning) {
+        syncTogglesFromProfile();
+      }
     }
 
     function setCoachIdle() {
@@ -3592,7 +3772,7 @@
           <div class="stage-meter"><div class="stage-meter-fill" id="meter-${stage.key}"></div></div>
           <div class="result" id="result-${stage.key}">Awaiting simulation...</div>
           <div class="stage-actions">
-            <button type="button" class="evidence-toggle" id="whybtn-${stage.key}" aria-expanded="false" disabled>Show me why</button>
+            <button type="button" class="evidence-toggle" id="whybtn-${stage.key}" aria-expanded="false" aria-controls="whypanel-${stage.key}" disabled>Show me why</button>
           </div>
           <div class="evidence-box" id="whypanel-${stage.key}">Decision evidence will appear after this stage runs.</div>
         `;
@@ -3831,11 +4011,23 @@
         const requiredFeature = toggleLicenseRequirements[box.dataset.key];
         const unavailableInLicense = requiredFeature ? !hasLicenseFeature(selectedLicense, requiredFeature) : false;
         box.checked = !!settings[box.dataset.key];
-        box.disabled = usingPreset || unavailableInLicense;
+        box.disabled = running || unavailableInLicense;
+        const labelEl = box.closest(".toggle");
+        if (labelEl) {
+          labelEl.classList.toggle("unavailable", unavailableInLicense);
+          labelEl.title = unavailableInLicense
+            ? "Unavailable in the selected licence"
+            : "";
+        }
       });
       if (dmarcPolicySelect) {
         dmarcPolicySelect.value = getEffectiveDmarcPolicy(settings);
-        dmarcPolicySelect.disabled = usingPreset || !settings.enforceDmarc;
+        dmarcPolicySelect.disabled = running || !settings.enforceDmarc;
+      }
+      if (togglesHint) {
+        togglesHint.textContent = usingPreset
+          ? "Tip: Toggle any licensed control below to customize and switch Policy Profile to Custom."
+          : "Custom profile active: licensed policy controls below can be toggled freely.";
       }
 
       renderProfileHint();
@@ -4233,10 +4425,17 @@
     }
 
     function movePacketToStage(stageId) {
-      const stage = document.getElementById("stage-" + stageId);
-      const wrapRect = document.getElementById("simWrap").getBoundingClientRect();
+      currentPacketStageKey = stageId || stages[0].key;
+      if (window.matchMedia("(max-width: 640px)").matches) {
+        packetTrail.style.transform = "";
+        return;
+      }
+      const stage = document.getElementById("stage-" + currentPacketStageKey);
+      if (!stage) return;
+      const wrapRect = simWrap.getBoundingClientRect();
       const stageRect = stage.getBoundingClientRect();
-      const x = stageRect.right - wrapRect.left + 10 + document.getElementById("simWrap").scrollLeft;
+      const desiredX = stageRect.right - wrapRect.left + 10 + simWrap.scrollLeft;
+      const x = Math.max(0, Math.min(desiredX, wrapRect.width - packetTrail.offsetWidth - 2));
       const y = stageRect.top - wrapRect.top + 8;
       packetTrail.style.transform = `translate(${x}px, ${y}px)`;
     }
@@ -4432,20 +4631,23 @@
     async function runSimulation() {
       if (running) return;
       running = true;
-      runBtn.disabled = true;
+      setSimulationRunning(true);
       const learningMode = isLearningMode();
+      setReportActionsEnabled(false);
+      lastRunReport = null;
 
-      clearVisualState();
-      const scenarioBase = scenarios[scenarioSelect.value];
-      const scenario = applyAuthSignalOverrides(scenarioBase);
-      const scenarioKey = scenarioSelect.value;
-      const profileValue = profileSelect.value;
-      const profileLabel = profileSelect.options[profileSelect.selectedIndex]?.text || profileSelect.value;
-      const selectedLicense = licenseSelect.value;
-      const selectedSettings = applyLicenseToSettings(getSettings(), selectedLicense);
-      const selectedJourney = evaluateJourney(scenario, selectedSettings, selectedLicense);
-      const bestJourney = evaluateJourney(scenario, profiles.strict, "m365E5");
-      let currentThreatRisk = getBaseThreatRisk(scenario);
+      try {
+        clearVisualState();
+        const scenarioBase = scenarios[scenarioSelect.value];
+        const scenario = applyAuthSignalOverrides(scenarioBase);
+        const scenarioKey = scenarioSelect.value;
+        const profileValue = profileSelect.value;
+        const profileLabel = profileSelect.options[profileSelect.selectedIndex]?.text || profileSelect.value;
+        const selectedLicense = licenseSelect.value;
+        const selectedSettings = applyLicenseToSettings(getSettings(), selectedLicense);
+        const selectedJourney = evaluateJourney(scenario, selectedSettings, selectedLicense);
+        const bestJourney = evaluateJourney(scenario, profiles.strict, "m365E5");
+        let currentThreatRisk = getBaseThreatRisk(scenario);
 
       const preventionGain = levelToScore(bestJourney.prevented) - levelToScore(selectedJourney.prevented);
       const exposureReduction = levelToScore(selectedJourney.userExposure) - levelToScore(bestJourney.userExposure);
@@ -4509,8 +4711,8 @@
         stageEl.classList.add("active");
         setStageAnalyzing(item.stage);
         movePacketToStage(item.stage);
-        scrollStageIntoView(stageEl, learningMode ? "smooth" : "smooth");
-        await new Promise((resolve) => setTimeout(resolve, 650));
+        scrollStageIntoView(stageEl, prefersReducedMotion() ? "auto" : "smooth");
+        await delay(prefersReducedMotion() ? 0 : learningMode ? 650 : 180);
 
         const threatDelta = getThreatDeltaForStage(item.stage, item.status, scenario, selectedSettings);
         currentThreatRisk = threatDelta <= -100 ? 0 : clampRisk(currentThreatRisk + threatDelta);
@@ -4539,7 +4741,7 @@
           break;
         }
 
-        await delay(learningMode ? 180 : 140);
+        await delay(prefersReducedMotion() ? 0 : learningMode ? 180 : 40);
       }
 
       appendLog(
@@ -4556,9 +4758,11 @@
         selectedJourney,
         currentThreatRisk
       );
-      setReportActionsEnabled(true);
-      runBtn.disabled = false;
-      running = false;
+        setReportActionsEnabled(true);
+      } finally {
+        running = false;
+        setSimulationRunning(false);
+      }
     }
 
     function resetAll(resetAuthSignals = false) {
@@ -4577,15 +4781,26 @@
       setReportActionsEnabled(false);
     }
 
-    profileSelect.addEventListener("change", syncTogglesFromProfile);
-    licenseSelect.addEventListener("change", syncTogglesFromProfile);
+    profileSelect.addEventListener("change", () => {
+      syncTogglesFromProfile();
+      resetAll();
+    });
+    licenseSelect.addEventListener("change", () => {
+      syncTogglesFromProfile();
+      resetAll();
+    });
     toggleGrid.addEventListener("change", (event) => {
       const target = event.target;
       if (!(target instanceof HTMLInputElement)) return;
-      if (profileSelect.value !== "custom") return;
-      if (target.dataset.key !== "enforceDmarc") return;
+      if (profileSelect.value !== "custom") {
+        profileSelect.value = "custom";
+        renderProfileHint();
+        if (togglesHint) {
+          togglesHint.textContent = "Custom profile active: licensed policy controls below can be toggled freely.";
+        }
+      }
 
-      if (dmarcPolicySelect) {
+      if (target.dataset.key === "enforceDmarc" && dmarcPolicySelect) {
         if (target.checked) {
           if (dmarcPolicySelect.value === "none") {
             dmarcPolicySelect.value = "quarantine";
@@ -4598,14 +4813,23 @@
       }
       resetAll();
     });
-    dmarcPolicySelect.addEventListener("change", resetAll);
+    dmarcPolicySelect.addEventListener("change", () => {
+      if (profileSelect.value !== "custom") {
+        profileSelect.value = "custom";
+        renderProfileHint();
+        if (togglesHint) {
+          togglesHint.textContent = "Custom profile active: licensed policy controls below can be toggled freely.";
+        }
+      }
+      resetAll();
+    });
     scenarioSelect.addEventListener("change", () => {
       updateInheritedSignalLabels();
       resetAll();
     });
-    spfSignalSelect.addEventListener("change", resetAll);
-    dkimSignalSelect.addEventListener("change", resetAll);
-    dmarcSignalSelect.addEventListener("change", resetAll);
+    spfSignalSelect.addEventListener("change", () => resetAll());
+    dkimSignalSelect.addEventListener("change", () => resetAll());
+    dmarcSignalSelect.addEventListener("change", () => resetAll());
     simMode.addEventListener("change", syncModeUI);
     runBtn.addEventListener("click", runSimulation);
     resetBtn.addEventListener("click", () => resetAll(true));
@@ -4617,7 +4841,7 @@
         runSimulation();
       }
     });
-    window.addEventListener("resize", () => movePacketToStage(stages[0].key));
+    window.addEventListener("resize", () => movePacketToStage(currentPacketStageKey));
 
     buildStages();
     renderReferenceHub();
