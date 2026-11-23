@@ -1315,6 +1315,112 @@ Assert-True ($labelAdvanced.LabelPoliciesPublished -ne 0) 'A missing label count
             $possibleEvidence = Get-ReadinessEvidence
             Assert-Equal $possibleEvidence.DomainScores.ContentExposure 0 'Tenant settings that allow anyone links still score as present.'
         }
+
+        It 'scores phishing-resistant MFA for enabled members and reports PIM without failing the run' {
+            $directoryUsers = [System.Collections.Generic.List[object]]::new()
+            foreach ($index in 1..10) {
+                $directoryUsers.Add([pscustomobject]@{ id = "member-$index"; userType = 'Member'; accountEnabled = $true }) | Out-Null
+            }
+            $directoryUsers.Add([pscustomobject]@{ id = 'guest-user'; userType = 'Guest'; accountEnabled = $true }) | Out-Null
+            $directoryUsers.Add([pscustomobject]@{ id = 'disabled-member'; userType = 'Member'; accountEnabled = $false }) | Out-Null
+            $script:GraphUsersCache = @{ base = $directoryUsers.ToArray() }
+            $registration = @(
+                [pscustomobject]@{ id = 'member-1'; userType = 'member'; methodsRegistered = @('fido2') }
+                [pscustomobject]@{ id = 'member-2'; userType = 'member'; methodsRegistered = @('x509Certificate') }
+                [pscustomobject]@{ id = 'member-3'; userType = 'member'; methodsRegistered = @('microsoftAuthenticatorPush') }
+                [pscustomobject]@{ id = 'guest-user'; userType = 'guest'; methodsRegistered = @('windowsHelloForBusiness') }
+                [pscustomobject]@{ id = 'disabled-member'; userType = 'member'; methodsRegistered = @('passKeyDeviceBoundAuthenticator') }
+            )
+
+            $coverage = Get-PhishingResistantMfaCoverageResult -RegistrationDetails $registration
+            Assert-Equal $coverage.UserCount 2 'Only enabled members with a phishing-resistant method are counted.'
+            Assert-Equal $coverage.Denominator 10 'The denominator is the enabled member count.'
+            Assert-Equal $coverage.Coverage 20 '2 of 10 enabled members is 20 percent.'
+
+            $script:Report = [ordered]@{ Errors = [System.Collections.Generic.List[object]]::new() }
+            $script:GraphReportDiagnostics = [System.Collections.Generic.List[object]]::new()
+            $denied = Get-PhishingResistantMfaCoverageResult -FailureReason 'HTTP 403. UserAuthenticationMethod.Read.All or AuditLog.Read.All is required.'
+            Assert-Equal $denied.Coverage 'not collected' 'A 403 leaves phishing-resistant coverage not collected.'
+            Assert-True ($denied.Reason -match 'HTTP 403') 'The permission failure is the reason.'
+            Assert-Equal @($script:Report.Errors).Count 0 'The diagnostic does not become a collector error.'
+            Assert-Equal (Get-ExportExitCode -FailedCollectorCount @($script:Report.Errors).Count -ProcessedSectionCount 8 -FailOnCollectorError $true) 0 'FailOnCollectorError does not fail the run for this diagnostic.'
+
+            function Get-GraphRestAll {
+                param([string]$Uri, [hashtable]$Query = @{}, [switch]$BypassCache)
+                if ($Uri -match 'roleEligibilitySchedules$') {
+                    $script:GraphLastHttpStatus = 200
+                    $script:GraphLastErrorMessage = $null
+                    return @(
+                        [pscustomobject]@{ roleDefinitionId = '62e90394-69f5-4237-9190-012177145e10'; principalId = 'admin' }
+                        [pscustomobject]@{ roleDefinitionId = '11111111-1111-1111-1111-111111111111'; principalId = 'other' }
+                    )
+                }
+                if ($Uri -match 'roleAssignmentSchedules') {
+                    $script:GraphLastHttpStatus = 403
+                    $script:GraphLastErrorMessage = 'Authorization_RequestDenied'
+                    return @()
+                }
+                if ($Uri -match 'roleAssignments') {
+                    $script:GraphLastHttpStatus = 200
+                    $script:GraphLastErrorMessage = $null
+                    return @([pscustomobject]@{ roleDefinitionId = '194ae4cb-b126-40b2-bd5b-6091b380977d' })
+                }
+                $script:GraphLastHttpStatus = 200
+                return @()
+            }
+            $pim = Get-PimDirectorySignal
+            Assert-Equal $pim.Signal 'in use' 'An eligible privileged assignment means PIM is in use.'
+            Assert-Equal $pim.EligibleAssignmentCount 2 'Both eligibility schedules are counted.'
+            Assert-Equal $pim.PrivilegedRoleEligibleCount 1 'Only the Global Administrator schedule is a privileged role.'
+            Assert-Equal $pim.PermanentPrivilegedAssignmentCount 1 'The Security Administrator role assignment is permanent and privileged.'
+            Assert-Equal $pim.ActiveAssignmentScheduleCount 'not collected' 'A denied assignment-schedule read stays not collected.'
+            Assert-Equal @($script:Report.Errors).Count 0 'A denied optional PIM read does not fail the run.'
+
+            function Get-GraphRestAll {
+                param([string]$Uri, [hashtable]$Query = @{}, [switch]$BypassCache)
+                $script:GraphLastHttpStatus = 400
+                $script:GraphLastErrorMessage = 'AadPremiumLicenseRequired'
+                $script:GraphLastErrorCode = 'AadPremiumLicenseRequired'
+                return @()
+            }
+            $unlicensed = Get-PimDirectorySignal
+            Assert-Equal $unlicensed.Signal 'not collected' 'A tenant without Entra ID P2 does not report a false PIM signal.'
+            Assert-True ($unlicensed.Reason -match 'AadPremiumLicenseRequired') 'The license error is the reason.'
+            Assert-Equal @($script:Report.Errors).Count 0 'The PIM license error stays a diagnostic.'
+
+            $script:Report = [ordered]@{
+                ReadinessFlags = [ordered]@{
+                    MfaRegisteredPercent = 'not collected'
+                    MfaRegisteredEnabledMemberPercent = 'not collected'
+                    CaPoliciesEnabled = 'not collected'
+                    SensitivityLabelsPublished = 'not collected'
+                    OneDrivePersonalSiteSharePercent = 'not collected'
+                    RestrictedSearchEnabled = 'not collected'
+                    ActiveUsersInReportPeriodPercent = 'not collected'
+                }
+                Identity = [ordered]@{ Status = 'reported' }
+                ConditionalAccess = [ordered]@{ Status = 'reported' }
+                DataGovernance = [ordered]@{ Status = 'reported' }
+                SharePointOneDrive = [ordered]@{ Status = 'reported' }
+                AdoptionSignals = [ordered]@{ Status = 'reported' }
+                IdentityAccessAdvanced = [ordered]@{
+                    Status = 'reported'
+                    PhishingResistantMfaCoverage = $coverage.Coverage
+                    PimSignal = $pim.Signal
+                }
+                DataProtectionAdvanced = [ordered]@{ Status = 'reported' }
+                SharePointExposureAdvanced = [ordered]@{ Status = 'reported' }
+                AppGovernanceAdvanced = [ordered]@{ Status = 'reported' }
+                EndpointAppAdvanced = [ordered]@{ Status = 'reported' }
+                AdoptionAdvanced = [ordered]@{ Status = 'reported' }
+            }
+            $script:ScoringModel = $null
+            $evidence = Get-ReadinessEvidence
+            Assert-Equal $evidence.IdentityScoreInputs.AdvancedMfaCoveragePercent 20 'The advanced MFA score input is the phishing-resistant percent.'
+            Assert-Equal $evidence.DomainScores.IdentityAccess 100 '20 percent meets the advanced MFA threshold and earns that weight.'
+            Assert-Equal $evidence.DataCompleteness.MeasuredMetricWeight 30 'The existing advanced MFA weight is measured.'
+            Assert-Equal $evidence.DataCompleteness.PossibleMetricWeight 500 'PIM does not add a new scoring weight.'
+        }
     }
 }
 
