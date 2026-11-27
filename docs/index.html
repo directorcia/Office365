@@ -790,6 +790,14 @@
         group: "Simulator",
         intensity: 86,
         tags: ["licensing", "security", "compliance"]
+      },
+      {
+        path: "grow-bugs.html",
+        title: "Grow Bugs",
+        summary: "Watch randomly generated bugs explore a habitat, find food, and survive as long as they can.",
+        group: "Simulator",
+        intensity: 60,
+        tags: ["nature", "bugs", "simulation"]
       }
     ];
 
@@ -810,7 +818,9 @@
       title: item.title,
       summary: item.summary,
       ext: extOf(item.path),
-      group: item.group
+      group: item.group,
+      intensity: item.intensity,
+      tags: item.tags
     }));
 
     const groupSelect = document.getElementById("groupSelect");
