@@ -111,6 +111,8 @@
     .legend-dot.hungry { background: var(--cp-warning); }
     .legend-dot.starving { background: var(--cp-danger); }
     .legend-dot.food { background: var(--cp-link); width: 7px; height: 7px; }
+    .legend-dot.shelter { background: var(--cp-success); border: 2px solid var(--cp-border-strong); width: 9px; height: 9px; }
+    .legend-dot.predator { background: var(--cp-text); }
     .side-card { padding: 22px; display: flex; flex-direction: column; }
     .section-label { color: var(--cp-text-soft); margin: 0; }
     .elapsed-number { font-size: 32px; font-weight: 700; letter-spacing: -.04em; margin: 12px 0 3px; font-variant-numeric: tabular-nums; }
@@ -204,6 +206,8 @@
             <span class="legend-item"><span class="legend-dot hungry"></span> Hungry</span>
             <span class="legend-item"><span class="legend-dot starving"></span> Near starvation</span>
             <span class="legend-item"><span class="legend-dot food"></span> Food</span>
+            <span class="legend-item"><span class="legend-dot shelter"></span> Shelter</span>
+            <span class="legend-item"><span class="legend-dot predator"></span> Predator</span>
           </div>
           <span>Each dot has a story.</span>
         </div>
@@ -222,13 +226,15 @@
       <aside class="side-card" aria-label="Simulation statistics">
         <p class="section-label">Time elapsed</p>
         <div class="elapsed-number"><span id="elapsed">0.0</span>s</div>
-        <div class="small">Average time until starvation: <span id="average-life">15.0</span>s</div>
-        <div class="progress" role="progressbar" aria-label="Average time until starvation" aria-valuemin="0" aria-valuemax="15" aria-valuenow="15"><span id="progress"></span></div>
+        <div class="small">Average health: <span id="average-life">15.0</span></div>
+        <div class="progress" role="progressbar" aria-label="Average bug health relative to one food portion" aria-valuemin="0" aria-valuemax="15" aria-valuenow="15"><span id="progress"></span></div>
         <div class="stats">
           <div class="stat"><span>Living bugs</span><strong id="bugs">0</strong></div>
           <div class="stat"><span>Food left</span><strong id="food">0</strong></div>
           <div class="stat"><span>Bugs replaced</span><strong id="replaced">0</strong></div>
           <div class="stat"><span>Contact births</span><strong id="contact-births">0</strong></div>
+          <div class="stat"><span>Starvation</span><strong id="starvation-deaths">0</strong></div>
+          <div class="stat"><span>Predation</span><strong id="predation-deaths">0</strong></div>
         </div>
         <div class="side-foot">
           <p class="section-label">Selected bug</p>
@@ -248,7 +254,7 @@
         <label class="control">Starting food (0–300)
           <input id="start-food" type="number" min="0" max="300" step="1" placeholder="Random: 90–150">
         </label>
-        <label class="control">Time without food (5–120 seconds)
+        <label class="control">Starting health / value of each food (5–120)
           <input id="bug-lifetime" type="number" min="5" max="120" step="1" value="15" required>
         </label>
         <label class="control">Simulation speed
@@ -266,7 +272,13 @@
         <label class="control">Renewal interval (1–120 seconds)
           <input id="renewal-interval" type="number" min="1" max="120" step="1" value="15" required>
         </label>
-        <label class="control check"><input id="evolution" type="checkbox"> Enable evolution</label>
+        <label class="control check"><input id="evolution" type="checkbox"> Mutate inherited genes</label>
+        <label class="control">Terrain
+          <select id="terrain-mode"><option value="mixed">Walls, obstacles & shelters</option><option value="open">Open habitat</option></select>
+        </label>
+        <label class="control">Predators (0–8)
+          <input id="predator-count" type="number" min="0" max="8" step="1" value="2" required>
+        </label>
       </div>
       <div class="settings-actions">
         <button type="submit">Replay seed</button>
@@ -277,18 +289,21 @@
 
     <section class="charts" aria-label="Simulation statistics over time">
       <h2 class="section-heading">Life over time</h2>
-      <p class="small">Points are sampled every 5 simulation seconds (the last sample may be shorter). Survival is the percentage of bugs present at the previous sample that are still alive; speed is the average of living bugs. The most recent 120 samples are shown.</p>
+      <p class="small">Points are sampled every 5 simulation seconds (the last sample may be shorter). Population shows births, starvation, and the living count; generations shows average generation depth. The selection card reports changes from the first surviving sample.</p>
       <div class="chart-grid">
         <article class="chart"><h3>Survival</h3><p class="small" id="survival-summary">No samples yet.</p><canvas id="survival-chart" width="300" height="120" role="img" aria-label="Survival percentage over time"></canvas></article>
         <article class="chart"><h3>Average speed</h3><p class="small" id="speed-summary">No samples yet.</p><canvas id="speed-chart" width="300" height="120" role="img" aria-label="Average speed of living bugs over time"></canvas></article>
         <article class="chart"><h3>Food consumed</h3><p class="small" id="food-summary">No samples yet.</p><canvas id="food-chart" width="300" height="120" role="img" aria-label="Food consumed over time"></canvas></article>
+        <article class="chart"><h3>Population</h3><p class="small" id="population-summary">No samples yet.</p><canvas id="population-chart" width="300" height="120" role="img" aria-label="Population, births, and starvation over time"></canvas></article>
+        <article class="chart"><h3>Generations</h3><p class="small" id="generation-summary">No samples yet.</p><canvas id="generation-chart" width="300" height="120" role="img" aria-label="Average generation over time"></canvas></article>
+        <article class="chart"><h3>Natural selection</h3><p class="small" id="selection-summary">Collecting trait data.</p><canvas id="selection-chart" width="300" height="120" role="img" aria-label="Change in average speed and turn rate over time"></canvas></article>
       </div>
     </section>
 
     <section class="notes" aria-label="How the simulation works">
       <div><span class="note-number">01 / EXPLORE</span><p class="note-title">A repeatable beginning</p><p class="note-copy">Leave starting counts blank for random amounts. A seed and the same settings recreate the same world.</p></div>
-      <div><span class="note-number">02 / SURVIVE</span><p class="note-title">Find a little food</p><p class="note-copy">A bug stays green while at least 75% of its time remains, then fades through amber to red. Eating blue food resets its time and color, and it grows a little while keeping its movement traits.</p></div>
-      <div><span class="note-number">03 / BEGIN AGAIN</span><p class="note-title">Life finds a way</p><p class="note-copy">Two green bugs produce a child when they first touch, once per encounter; newborns must separate before making contact births. Starved bugs are replaced while others survive. Evolution gives children and replacements inherited, mutated traits. The population is capped at 100; food is capped at 300. If all bugs die at once, the simulation ends.</p></div>
+      <div><span class="note-number">02 / SURVIVE</span><p class="note-title">Build up some health</p><p class="note-copy">Health starts at one food portion and drains continuously. Every blue food pill adds another full portion, so a well-fed bug can survive far longer. Bugs turn amber and red as their final portion runs low.</p></div>
+      <div><span class="note-number">03 / BEGIN AGAIN</span><p class="note-title">Life finds a way</p><p class="note-copy">Two green bugs need stored meals to produce a child. That child inherits speed and turning genes from one parent, with an independent mutation only when enabled. Every lineage therefore evolves separately; walls, food, and predators select which traits persist.</p></div>
     </section>
     <p class="bottom">A simple simulation, not a scientific model.</p>
   </main>
@@ -317,6 +332,8 @@
       const foodEl = document.getElementById("food");
       const replacedEl = document.getElementById("replaced");
       const contactBirthsEl = document.getElementById("contact-births");
+      const starvationDeathsEl = document.getElementById("starvation-deaths");
+      const predationDeathsEl = document.getElementById("predation-deaths");
       const progress = document.getElementById("progress");
       const progressBar = progress.parentElement;
       const colors = getComputedStyle(document.documentElement);
@@ -338,8 +355,9 @@
       let randomValue;
       const random = (min, max) => min + randomValue() * (max - min);
       const randomInt = (min, max) => Math.floor(random(min, max + 1));
-      let bugs, food, elapsedSteps, replaced, contactBirths, activeContacts, state, lastTime, accumulator;
-      let config, nextId, selectedId, eatenSinceSample, sampleCohort, sampleStartCount, history;
+      let bugs, food, predators, terrain, elapsedSteps, replaced, contactBirths, starvationDeaths, predationDeaths;
+      let activeContacts, state, lastTime, accumulator, birthsSinceSample, starvationSinceSample, predationSinceSample;
+      let config, nextId, selectedId, eatenSinceSample, sampleCohort, sampleStartCount, history, baselineTraits;
 
       function seededRandom(seed) {
         let value = 2166136261;
@@ -358,30 +376,106 @@
         return Math.floor(Math.random() * 4294967296).toString(36);
       }
 
+      function pointInCircle(x, y, circle, margin = 0) {
+        return Math.hypot(x - circle.x, y - circle.y) < circle.r + margin;
+      }
+
+      function pointInRect(x, y, rect, margin = 0) {
+        const nearestX = Math.max(rect.x, Math.min(x, rect.x + rect.w));
+        const nearestY = Math.max(rect.y, Math.min(y, rect.y + rect.h));
+        return Math.hypot(x - nearestX, y - nearestY) < margin;
+      }
+
+      function isBlocked(x, y, radius) {
+        return terrain.walls.some((rect) => pointInRect(x, y, rect, radius))
+          || terrain.obstacles.some((circle) => pointInCircle(x, y, circle, radius));
+      }
+
+      function inShelter(bug) {
+        return terrain.shelters.some((shelter) => pointInCircle(bug.x, bug.y, shelter));
+      }
+
+      function randomPoint(radius = 12) {
+        for (let attempt = 0; attempt < 80; attempt++) {
+          const point = { x: random(16, width - 16), y: random(16, height - 16) };
+          if (!isBlocked(point.x, point.y, radius)) return point;
+        }
+        return { x: 24, y: 24 };
+      }
+
+      function buildTerrain() {
+        if (document.getElementById("terrain-mode").value === "open") {
+          return { walls: [], obstacles: [], shelters: [], foodZones: [] };
+        }
+        const walls = [
+          { x: 265 + random(-18, 18), y: 100, w: 18, h: 170 },
+          { x: 665 + random(-18, 18), y: 290, w: 18, h: 170 },
+          { x: 390, y: 420 + random(-12, 12), w: 190, h: 18 }
+        ];
+        const obstacles = [
+          { x: 485 + random(-20, 20), y: 145 + random(-15, 15), r: 30 },
+          { x: 155 + random(-15, 15), y: 405 + random(-12, 12), r: 26 },
+          { x: 795 + random(-15, 15), y: 125 + random(-12, 12), r: 22 }
+        ];
+        const shelters = [
+          { x: 110, y: 100, r: 45 },
+          { x: 830, y: 455, r: 45 }
+        ];
+        const foodZones = [
+          { x: 450, y: 285, r: 90 },
+          { x: 850, y: 110, r: 65 }
+        ];
+        return { walls, obstacles, shelters, foodZones };
+      }
+
       function newBug(parent) {
+        const spawn = randomPoint(13);
+        const angle = random(0, Math.PI * 2);
+        const speedMutation = parent && config.evolution ? random(.9, 1.1) : 1;
+        const turnMutation = parent && config.evolution ? random(.9, 1.1) : 1;
+        const speed = parent ? Math.max(12, Math.min(110, parent.genes.speed * speedMutation)) : random(24, 76);
+        const turnSpeed = parent ? Math.max(.15, Math.min(3.5, parent.genes.turnSpeed * turnMutation)) : random(.35, 2.4);
         return {
           id: nextId++,
-          x: random(15, width - 15), y: random(15, height - 15),
-          angle: random(0, Math.PI * 2),
-          speed: parent ? Math.max(12, Math.min(110, parent.speed * random(.9, 1.1))) : random(24, 76),
-          turnSpeed: parent ? Math.max(.15, Math.min(3.5, parent.turnSpeed * random(.9, 1.1))) : random(.35, 2.4),
+          parentId: parent ? parent.id : null,
+          x: spawn.x, y: spawn.y,
+          angle,
+          speed,
+          turnSpeed,
+          genes: { speed, turnSpeed },
           turnDirection: randomValue() < .5 ? -1 : 1,
-          turnTimer: random(.4, 2.5), life: config.lifetime, meals: 0,
+          turnTimer: random(.4, 2.5), life: config.lifetime, meals: 0, birthEnergy: 0,
           generation: parent ? parent.generation + 1 : 1
         };
       }
 
       const bugRadius = (bug) => 8 + Math.min(bug.meals, 5);
       const isGreen = (bug) => bug.life + .000001 >= config.lifetime * .75;
+      const canBreed = (bug) => isGreen(bug) && bug.birthEnergy > 0;
       const contactKey = (a, b) => a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
       const touching = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) <= bugRadius(a) + bugRadius(b);
 
       function addRandomFood(count) {
         const before = food.length;
         for (let i = 0; i < count && food.length < foodLimit; i++) {
-          food.push({ x: random(12, width - 12), y: random(12, height - 12) });
+          let point;
+          if (terrain.foodZones.length && randomValue() < .55) {
+            const zone = terrain.foodZones[randomInt(0, terrain.foodZones.length - 1)];
+            const angle = random(0, Math.PI * 2);
+            const distance = Math.sqrt(randomValue()) * zone.r;
+            point = { x: zone.x + Math.cos(angle) * distance, y: zone.y + Math.sin(angle) * distance };
+            if (isBlocked(point.x, point.y, 5)) point = randomPoint(5);
+          } else point = randomPoint(5);
+          food.push(point);
         }
         return food.length - before;
+      }
+
+      function newPredators() {
+        return Array.from({ length: config.predatorCount }, (_, index) => {
+          const point = randomPoint(22);
+          return { id: index + 1, x: point.x, y: point.y, angle: random(0, Math.PI * 2), speed: random(38, 58), turnSpeed: random(.7, 1.4) };
+        });
       }
 
       function newWorld() {
@@ -391,13 +485,15 @@
           renewable: document.getElementById("food-mode").value === "renewable",
           renewalAmount: Number(document.getElementById("renewal-amount").value),
           renewalSteps: Math.round(Number(document.getElementById("renewal-interval").value) / step),
-          evolution: document.getElementById("evolution").checked
+          evolution: document.getElementById("evolution").checked,
+          predatorCount: Number(document.getElementById("predator-count").value)
         };
         randomValue = seededRandom(seedInput.value);
         const bugInput = document.getElementById("start-bugs").value;
         const foodInput = document.getElementById("start-food").value;
         const bugCount = bugInput === "" ? randomInt(14, 24) : Number(bugInput);
         const foodCount = foodInput === "" ? randomInt(90, 150) : Number(foodInput);
+        terrain = buildTerrain();
         nextId = 1;
         bugs = Array.from({ length: bugCount }, () => newBug());
         food = [];
@@ -405,18 +501,26 @@
         elapsedSteps = 0;
         replaced = 0;
         contactBirths = 0;
+        starvationDeaths = 0;
+        predationDeaths = 0;
         activeContacts = new Set();
         selectedId = null;
         eatenSinceSample = 0;
+        birthsSinceSample = 0;
+        starvationSinceSample = 0;
+        predationSinceSample = 0;
         sampleCohort = new Set(bugs.map((bug) => bug.id));
         sampleStartCount = bugs.length;
         history = [];
+        baselineTraits = null;
+        predators = newPredators();
         state = "running";
         lastTime = null;
         accumulator = 0;
         progressBar.setAttribute("aria-valuemax", config.lifetime);
         document.getElementById("active-seed").textContent = seedInput.value;
-        document.getElementById("habitat-description").textContent = config.renewable ? "A small world with renewable food" : "A small world with a finite food supply";
+        const terrainLabel = terrain.walls.length ? " with terrain" : "";
+        document.getElementById("habitat-description").textContent = `${config.renewable ? "A renewable" : "A finite"} habitat${terrainLabel}${predators.length ? ` and ${predators.length} predator${predators.length === 1 ? "" : "s"}` : ""}`;
         document.getElementById("sprinkle-status").textContent = "Sprinkle up to 15 pieces anywhere in the habitat (300 maximum).";
         refreshBugSelect();
         updateUI();
@@ -434,7 +538,7 @@
       function updateInspector() {
         const bug = bugs.find((item) => item.id === selectedId);
         const text = bug
-          ? `Bug #${bug.id} · Generation ${bug.generation} · Speed ${bug.speed.toFixed(1)} units/s · Turn ${bug.turnSpeed.toFixed(2)} rad/s · Meals ${bug.meals} · ${Math.ceil(Math.max(0, bug.life - .000001))}s until starvation`
+          ? `Bug #${bug.id} · ${bug.parentId === null ? "Random origin" : `Parent #${bug.parentId}`} · Generation ${bug.generation} · Speed gene ${bug.genes.speed.toFixed(1)} units/s · Turn gene ${bug.genes.turnSpeed.toFixed(2)} rad/s · Meals ${bug.meals} · Birth energy ${bug.birthEnergy} · Health ${Math.max(0, bug.life).toFixed(1)}`
           : "No bug selected. Click one in the habitat or choose one from the list.";
         if (inspector.textContent !== text) inspector.textContent = text;
       }
@@ -447,7 +551,10 @@
         foodEl.textContent = food.length;
         replacedEl.textContent = replaced;
         contactBirthsEl.textContent = contactBirths;
-        progress.style.width = `${averageLife / config.lifetime * 100}%`;
+        starvationDeathsEl.textContent = starvationDeaths;
+        predationDeathsEl.textContent = predationDeaths;
+        progress.style.width = `${Math.min(100, averageLife / config.lifetime * 100)}%`;
+        progressBar.setAttribute("aria-valuemax", Math.max(config.lifetime, averageLife).toFixed(1));
         progressBar.setAttribute("aria-valuenow", averageLife.toFixed(1));
         status.dataset.state = state;
         statusText.textContent = state === "running" ? "Simulation running" : state === "paused" ? "Simulation paused" : "No bugs survived";
@@ -458,11 +565,30 @@
 
       function recordSample() {
         const averageSpeed = bugs.length ? bugs.reduce((sum, bug) => sum + bug.speed, 0) / bugs.length : null;
-        history.push({ time: elapsedSteps * step, survival: sampleCohort.size / sampleStartCount * 100, speed: averageSpeed, food: eatenSinceSample });
+        const averageTurn = bugs.length ? bugs.reduce((sum, bug) => sum + bug.turnSpeed, 0) / bugs.length : null;
+        const averageGeneration = bugs.length ? bugs.reduce((sum, bug) => sum + bug.generation, 0) / bugs.length : 0;
+        if (!baselineTraits && averageSpeed !== null) baselineTraits = { speed: averageSpeed, turn: averageTurn };
+        history.push({
+          time: elapsedSteps * step,
+          survival: sampleStartCount ? sampleCohort.size / sampleStartCount * 100 : 0,
+          speed: averageSpeed,
+          turn: averageTurn,
+          generation: averageGeneration,
+          population: bugs.length,
+          births: birthsSinceSample,
+          starvation: starvationSinceSample,
+          predation: predationSinceSample,
+          speedChange: baselineTraits ? (averageSpeed - baselineTraits.speed) / baselineTraits.speed * 100 : 0,
+          turnChange: baselineTraits ? (averageTurn - baselineTraits.turn) / baselineTraits.turn * 100 : 0,
+          food: eatenSinceSample
+        });
         if (history.length > 120) history.shift();
         sampleCohort = new Set(bugs.map((bug) => bug.id));
         sampleStartCount = bugs.length;
         eatenSinceSample = 0;
+        birthsSinceSample = 0;
+        starvationSinceSample = 0;
+        predationSinceSample = 0;
         drawCharts();
       }
 
@@ -471,13 +597,31 @@
         for (const bug of bugs) {
           bug.life -= dt;
           bug.turnTimer -= dt;
+          let nearestPredator = null;
+          let predatorDistance = Infinity;
+          for (const predator of predators) {
+            const distance = Math.hypot(predator.x - bug.x, predator.y - bug.y);
+            if (distance < predatorDistance) { nearestPredator = predator; predatorDistance = distance; }
+          }
           if (bug.turnTimer <= 0) {
             bug.turnDirection = randomValue() < .5 ? -1 : 1;
             bug.turnTimer = random(.4, 2.5);
           }
           bug.angle += bug.turnDirection * bug.turnSpeed * dt;
+          if (nearestPredator && predatorDistance < 120 && !inShelter(bug)) {
+            const escapeAngle = Math.atan2(bug.y - nearestPredator.y, bug.x - nearestPredator.x);
+            const difference = Math.atan2(Math.sin(escapeAngle - bug.angle), Math.cos(escapeAngle - bug.angle));
+            bug.angle += Math.max(-bug.turnSpeed * dt * 3, Math.min(bug.turnSpeed * dt * 3, difference));
+          }
+          const oldX = bug.x;
+          const oldY = bug.y;
           bug.x += Math.cos(bug.angle) * bug.speed * dt;
           bug.y += Math.sin(bug.angle) * bug.speed * dt;
+          if (isBlocked(bug.x, bug.y, bugRadius(bug))) {
+            bug.x = oldX;
+            bug.y = oldY;
+            bug.angle += Math.PI * random(.65, 1.35);
+          }
           if (bug.x < 8 || bug.x > width - 8) {
             bug.x = Math.max(8, Math.min(width - 8, bug.x));
             bug.angle = Math.PI - bug.angle;
@@ -490,17 +634,55 @@
           for (let i = food.length - 1; i >= 0; i--) {
             if (Math.hypot(bug.x - food[i].x, bug.y - food[i].y) < radius + 3) {
               food.splice(i, 1);
-              bug.life = config.lifetime;
+              bug.life += config.lifetime;
               bug.meals += 1;
+              bug.birthEnergy += 1;
               eatenSinceSample += 1;
             }
           }
         }
+        for (const predator of predators) {
+          let target = null;
+          let targetDistance = Infinity;
+          for (const bug of bugs) {
+            if (inShelter(bug)) continue;
+            const distance = Math.hypot(bug.x - predator.x, bug.y - predator.y);
+            if (distance < targetDistance) { target = bug; targetDistance = distance; }
+          }
+          const desired = target ? Math.atan2(target.y - predator.y, target.x - predator.x) : predator.angle;
+          const difference = Math.atan2(Math.sin(desired - predator.angle), Math.cos(desired - predator.angle));
+          predator.angle += Math.max(-predator.turnSpeed * dt, Math.min(predator.turnSpeed * dt, difference));
+          const oldX = predator.x;
+          const oldY = predator.y;
+          predator.x += Math.cos(predator.angle) * predator.speed * dt;
+          predator.y += Math.sin(predator.angle) * predator.speed * dt;
+          if (isBlocked(predator.x, predator.y, 10)) {
+            predator.x = oldX;
+            predator.y = oldY;
+            predator.angle += Math.PI * random(.65, 1.35);
+          }
+          if (predator.x < 12 || predator.x > width - 12) {
+            predator.x = Math.max(12, Math.min(width - 12, predator.x));
+            predator.angle = Math.PI - predator.angle;
+          }
+          if (predator.y < 12 || predator.y > height - 12) {
+            predator.y = Math.max(12, Math.min(height - 12, predator.y));
+            predator.angle = -predator.angle;
+          }
+        }
         elapsedSteps += 1;
-        const survivors = bugs.filter((bug) => bug.life > .000001);
-        const lost = bugs.length - survivors.length;
+        const starved = bugs.filter((bug) => bug.life <= .000001);
+        const hunted = bugs.filter((bug) => bug.life > .000001 && !inShelter(bug)
+          && predators.some((predator) => Math.hypot(predator.x - bug.x, predator.y - bug.y) <= bugRadius(bug) + 10));
+        const deadIds = new Set([...starved, ...hunted].map((bug) => bug.id));
+        const survivors = bugs.filter((bug) => !deadIds.has(bug.id));
+        const lost = deadIds.size;
         if (lost) {
-          for (const bug of bugs) if (bug.life <= .000001) sampleCohort.delete(bug.id);
+          for (const id of deadIds) sampleCohort.delete(id);
+          starvationDeaths += starved.length;
+          predationDeaths += hunted.length;
+          starvationSinceSample += starved.length;
+          predationSinceSample += hunted.length;
           if (!survivors.length) {
             bugs = [];
             selectedId = null;
@@ -524,12 +706,14 @@
               if (!touching(a, b)) continue;
               const key = contactKey(a, b);
               currentContacts.add(key);
-              if (!activeContacts.has(key) && !newbornIds.has(a.id) && !newbornIds.has(b.id) && isGreen(a) && isGreen(b)) encounters.push([a, b]);
+              if (!activeContacts.has(key) && !newbornIds.has(a.id) && !newbornIds.has(b.id) && canBreed(a) && canBreed(b)) encounters.push([a, b]);
             }
           }
           for (const [a, b] of encounters) {
             if (bugs.length >= populationLimit) break;
-            const parent = config.evolution ? (randomValue() < .5 ? a : b) : null;
+            const parent = randomValue() < .5 ? a : b;
+            a.birthEnergy -= 1;
+            b.birthEnergy -= 1;
             const child = newBug(parent);
             child.x = (a.x + b.x) / 2;
             child.y = (a.y + b.y) / 2;
@@ -539,6 +723,7 @@
             bugs.push(child);
             births += 1;
             contactBirths += 1;
+            birthsSinceSample += 1;
           }
           activeContacts = currentContacts;
           if (config.renewable && elapsedSteps % config.renewalSteps === 0) addRandomFood(config.renewalAmount);
@@ -549,9 +734,20 @@
 
       function drawCharts() {
         const charts = [
-          { key: "survival", id: "survival", unit: "%", maximum: 100 },
-          { key: "speed", id: "speed", unit: " units/s" },
-          { key: "food", id: "food", unit: " pieces" }
+          { id: "survival", unit: "%", maximum: 100, series: [{ key: "survival", color: "--cp-accent" }] },
+          { id: "speed", unit: " units/s", series: [{ key: "speed", color: "--cp-accent" }] },
+          { id: "food", unit: " pieces", series: [{ key: "food", color: "--cp-accent" }] },
+          { id: "population", unit: "", series: [
+            { key: "population", color: "--cp-link" },
+            { key: "births", color: "--cp-success" },
+            { key: "starvation", color: "--cp-warning" },
+            { key: "predation", color: "--cp-danger" }
+          ] },
+          { id: "generation", unit: " gen", series: [{ key: "generation", color: "--cp-accent" }] },
+          { id: "selection", unit: "% change", series: [
+            { key: "speedChange", color: "--cp-link" },
+            { key: "turnChange", color: "--cp-warning" }
+          ], signed: true }
         ];
         for (const chart of charts) {
           const element = document.getElementById(`${chart.id}-chart`);
@@ -567,30 +763,48 @@
             continue;
           }
           const latest = history[history.length - 1];
-          const values = history.map((item) => item[chart.key]).filter((value) => value !== null);
-          const max = chart.maximum || Math.max(1, ...values);
-          const display = latest[chart.key] === null ? "n/a" : `${latest[chart.key].toFixed(chart.key === "food" ? 0 : 1)}${chart.unit}`;
-          summary.textContent = `At ${latest.time.toFixed(1)}s: ${display} · scale 0–${max.toFixed(chart.key === "speed" ? 1 : 0)}${chart.unit}`;
+          const values = history.flatMap((item) => chart.series.map((series) => item[series.key])).filter((value) => value !== null);
+          const maxValue = chart.maximum || Math.max(1, ...values);
+          const minValue = chart.signed ? Math.min(0, ...values) : 0;
+          const range = maxValue - minValue || 1;
+          const display = chart.series.map((series) => {
+            const value = latest[series.key];
+            return value === null ? "n/a" : `${value.toFixed(chart.unit === "" || chart.unit === " pieces" ? 0 : 1)}${chart.unit}`;
+          }).join(" · ");
+          summary.textContent = chart.id === "population"
+            ? `At ${latest.time.toFixed(1)}s: ${latest.population} alive · ${latest.births} births · ${latest.starvation} starved · ${latest.predation} hunted`
+            : chart.id === "selection"
+              ? `At ${latest.time.toFixed(1)}s: speed ${latest.speedChange.toFixed(1)}% · turning ${latest.turnChange.toFixed(1)}%`
+              : `At ${latest.time.toFixed(1)}s: ${display} · scale ${minValue.toFixed(0)}–${maxValue.toFixed(chart.unit === " units/s" ? 1 : 0)}${chart.unit}`;
           element.setAttribute("aria-label", `${chart.id} over time. ${summary.textContent}`);
-          graph.strokeStyle = color("--cp-accent");
-          graph.fillStyle = color("--cp-accent");
-          graph.lineWidth = 2;
-          graph.beginPath();
-          let started = false;
-          history.forEach((item, index) => {
-            if (item[chart.key] === null) { started = false; return; }
-            const x = history.length === 1 ? 12 : 12 + index * 280 / (history.length - 1);
-            const y = 108 - item[chart.key] / max * 96;
-            if (started) graph.lineTo(x, y); else graph.moveTo(x, y);
-            started = true;
-          });
-          graph.stroke();
-          history.forEach((item, index) => {
-            if (item[chart.key] === null) return;
-            const x = history.length === 1 ? 12 : 12 + index * 280 / (history.length - 1);
-            const y = 108 - item[chart.key] / max * 96;
-            graph.beginPath(); graph.arc(x, y, 2.5, 0, Math.PI * 2); graph.fill();
-          });
+          if (chart.signed) {
+            graph.strokeStyle = color("--cp-border-strong");
+            graph.setLineDash([3, 3]);
+            const zeroY = 108 - (0 - minValue) / range * 96;
+            graph.beginPath(); graph.moveTo(12, zeroY); graph.lineTo(292, zeroY); graph.stroke();
+            graph.setLineDash([]);
+          }
+          for (const series of chart.series) {
+            graph.strokeStyle = color(series.color);
+            graph.fillStyle = color(series.color);
+            graph.lineWidth = 2;
+            graph.beginPath();
+            let started = false;
+            history.forEach((item, index) => {
+              if (item[series.key] === null) { started = false; return; }
+              const x = history.length === 1 ? 12 : 12 + index * 280 / (history.length - 1);
+              const y = 108 - (item[series.key] - minValue) / range * 96;
+              if (started) graph.lineTo(x, y); else graph.moveTo(x, y);
+              started = true;
+            });
+            graph.stroke();
+            history.forEach((item, index) => {
+              if (item[series.key] === null) return;
+              const x = history.length === 1 ? 12 : 12 + index * 280 / (history.length - 1);
+              const y = 108 - (item[series.key] - minValue) / range * 96;
+              graph.beginPath(); graph.arc(x, y, 2.5, 0, Math.PI * 2); graph.fill();
+            });
+          }
         }
       }
 
@@ -602,6 +816,22 @@
             ctx.beginPath(); ctx.arc(x, y, 1, 0, Math.PI * 2); ctx.fill();
           }
         }
+        ctx.fillStyle = color("--cp-highlight");
+        for (const zone of terrain.foodZones) {
+          ctx.beginPath(); ctx.arc(zone.x, zone.y, zone.r, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.fillStyle = color("--cp-border-strong");
+        for (const wall of terrain.walls) ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
+        for (const obstacle of terrain.obstacles) {
+          ctx.beginPath(); ctx.arc(obstacle.x, obstacle.y, obstacle.r, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.strokeStyle = color("--cp-success");
+        ctx.lineWidth = 3;
+        ctx.setLineDash([7, 5]);
+        for (const shelter of terrain.shelters) {
+          ctx.beginPath(); ctx.arc(shelter.x, shelter.y, shelter.r, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.setLineDash([]);
         ctx.fillStyle = color("--cp-link");
         for (const piece of food) {
           ctx.beginPath(); ctx.arc(piece.x, piece.y, 3.5, 0, Math.PI * 2); ctx.fill();
@@ -626,6 +856,17 @@
           ctx.moveTo(size * .55, size * .3); ctx.lineTo(size * 1.2, size * .7);
           ctx.stroke();
           ctx.beginPath(); ctx.ellipse(0, 0, size, size * .67, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+        for (const predator of predators) {
+          ctx.save();
+          ctx.translate(predator.x, predator.y);
+          ctx.rotate(predator.angle);
+          ctx.fillStyle = color("--cp-text");
+          ctx.strokeStyle = color("--cp-danger");
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(14, 0); ctx.lineTo(-9, -10); ctx.lineTo(-4, 0); ctx.lineTo(-9, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
           ctx.restore();
         }
       }
@@ -683,11 +924,11 @@
         const x = (event.clientX - bounds.left) * width / bounds.width;
         const y = (event.clientY - bounds.top) * height / bounds.height;
         if (clickMode.value === "food") {
-          if (food.length < foodLimit) {
+          if (food.length < foodLimit && !isBlocked(x, y, 5)) {
             food.push({ x, y });
             document.getElementById("interaction-hint").textContent = "Click the habitat to add food (up to 300 pieces). An ended world cannot be revived.";
           }
-          else document.getElementById("interaction-hint").textContent = "The habitat already has 300 food pieces.";
+          else document.getElementById("interaction-hint").textContent = food.length >= foodLimit ? "The habitat already has 300 food pieces." : "Choose an open area; food cannot be placed inside a wall or rock.";
         } else {
           let nearest = null;
           let distance = 20;

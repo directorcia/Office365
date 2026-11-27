@@ -45,7 +45,7 @@ function createWorld() {
             if (id === "habitat" && shape === "bug") bugColors.push(this.fillStyle);
             if (id === "habitat" && shape === "food") foodColors.push(this.fillStyle);
           },
-          stroke: noOp, moveTo: noOp, lineTo: noOp,
+          stroke: noOp, moveTo: noOp, lineTo: noOp, fillRect: noOp, setLineDash: noOp, closePath: noOp,
           ellipse() { shape = "bug"; }, rotate: noOp, save: noOp, restore: noOp
         };
       }
@@ -59,6 +59,8 @@ function createWorld() {
   element("food-mode").value = "renewable";
   element("renewal-amount").value = "15";
   element("renewal-interval").value = "15";
+  element("terrain-mode").value = "open";
+  element("predator-count").value = "0";
   element("click-mode").value = "inspect";
   const document = { documentElement: {}, getElementById: element };
   vm.runInNewContext(simulation, {
@@ -73,7 +75,7 @@ function createWorld() {
       nextFrame(clock);
     }
   }
-  function start({ bugs = 2, food = 0, lifetime = 5, seed = "lifetime-test", evolution = false, renewable = false, renewalAmount = 15, renewalInterval = 15 } = {}) {
+  function start({ bugs = 2, food = 0, lifetime = 5, seed = "lifetime-test", evolution = false, renewable = false, renewalAmount = 15, renewalInterval = 15, terrain = "open", predators = 0 } = {}) {
     element("start-bugs").value = String(bugs);
     element("start-food").value = String(food);
     element("bug-lifetime").value = String(lifetime);
@@ -82,6 +84,8 @@ function createWorld() {
     element("food-mode").value = renewable ? "renewable" : "finite";
     element("renewal-amount").value = String(renewalAmount);
     element("renewal-interval").value = String(renewalInterval);
+    element("terrain-mode").value = terrain;
+    element("predator-count").value = String(predators);
     element("settings").dispatch("submit");
   }
   function inspect(id) {
@@ -99,8 +103,12 @@ function createWorld() {
 
 test("a contact produces one nearby child without repeated births during overlap", () => {
   const world = createWorld();
-  world.start({ bugs: 2, lifetime: 120, seed: "pair-1875" });
-  world.advance(2);
+  world.start({ bugs: 2, lifetime: 120, seed: "late-6" });
+  world.feed(0);
+  world.advance(1);
+  world.feed(1);
+  world.advance(1);
+  world.advance(61);
   assert.equal(world.element("bugs").textContent, 3);
   assert.equal(world.element("contact-births").textContent, 1);
   const [a, b, child] = world.positions();
@@ -145,10 +153,65 @@ test("contact births respect the population cap and inherit traits when evolutio
   world.advance(2);
   assert.equal(world.element("bugs").textContent, 100);
   assert.equal(world.element("contact-births").textContent, 0);
-  world.start({ bugs: 2, lifetime: 120, seed: "pair-1875", evolution: true });
-  world.advance(2);
+  world.start({ bugs: 2, lifetime: 120, seed: "late-6", evolution: true });
+  world.feed(0);
+  world.advance(1);
+  world.feed(1);
+  world.advance(62);
   assert.equal(world.element("contact-births").textContent, 1);
   assert.match(world.inspect(3), /Generation 2/);
+});
+
+test("offspring inherit the exact genes of their chosen parent when mutation is disabled", () => {
+  const world = createWorld();
+  world.start({ bugs: 2, lifetime: 120, seed: "late-6", evolution: false });
+  const parents = {
+    1: world.inspect(1).match(/Speed gene ([\d.]+).*Turn gene ([\d.]+)/),
+    2: world.inspect(2).match(/Speed gene ([\d.]+).*Turn gene ([\d.]+)/)
+  };
+  world.feed(0);
+  world.advance(1);
+  world.feed(1);
+  world.advance(62);
+  const childText = world.inspect(3);
+  const child = childText.match(/Parent #(\d+).*Speed gene ([\d.]+).*Turn gene ([\d.]+)/);
+  assert.ok(child);
+  assert.equal(child[2], parents[child[1]][1]);
+  assert.equal(child[3], parents[child[1]][2]);
+});
+
+test("terrain renders reproducibly and predators can kill and trigger replacement", () => {
+  const world = createWorld();
+  world.start({ bugs: 3, food: 300, lifetime: 120, seed: "terrain-seed", terrain: "mixed", predators: 0 });
+  world.advance(20);
+  assert.match(world.element("habitat-description").textContent, /with terrain$/);
+  assert.equal(world.element("predator-count").value, "0");
+  world.start({ bugs: 3, food: 300, lifetime: 120, seed: "hunt-1", terrain: "open", predators: 1 });
+  world.advance(300);
+  assert.match(world.element("habitat-description").textContent, /and 1 predator/);
+  assert.ok(Number(world.element("predation-deaths").textContent) > 0);
+  assert.match(world.element("population-summary").textContent, /hunted/);
+  assert.ok(Number(world.element("bugs").textContent) > 0);
+});
+
+test("shelters protect a bug even when a predator overlaps it", () => {
+  const world = createWorld();
+  world.start({ bugs: 1, food: 300, lifetime: 120, seed: "shelter-15108", terrain: "mixed", predators: 1 });
+  const [bug, predator] = world.positions();
+  assert.ok(Math.hypot(bug.x - predator.x, bug.y - predator.y) < 20);
+  assert.ok(Math.hypot(bug.x - 830, bug.y - 455) < 45);
+  world.advance(1);
+  assert.equal(world.element("predation-deaths").textContent, 0);
+  assert.equal(world.element("bugs").textContent, 1);
+});
+
+test("population, generation, and selection charts record samples", () => {
+  const world = createWorld();
+  world.start({ bugs: 20, food: 100, lifetime: 20, seed: "selection", evolution: true });
+  world.advance(301);
+  assert.match(world.element("population-summary").textContent, /alive.*births.*starved.*hunted/);
+  assert.match(world.element("generation-summary").textContent, /gen/);
+  assert.match(world.element("selection-summary").textContent, /speed .*% · turning .*%/);
 });
 
 test("renewable food appears at the configured interval, while finite food does not", () => {
@@ -206,20 +269,50 @@ test("eating twice does not create a bug without a green collision", () => {
   assert.equal(world.element("contact-births").textContent, 0);
 });
 
-test("food resets only the eater's timer and another bug is replaced independently", () => {
+test("green contact without stored meals cannot reproduce", () => {
+  const world = createWorld();
+  world.start({ bugs: 2, lifetime: 120, seed: "pair-1875" });
+  world.advance(5);
+  assert.equal(world.element("bugs").textContent, 2);
+  assert.equal(world.element("contact-births").textContent, 0);
+});
+
+test("a birth spends both parents' stored meals", () => {
+  const world = createWorld();
+  world.start({ bugs: 2, lifetime: 120, seed: "late-6", evolution: true });
+  world.feed(0);
+  world.advance(1);
+  world.feed(1);
+  world.advance(62);
+  assert.match(world.inspect(1), /Birth energy 0/);
+  assert.match(world.inspect(2), /Birth energy 0/);
+  assert.equal(world.element("contact-births").textContent, 1);
+});
+
+test("food adds health to the eater while another bug's health continues to drain", () => {
   const world = createWorld();
   world.start();
   world.advance(61);
-  assert.match(world.inspect(1), /2s until starvation/);
+  assert.match(world.inspect(1), /Health 2\.0/);
   world.feed(0);
   world.advance(1);
-  assert.match(world.inspect(1), /Meals 1 · 5s until starvation/);
-  assert.match(world.inspect(2), /Meals 0 · 2s until starvation/);
+  assert.match(world.inspect(1), /Meals 1 · Birth energy 1 · Health 7\.0/);
+  assert.match(world.inspect(2), /Meals 0 · Birth energy 0 · Health 2\.0/);
   world.advance(40);
   assert.deepEqual(world.element("bug-select").options.map((option) => option.value), ["", "1", "3"]);
   assert.equal(world.element("replaced").textContent, 1);
   assert.match(world.element("survival-summary").textContent, /50\.0%/);
   assert.equal(world.element("status-text").textContent, "Simulation running");
+});
+
+test("multiple meals stack health instead of resetting it to one portion", () => {
+  const world = createWorld();
+  world.start({ bugs: 1, lifetime: 5 });
+  world.feed(0);
+  world.advance(1);
+  world.feed(0);
+  world.advance(1);
+  assert.match(world.inspect(1), /Meals 2 · Birth energy 2 · Health 14\.9/);
 });
 
 test("all bugs starving at once ends the simulation without replacements", () => {
