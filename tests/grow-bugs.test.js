@@ -169,6 +169,7 @@ test("sharing metadata points to the canonical page and existing local assets", 
   assert.match(html, /<meta property="og:title" content="[^"]+">/);
   assert.match(html, /<meta property="og:description" content="[^"]+">/);
   assert.ok(html.includes(`<meta property="og:url" content="${canonical}">`));
+  assert.ok(html.includes(`<meta name="twitter:image" content="${image}">`));
   assert.equal(new URL(image).origin, new URL(canonical).origin);
   const imagePath = new URL(image).pathname.replace(/^\/Office365\//, "");
   const imageData = fs.readFileSync(path.join(__dirname, "..", "docs", imagePath));
@@ -265,6 +266,8 @@ test("offspring inherit the exact genes of their chosen parent when mutation is 
   assert.ok(child);
   assert.equal(child[2], parents[child[1]][1]);
   assert.equal(child[3], parents[child[1]][2]);
+  const childOption = world.element("bug-select").options.find((option) => option.value === "3");
+  assert.equal(childOption.text, `Bug #3 · Gen 2 · Speed ${child[2]} units/s · Turn ${child[3]} rad/s`);
 });
 
 test("terrain renders reproducibly and predators can kill and trigger replacement", () => {
@@ -290,6 +293,22 @@ test("shelters protect a bug even when a predator overlaps it", () => {
   world.advance(1);
   assert.equal(world.element("predation-deaths").textContent, 0);
   assert.equal(world.element("bugs").textContent, 1);
+});
+
+test("multi-series chart keys label every line with its plotted colour", () => {
+  for (const [id, labels] of [
+    ["population", ["Living", "Births", "Starved", "Hunted"]],
+    ["selection", ["Speed change", "Turn rate change"]]
+  ]) {
+    const article = html.match(new RegExp(`<article class="chart">(?:(?!<\\/article>)[\\s\\S])*id="${id}-chart"(?:(?!<\\/article>)[\\s\\S])*<\\/article>`))?.[0];
+    assert.ok(article);
+    const entries = [...article.matchAll(/data-series="([^"]+)"><span class="chart-key-line" style="--chart-key-color: var\((--cp-[\w-]+)\)" aria-hidden="true"><\/span>([^<]+)<\/li>/g)];
+    assert.deepEqual(entries.map((entry) => entry[3]), labels);
+    const series = simulation.match(new RegExp(`id: "${id}"[\\s\\S]*?series: \\[([\\s\\S]*?)\\]`))?.[1];
+    assert.ok(series);
+    const plotted = [...series.matchAll(/key: "([^"]+)", color: "(--cp-[\w-]+)"/g)].map((match) => [match[1], match[2]]);
+    assert.deepEqual(entries.map((entry) => [entry[1], entry[2]]), plotted);
+  }
 });
 
 test("population, generation, and selection charts record samples", () => {
@@ -442,6 +461,8 @@ test("an invalid new world leaves the seed, simulation and ended-world hints unc
   world.element("settings").valid = false;
   world.element("restart").dispatch("click");
   assert.deepEqual(fields.map((id) => id === "seed" ? world.element(id).value : world.element(id).textContent), snapshot);
+  world.element("new-seed").dispatch("click");
+  assert.deepEqual(fields.map((id) => id === "seed" ? world.element(id).value : world.element(id).textContent), snapshot);
   world.element("settings").dispatch("submit");
   assert.deepEqual(fields.map((id) => id === "seed" ? world.element(id).value : world.element(id).textContent), snapshot);
 });
@@ -462,6 +483,19 @@ test("a valid new world synchronizes the generated seed and clears ended-world h
   assert.doesNotMatch(world.element("sprinkle-status").textContent, /cannot be revived/);
   world.element("habitat").dispatch("click", { clientX: 10, clientY: 10 });
   assert.doesNotMatch(world.element("interaction-hint").textContent, /cannot be revived/);
+});
+
+test("generating a seed starts a new world with that seed", () => {
+  const world = createWorld();
+  world.start({ seed: "original-seed", replaceStarved: false });
+  world.advance(101);
+  assert.equal(world.element("status-text").textContent, "No bugs survived");
+  world.element("new-seed").dispatch("click");
+  assert.notEqual(world.element("seed").value, "original-seed");
+  assert.equal(world.element("active-seed").textContent, world.element("seed").value);
+  assert.equal(world.element("status-text").textContent, "Simulation running");
+  assert.equal(world.element("elapsed").textContent, "0.0");
+  assert.equal(world.element("bugs").textContent, 2);
 });
 
 test("replaying a seed restores the selected inspect-mode hint", () => {

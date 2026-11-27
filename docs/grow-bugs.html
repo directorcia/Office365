@@ -16,6 +16,7 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="Grow bugs: a little life simulation">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://directorcia.github.io/Office365/images/grow-bugs-share.png">
   <script>
     (() => {
       const param = new URLSearchParams(window.location.search).get("scoutTheme");
@@ -161,6 +162,9 @@
     .chart h3 { font-size: 13px; margin: 0 0 4px; }
     .chart p { margin: 0; min-height: 36px; }
     .chart canvas { aspect-ratio: 300 / 120; margin-top: 10px; }
+    .chart-key { display: flex; flex-wrap: wrap; gap: 6px 12px; list-style: none; margin: 10px 0 0; padding: 0; color: var(--cp-text-muted); font-size: 12px; }
+    .chart-key li { display: inline-flex; align-items: center; gap: 6px; }
+    .chart-key-line { width: 16px; height: 3px; flex: none; background: var(--chart-key-color); }
     .notes { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 28px; padding: 24px; }
     .note-number { color: var(--cp-accent); font: 700 11px Consolas, "Courier New", Courier, monospace; }
     .note-title { font-weight: 700; font-size: 13px; margin: 8px 0 5px; }
@@ -307,21 +311,37 @@
       <p class="small settings-help" id="replacement-help">Only starved bugs are replaced, not those killed by predators. No replacements are created if all bugs die in the same step.</p>
       <div class="settings-actions">
         <button type="submit">Replay seed</button>
-        <button id="new-seed" type="button">Generate new seed</button>
+        <button id="new-seed" type="button">Generate seed &amp; start</button>
         <p class="small">Leave replacements off for a finite run that ends at extinction. Renewal settings apply only to renewable food; replay uses the same seed and settings.</p>
       </div>
     </form>
 
     <section class="charts" aria-label="Simulation statistics over time">
       <h2 class="section-heading">Life over time</h2>
-      <p class="small">Points are sampled every 5 simulation seconds (the last sample may be shorter). Population shows births, starvation, and the living count; generations shows average generation depth. The selection card reports changes from the first surviving sample.</p>
+      <p class="small">Points are sampled every 5 simulation seconds (the last sample may be shorter). Population shows the living count, births, starvation, and predation; generations shows average generation depth. The selection card reports changes from the first surviving sample.</p>
       <div class="chart-grid">
         <article class="chart"><h3>Survival</h3><p class="small" id="survival-summary">No samples yet.</p><canvas id="survival-chart" width="300" height="120" role="img" aria-label="Survival percentage over time"></canvas></article>
         <article class="chart"><h3>Average speed</h3><p class="small" id="speed-summary">No samples yet.</p><canvas id="speed-chart" width="300" height="120" role="img" aria-label="Average speed of living bugs over time"></canvas></article>
         <article class="chart"><h3>Food consumed</h3><p class="small" id="food-summary">No samples yet.</p><canvas id="food-chart" width="300" height="120" role="img" aria-label="Food consumed over time"></canvas></article>
-        <article class="chart"><h3>Population</h3><p class="small" id="population-summary">No samples yet.</p><canvas id="population-chart" width="300" height="120" role="img" aria-label="Population, births, and starvation over time"></canvas></article>
+        <article class="chart">
+          <h3>Population</h3><p class="small" id="population-summary">No samples yet.</p>
+          <canvas id="population-chart" width="300" height="120" role="img" aria-label="Population, births, starvation, and predation over time"></canvas>
+          <ul class="chart-key" aria-label="Population chart colour key">
+            <li data-series="population"><span class="chart-key-line" style="--chart-key-color: var(--cp-link)" aria-hidden="true"></span>Living</li>
+            <li data-series="births"><span class="chart-key-line" style="--chart-key-color: var(--cp-success)" aria-hidden="true"></span>Births</li>
+            <li data-series="starvation"><span class="chart-key-line" style="--chart-key-color: var(--cp-warning)" aria-hidden="true"></span>Starved</li>
+            <li data-series="predation"><span class="chart-key-line" style="--chart-key-color: var(--cp-danger)" aria-hidden="true"></span>Hunted</li>
+          </ul>
+        </article>
         <article class="chart"><h3>Generations</h3><p class="small" id="generation-summary">No samples yet.</p><canvas id="generation-chart" width="300" height="120" role="img" aria-label="Average generation over time"></canvas></article>
-        <article class="chart"><h3>Natural selection</h3><p class="small" id="selection-summary">Collecting trait data.</p><canvas id="selection-chart" width="300" height="120" role="img" aria-label="Change in average speed and turn rate over time"></canvas></article>
+        <article class="chart">
+          <h3>Natural selection</h3><p class="small" id="selection-summary">Collecting trait data.</p>
+          <canvas id="selection-chart" width="300" height="120" role="img" aria-label="Change in average speed and turn rate over time"></canvas>
+          <ul class="chart-key" aria-label="Natural selection chart colour key">
+            <li data-series="speedChange"><span class="chart-key-line" style="--chart-key-color: var(--cp-link)" aria-hidden="true"></span>Speed change</li>
+            <li data-series="turnChange"><span class="chart-key-line" style="--chart-key-color: var(--cp-warning)" aria-hidden="true"></span>Turn rate change</li>
+          </ul>
+        </article>
       </div>
     </section>
 
@@ -607,7 +627,9 @@
 
       function refreshBugSelect() {
         const options = [new Option("None selected", "")];
-        for (const bug of bugs) options.push(new Option(`Bug #${bug.id}`, String(bug.id)));
+        for (const bug of bugs) {
+          options.push(new Option(`Bug #${bug.id} · Gen ${bug.generation} · Speed ${bug.genes.speed.toFixed(1)} units/s · Turn ${bug.genes.turnSpeed.toFixed(2)} rad/s`, String(bug.id)));
+        }
         bugSelect.replaceChildren(...options);
         bugSelect.value = selectedId === null ? "" : String(selectedId);
       }
@@ -978,7 +1000,7 @@
       foodMode.addEventListener("change", updateRenewalControls);
       settings.addEventListener("submit", (event) => { event.preventDefault(); newWorld(); });
       document.getElementById("restart").addEventListener("click", () => { newWorld(true); });
-      document.getElementById("new-seed").addEventListener("click", () => { seedInput.value = generateSeed(); });
+      document.getElementById("new-seed").addEventListener("click", () => { newWorld(true); });
       document.getElementById("sprinkle").addEventListener("click", () => {
         const added = addRandomFood(sprinkleAmount);
         const notice = added === 0
