@@ -147,6 +147,7 @@
     .control input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--cp-accent); }
     .check { display: flex; align-items: center; gap: 8px; align-self: end; min-height: 40px; }
     .check input { flex: none; }
+    .settings-help { margin: 12px 0 0; }
     .settings-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
     .settings-actions .small { margin: 0; }
     .interaction { border-top: 1px solid var(--cp-border); padding: 16px 22px; display: flex; align-items: end; gap: 14px; flex-wrap: wrap; }
@@ -223,7 +224,7 @@
         </div>
         <div class="field-footer">
           <div class="legend">
-            <span class="legend-item"><span class="legend-dot fed"></span> Green: at least 75% time left</span>
+            <span class="legend-item"><span class="legend-dot fed"></span> Green: health at least 75% of one food portion</span>
             <span class="legend-item"><span class="legend-dot hungry"></span> Hungry</span>
             <span class="legend-item"><span class="legend-dot starving"></span> Near starvation</span>
             <span class="legend-item"><span class="legend-dot food"></span> Food</span>
@@ -293,8 +294,8 @@
         <label class="control">Renewal interval (1–120 seconds)
           <input id="renewal-interval" type="number" min="1" max="120" step="1" value="15" required>
         </label>
-        <label class="control check"><input id="evolution" type="checkbox"> Mutate inherited genes</label>
-        <label class="control check"><input id="replace-starved" type="checkbox"> Replace starved bugs</label>
+        <label class="control check"><input id="evolution" type="checkbox" aria-describedby="evolution-help"> Enable mutation and inherited replacements</label>
+        <label class="control check"><input id="replace-starved" type="checkbox" aria-describedby="replacement-help"> Replace starved bugs</label>
         <label class="control">Terrain
           <select id="terrain-mode"><option value="mixed">Walls, obstacles & shelters</option><option value="open">Open habitat</option></select>
         </label>
@@ -302,6 +303,8 @@
           <input id="predator-count" type="number" min="0" max="8" step="1" value="2" required>
         </label>
       </div>
+      <p class="small settings-help" id="evolution-help">Contact-born babies always inherit one parent's genes. When enabled, inherited genes can mutate and replacements inherit from a survivor; otherwise replacements have random genes.</p>
+      <p class="small settings-help" id="replacement-help">Only starved bugs are replaced, not those killed by predators. No replacements are created if all bugs die in the same step.</p>
       <div class="settings-actions">
         <button type="submit">Replay seed</button>
         <button id="new-seed" type="button">Generate new seed</button>
@@ -325,7 +328,7 @@
     <section class="notes" aria-label="How the simulation works">
       <div><span class="note-number">01 / EXPLORE</span><p class="note-title">A repeatable beginning</p><p class="note-copy">Leave starting counts blank for random amounts. A seed and the same settings recreate the same world.</p></div>
       <div><span class="note-number">02 / SURVIVE</span><p class="note-title">Build up some health</p><p class="note-copy">Health starts at one food portion and drains continuously. Every blue food pill adds another full portion, so a well-fed bug can survive far longer. Bugs turn amber and red as their final portion runs low.</p></div>
-      <div><span class="note-number">03 / BEGIN AGAIN</span><p class="note-title">Life finds a way</p><p class="note-copy">Two green bugs need stored meals to produce a child that inherits one parent's movement genes. Tick "Mutate inherited genes" to introduce variations; starved replacements inherit genes only when it is ticked. With replacement off, deaths reduce the population and finite worlds end when the last bug dies.</p></div>
+      <div><span class="note-number">03 / BEGIN AGAIN</span><p class="note-title">Life finds a way</p><p class="note-copy">Two green bugs need stored meals to produce a child that inherits one parent's movement genes. Enable mutation and inherited replacements to introduce variations and give replacements a survivor's genes. With replacement off, deaths reduce the population and finite worlds end when the last bug dies.</p></div>
     </section>
     <p class="bottom">A simple simulation, not a scientific model.</p>
     <section class="ciaops-footer" aria-label="CIAOPS footer branding">
