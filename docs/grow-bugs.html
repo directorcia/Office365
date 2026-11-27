@@ -4,6 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Grow bugs | A little life simulation</title>
+  <meta name="description" content="Watch bugs explore, find food, reproduce, and evolve in a configurable, seeded habitat.">
+  <link rel="canonical" href="https://directorcia.github.io/Office365/grow-bugs.html">
+  <link rel="icon" type="image/svg+xml" href="grow-bugs-icon.svg">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Grow bugs | A little life simulation">
+  <meta property="og:description" content="Watch bugs explore, find food, reproduce, and evolve in a configurable, seeded habitat.">
+  <meta property="og:url" content="https://directorcia.github.io/Office365/grow-bugs.html">
+  <meta property="og:image" content="https://directorcia.github.io/Office365/images/grow-bugs-share.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Grow bugs: a little life simulation">
+  <meta name="twitter:card" content="summary_large_image">
   <script>
     (() => {
       const param = new URLSearchParams(window.location.search).get("scoutTheme");
@@ -131,6 +143,7 @@
     .settings-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
     .control { display: flex; flex-direction: column; gap: 7px; color: var(--cp-text-muted); font-size: 12px; font-weight: 700; }
     .control input, .control select { min-width: 0; width: 100%; height: 40px; padding: 0 10px; border: 1px solid var(--cp-border); border-radius: .625rem; background: var(--cp-surface); color: var(--cp-text); }
+    .control input:disabled { background: var(--cp-surface-soft); color: var(--cp-text-soft); cursor: not-allowed; }
     .control input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--cp-accent); }
     .check { display: flex; align-items: center; gap: 8px; align-self: end; min-height: 40px; }
     .check input { flex: none; }
@@ -152,6 +165,14 @@
     .note-title { font-weight: 700; font-size: 13px; margin: 8px 0 5px; }
     .note-copy { color: var(--cp-text-muted); font-size: 12px; line-height: 1.6; margin: 0; }
     .bottom { color: var(--cp-text-soft); font-size: 11px; margin-top: 20px; }
+    .ciaops-footer { margin-top: 16px; display: grid; gap: 8px; border: 1px solid var(--cp-border); border-radius: 12px; background: linear-gradient(180deg, var(--cp-surface-soft), var(--cp-bg-elevated)); padding: 12px; }
+    .ciaops-footer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .ciaops-footer-title { margin: 0; font-size: 0.84rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--cp-text); }
+    .ciaops-footer-links { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ciaops-footer-link { display: inline-flex; align-items: center; border: 1px solid var(--cp-border-strong); border-radius: 999px; padding: 3px 10px; font-size: 0.74rem; color: var(--cp-link); background: var(--cp-surface); text-decoration: none; }
+    .ciaops-footer-link:hover { border-color: var(--cp-link); background: var(--cp-accent-soft); }
+    .ciaops-footer-copy { margin: 0; border-top: 1px dashed var(--cp-border); padding-top: 8px; font-size: 0.76rem; line-height: 1.35; color: var(--cp-text-soft); }
+    .ciaops-footer-version { margin: 0; font-size: 0.72rem; line-height: 1.35; color: var(--cp-text-muted); }
     @media (max-width: 800px) {
       .shell { padding: 20px 16px 32px; }
       .intro { padding-top: 42px; align-items: start; flex-direction: column; }
@@ -177,7 +198,7 @@
   <main class="shell">
     <header class="topbar">
       <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">✳</span> THE LITTLE LIFE LAB</a>
-      <a class="back" href="index.html">← All simulations</a>
+      <a class="back" href="index.html">← Office365 Docs hub</a>
     </header>
     <section class="intro">
       <div>
@@ -226,7 +247,7 @@
       <aside class="side-card" aria-label="Simulation statistics">
         <p class="section-label">Time elapsed</p>
         <div class="elapsed-number"><span id="elapsed">0.0</span>s</div>
-        <div class="small">Average health: <span id="average-life">15.0</span></div>
+        <div class="small">Average time remaining: <span id="average-life">15.0</span>s</div>
         <div class="progress" role="progressbar" aria-label="Average bug health relative to one food portion" aria-valuemin="0" aria-valuemax="15" aria-valuenow="15"><span id="progress"></span></div>
         <div class="stats">
           <div class="stat"><span>Living bugs</span><strong id="bugs">0</strong></div>
@@ -273,6 +294,7 @@
           <input id="renewal-interval" type="number" min="1" max="120" step="1" value="15" required>
         </label>
         <label class="control check"><input id="evolution" type="checkbox"> Mutate inherited genes</label>
+        <label class="control check"><input id="replace-starved" type="checkbox"> Replace starved bugs</label>
         <label class="control">Terrain
           <select id="terrain-mode"><option value="mixed">Walls, obstacles & shelters</option><option value="open">Open habitat</option></select>
         </label>
@@ -283,7 +305,7 @@
       <div class="settings-actions">
         <button type="submit">Replay seed</button>
         <button id="new-seed" type="button">Generate new seed</button>
-        <p class="small">Renewal settings apply only to renewable food. Replay uses the same seed and settings; clicks and sprinkling alter the outcome.</p>
+        <p class="small">Leave replacements off for a finite run that ends at extinction. Renewal settings apply only to renewable food; replay uses the same seed and settings.</p>
       </div>
     </form>
 
@@ -303,12 +325,37 @@
     <section class="notes" aria-label="How the simulation works">
       <div><span class="note-number">01 / EXPLORE</span><p class="note-title">A repeatable beginning</p><p class="note-copy">Leave starting counts blank for random amounts. A seed and the same settings recreate the same world.</p></div>
       <div><span class="note-number">02 / SURVIVE</span><p class="note-title">Build up some health</p><p class="note-copy">Health starts at one food portion and drains continuously. Every blue food pill adds another full portion, so a well-fed bug can survive far longer. Bugs turn amber and red as their final portion runs low.</p></div>
-      <div><span class="note-number">03 / BEGIN AGAIN</span><p class="note-title">Life finds a way</p><p class="note-copy">Two green bugs need stored meals to produce a child. That child inherits speed and turning genes from one parent, with an independent mutation only when enabled. Every lineage therefore evolves separately; walls, food, and predators select which traits persist.</p></div>
+      <div><span class="note-number">03 / BEGIN AGAIN</span><p class="note-title">Life finds a way</p><p class="note-copy">Two green bugs need stored meals to produce a child that inherits one parent's movement genes. Tick "Mutate inherited genes" to introduce variations; starved replacements inherit genes only when it is ticked. With replacement off, deaths reduce the population and finite worlds end when the last bug dies.</p></div>
     </section>
     <p class="bottom">A simple simulation, not a scientific model.</p>
+    <section class="ciaops-footer" aria-label="CIAOPS footer branding">
+      <div class="ciaops-footer-head">
+        <p class="ciaops-footer-title">CIAOPS</p>
+        <nav class="ciaops-footer-links" aria-label="CIAOPS contact and training links">
+          <a class="ciaops-footer-link" href="mailto:director@ciaops.com">Contact</a>
+          <a class="ciaops-footer-link" href="https://www.ciaopspatron.com/" target="_blank" rel="noopener noreferrer">Training and Resources</a>
+          <a class="ciaops-footer-link" href="https://blog.ciaops.com/" target="_blank" rel="noopener noreferrer">Blog</a>
+          <a class="ciaops-footer-link" href="https://github.com/directorcia/Office365" target="_blank" rel="noopener noreferrer">Scripts</a>
+        </nav>
+      </div>
+      <p class="ciaops-footer-copy">Copyright © <span id="ciaopsYear"></span> CIAOPS. All rights reserved.</p>
+      <p class="ciaops-footer-version" id="footerVersion">Version: loading...</p>
+    </section>
   </main>
   <script>
     (() => {
+      document.getElementById("ciaopsYear").textContent = String(new Date().getFullYear());
+      const lastModifiedValue = new Date(document.lastModified);
+      const modifiedDate = Number.isNaN(lastModifiedValue.getTime()) ? new Date() : lastModifiedValue;
+      const year = modifiedDate.getFullYear();
+      const month = String(modifiedDate.getMonth() + 1).padStart(2, "0");
+      const day = String(modifiedDate.getDate()).padStart(2, "0");
+      const hours = String(modifiedDate.getHours()).padStart(2, "0");
+      const minutes = String(modifiedDate.getMinutes()).padStart(2, "0");
+      const versionToken = `v${year}.${month}.${day}.${hours}${minutes}`;
+      const formattedDate = modifiedDate.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+      document.getElementById("footerVersion").textContent = `Version: ${versionToken} | Last updated: ${formattedDate}`;
+
       const width = 960;
       const height = 560;
       const step = .05;
@@ -321,6 +368,7 @@
       const settings = document.getElementById("settings");
       const pauseButton = document.getElementById("pause");
       const seedInput = document.getElementById("seed");
+      const foodMode = document.getElementById("food-mode");
       const clickMode = document.getElementById("click-mode");
       const bugSelect = document.getElementById("bug-select");
       const inspector = document.getElementById("inspector");
@@ -374,6 +422,23 @@
 
       function generateSeed() {
         return Math.floor(Math.random() * 4294967296).toString(36);
+      }
+
+      function resizeCanvas(element, context, logicalWidth, logicalHeight) {
+        const bounds = element.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return;
+        const pixelRatio = window.devicePixelRatio || 1;
+        const pixelWidth = Math.max(1, Math.round(bounds.width * pixelRatio));
+        const pixelHeight = Math.max(1, Math.round(bounds.height * pixelRatio));
+        if (element.width !== pixelWidth) element.width = pixelWidth;
+        if (element.height !== pixelHeight) element.height = pixelHeight;
+        context.setTransform(pixelWidth / logicalWidth, 0, 0, pixelHeight / logicalHeight, 0, 0);
+      }
+
+      function updateRenewalControls() {
+        const disabled = foodMode.value !== "renewable";
+        document.getElementById("renewal-amount").disabled = disabled;
+        document.getElementById("renewal-interval").disabled = disabled;
       }
 
       function pointInCircle(x, y, circle, margin = 0) {
@@ -478,14 +543,22 @@
         });
       }
 
-      function newWorld() {
+      function updateInteractionHint() {
+        document.getElementById("interaction-hint").textContent = clickMode.value === "food"
+          ? `Click the habitat to add food (up to 300 pieces).${state === "ended" ? " An ended world cannot be revived." : ""}`
+          : "Click a bug or choose one from the list to inspect it.";
+      }
+
+      function newWorld(generateNewSeed = false) {
         if (!settings.reportValidity()) return;
+        if (generateNewSeed) seedInput.value = generateSeed();
         config = {
           lifetime: Number(document.getElementById("bug-lifetime").value),
-          renewable: document.getElementById("food-mode").value === "renewable",
+          renewable: foodMode.value === "renewable",
           renewalAmount: Number(document.getElementById("renewal-amount").value),
           renewalSteps: Math.round(Number(document.getElementById("renewal-interval").value) / step),
           evolution: document.getElementById("evolution").checked,
+          replaceStarved: document.getElementById("replace-starved").checked,
           predatorCount: Number(document.getElementById("predator-count").value)
         };
         randomValue = seededRandom(seedInput.value);
@@ -522,6 +595,7 @@
         const terrainLabel = terrain.walls.length ? " with terrain" : "";
         document.getElementById("habitat-description").textContent = `${config.renewable ? "A renewable" : "A finite"} habitat${terrainLabel}${predators.length ? ` and ${predators.length} predator${predators.length === 1 ? "" : "s"}` : ""}`;
         document.getElementById("sprinkle-status").textContent = "Sprinkle up to 15 pieces anywhere in the habitat (300 maximum).";
+        updateInteractionHint();
         refreshBugSelect();
         updateUI();
         draw();
@@ -687,10 +761,12 @@
             bugs = [];
             selectedId = null;
             state = "ended";
+            updateInteractionHint();
           } else {
-            const replacements = Array.from({ length: lost }, () => newBug(config.evolution ? survivors[randomInt(0, survivors.length - 1)] : null));
+            const replacementCount = config.replaceStarved ? starved.length : 0;
+            const replacements = Array.from({ length: replacementCount }, () => newBug(config.evolution ? survivors[randomInt(0, survivors.length - 1)] : null));
             replacements.forEach((bug) => newbornIds.add(bug.id));
-            replaced += lost;
+            replaced += replacementCount;
             bugs = survivors.concat(replacements);
             if (!survivors.some((bug) => bug.id === selectedId)) selectedId = null;
           }
@@ -753,7 +829,8 @@
           const element = document.getElementById(`${chart.id}-chart`);
           const graph = element.getContext("2d");
           const summary = document.getElementById(`${chart.id}-summary`);
-          graph.clearRect(0, 0, element.width, element.height);
+          resizeCanvas(element, graph, 300, 120);
+          graph.clearRect(0, 0, 300, 120);
           graph.strokeStyle = color("--cp-border");
           graph.lineWidth = 1;
           graph.beginPath(); graph.moveTo(12, 8); graph.lineTo(12, 108); graph.lineTo(292, 108); graph.stroke();
@@ -809,6 +886,7 @@
       }
 
       function draw() {
+        resizeCanvas(canvas, ctx, width, height);
         ctx.clearRect(0, 0, width, height);
         ctx.fillStyle = color("--cp-border");
         for (let x = 24; x < width; x += 32) {
@@ -894,11 +972,9 @@
         lastTime = null;
         updateUI();
       });
+      foodMode.addEventListener("change", updateRenewalControls);
       settings.addEventListener("submit", (event) => { event.preventDefault(); newWorld(); });
-      document.getElementById("restart").addEventListener("click", () => {
-        seedInput.value = generateSeed();
-        newWorld();
-      });
+      document.getElementById("restart").addEventListener("click", () => { newWorld(true); });
       document.getElementById("new-seed").addEventListener("click", () => { seedInput.value = generateSeed(); });
       document.getElementById("sprinkle").addEventListener("click", () => {
         const added = addRandomFood(sprinkleAmount);
@@ -909,11 +985,7 @@
         updateUI();
         draw();
       });
-      clickMode.addEventListener("change", () => {
-        document.getElementById("interaction-hint").textContent = clickMode.value === "food"
-          ? "Click the habitat to add food (up to 300 pieces). An ended world cannot be revived."
-          : "Click a bug or choose one from the list to inspect it.";
-      });
+      clickMode.addEventListener("change", updateInteractionHint);
       bugSelect.addEventListener("change", () => {
         selectedId = bugSelect.value === "" ? null : Number(bugSelect.value);
         updateUI();
@@ -926,7 +998,7 @@
         if (clickMode.value === "food") {
           if (food.length < foodLimit && !isBlocked(x, y, 5)) {
             food.push({ x, y });
-            document.getElementById("interaction-hint").textContent = "Click the habitat to add food (up to 300 pieces). An ended world cannot be revived.";
+            updateInteractionHint();
           }
           else document.getElementById("interaction-hint").textContent = food.length >= foodLimit ? "The habitat already has 300 food pieces." : "Choose an open area; food cannot be placed inside a wall or rock.";
         } else {
@@ -942,8 +1014,16 @@
         updateUI();
         draw();
       });
+      updateRenewalControls();
       seedInput.value = generateSeed();
       newWorld();
+      const redrawCanvases = () => { draw(); drawCharts(); };
+      const canvasObserver = new ResizeObserver(redrawCanvases);
+      canvasObserver.observe(canvas);
+      for (const id of ["survival", "speed", "food", "population", "generation", "selection"]) {
+        canvasObserver.observe(document.getElementById(`${id}-chart`));
+      }
+      window.addEventListener("resize", redrawCanvases);
       requestAnimationFrame(frame);
     })();
   </script>

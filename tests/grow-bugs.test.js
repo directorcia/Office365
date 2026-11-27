@@ -8,14 +8,21 @@ const html = fs.readFileSync(path.join(__dirname, "..", "docs", "grow-bugs.html"
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 const simulation = scripts.at(-1)[1];
 
-function createWorld() {
+function createWorld({ pixelRatio = 1 } = {}) {
   let nextFrame;
+  let resizeObserver;
   let clock = 0;
   let positions = [];
   let bugColors = [];
   let foodColors = [];
   const elements = new Map();
   const noOp = () => {};
+  const windowListeners = {};
+  const window = {
+    devicePixelRatio: pixelRatio,
+    addEventListener(type, handler) { windowListeners[type] = handler; },
+    dispatch(type) { windowListeners[type]?.(); }
+  };
   const theme = {
     "--cp-success": "#20c060",
     "--cp-warning": "#e0c020",
@@ -27,14 +34,16 @@ function createWorld() {
     if (elements.has(id)) return elements.get(id);
     const listeners = {};
     const item = {
-      id, value: "", checked: false, textContent: "", disabled: false,
+      id, value: "", checked: false, textContent: "", disabled: false, valid: true,
+      width: id === "habitat" ? 960 : 300, height: id === "habitat" ? 560 : 120,
+      bounds: id === "habitat" ? { width: 960, height: 560 } : { width: 300, height: 120 },
       dataset: {}, style: {}, options: [], parentElement: { setAttribute: noOp },
       addEventListener(type, handler) { listeners[type] = handler; },
       dispatch(type, data = {}) { listeners[type]?.({ preventDefault: noOp, ...data }); },
       setAttribute: noOp,
       replaceChildren(...options) { this.options = options; },
-      reportValidity() { return true; },
-      getBoundingClientRect() { return { left: 0, top: 0, width: 960, height: 560 }; },
+      reportValidity() { return this.valid; },
+      getBoundingClientRect() { return { left: 0, top: 0, ...this.bounds }; },
       getContext() {
         let shape;
         return {
@@ -46,6 +55,7 @@ function createWorld() {
             if (id === "habitat" && shape === "food") foodColors.push(this.fillStyle);
           },
           stroke: noOp, moveTo: noOp, lineTo: noOp, fillRect: noOp, setLineDash: noOp, closePath: noOp,
+          setTransform(...args) { item.transform = args; },
           ellipse() { shape = "bug"; }, rotate: noOp, save: noOp, restore: noOp
         };
       }
@@ -61,11 +71,13 @@ function createWorld() {
   element("renewal-interval").value = "15";
   element("terrain-mode").value = "open";
   element("predator-count").value = "0";
+  element("replace-starved").checked = true;
   element("click-mode").value = "inspect";
   const document = { documentElement: {}, getElementById: element };
   vm.runInNewContext(simulation, {
-    document, getComputedStyle: () => ({ getPropertyValue: (name) => theme[name] || "#000000" }),
+    document, window, getComputedStyle: () => ({ getPropertyValue: (name) => theme[name] || "#000000" }),
     requestAnimationFrame: (callback) => { nextFrame = callback; },
+    ResizeObserver: function (callback) { resizeObserver = callback; this.observe = noOp; },
     Option: function (text, value) { this.text = text; this.value = value; }
   });
 
@@ -75,13 +87,15 @@ function createWorld() {
       nextFrame(clock);
     }
   }
-  function start({ bugs = 2, food = 0, lifetime = 5, seed = "lifetime-test", evolution = false, renewable = false, renewalAmount = 15, renewalInterval = 15, terrain = "open", predators = 0 } = {}) {
+  function start({ bugs = 2, food = 0, lifetime = 5, seed = "lifetime-test", evolution = false, replaceStarved = true, renewable = false, renewalAmount = 15, renewalInterval = 15, terrain = "open", predators = 0 } = {}) {
     element("start-bugs").value = String(bugs);
     element("start-food").value = String(food);
     element("bug-lifetime").value = String(lifetime);
     element("seed").value = seed;
     element("evolution").checked = evolution;
+    element("replace-starved").checked = replaceStarved;
     element("food-mode").value = renewable ? "renewable" : "finite";
+    element("food-mode").dispatch("change");
     element("renewal-amount").value = String(renewalAmount);
     element("renewal-interval").value = String(renewalInterval);
     element("terrain-mode").value = terrain;
@@ -98,8 +112,81 @@ function createWorld() {
     const position = positions[index];
     element("habitat").dispatch("click", { clientX: position.x, clientY: position.y });
   }
-  return { element, advance, start, inspect, feed, positions: () => positions, bugColors: () => bugColors, foodColors: () => foodColors };
+  return { element, window, resize: () => resizeObserver(), advance, start, inspect, feed, positions: () => positions, bugColors: () => bugColors, foodColors: () => foodColors };
 }
+
+test("canvas backing stores track displayed size and pixel ratio, including while paused", () => {
+  const world = createWorld({ pixelRatio: 2 });
+  const habitat = world.element("habitat");
+  const chart = world.element("survival-chart");
+  assert.deepEqual([habitat.width, habitat.height], [1920, 1120]);
+  assert.deepEqual([chart.width, chart.height], [600, 240]);
+  assert.deepEqual(habitat.transform, [2, 0, 0, 2, 0, 0]);
+  world.start({ bugs: 1, lifetime: 120 });
+  world.element("pause").dispatch("click");
+  habitat.bounds = { width: 480, height: 280 };
+  chart.bounds = { width: 150, height: 60 };
+  world.resize();
+  assert.deepEqual([habitat.width, habitat.height], [960, 560]);
+  assert.deepEqual([chart.width, chart.height], [300, 120]);
+  const position = world.positions()[0];
+  world.element("click-mode").value = "food";
+  habitat.dispatch("click", { clientX: position.x / 2, clientY: position.y / 2 });
+  assert.equal(world.element("food").textContent, 1);
+  world.window.devicePixelRatio = 1.5;
+  world.window.dispatch("resize");
+  assert.deepEqual([habitat.width, habitat.height], [720, 420]);
+  assert.deepEqual([chart.width, chart.height], [225, 90]);
+});
+
+test("renewal controls disable in finite mode and retain their values when re-enabled", () => {
+  const world = createWorld();
+  const mode = world.element("food-mode");
+  const amount = world.element("renewal-amount");
+  const interval = world.element("renewal-interval");
+  assert.equal(amount.disabled, false);
+  assert.equal(interval.disabled, false);
+  amount.value = "7";
+  interval.value = "9";
+  mode.value = "finite";
+  mode.dispatch("change");
+  assert.equal(amount.disabled, true);
+  assert.equal(interval.disabled, true);
+  mode.value = "renewable";
+  mode.dispatch("change");
+  assert.equal(amount.disabled, false);
+  assert.equal(interval.disabled, false);
+  assert.equal(amount.value, "7");
+  assert.equal(interval.value, "9");
+});
+
+test("sharing metadata points to the canonical page and existing local assets", () => {
+  const canonical = html.match(/<link rel="canonical" href="([^"]+)">/)?.[1];
+  const image = html.match(/<meta property="og:image" content="([^"]+)">/)?.[1];
+  const icon = html.match(/<link rel="icon" type="image\/svg\+xml" href="([^"]+)">/)?.[1];
+  assert.equal(canonical, "https://directorcia.github.io/Office365/grow-bugs.html");
+  assert.match(html, /<meta name="description" content="[^"]+">/);
+  assert.match(html, /<meta property="og:title" content="[^"]+">/);
+  assert.match(html, /<meta property="og:description" content="[^"]+">/);
+  assert.ok(html.includes(`<meta property="og:url" content="${canonical}">`));
+  assert.equal(new URL(image).origin, new URL(canonical).origin);
+  const imagePath = new URL(image).pathname.replace(/^\/Office365\//, "");
+  const imageData = fs.readFileSync(path.join(__dirname, "..", "docs", imagePath));
+  assert.equal(imageData.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  assert.equal(imageData.readUInt32BE(16), 1200);
+  assert.equal(imageData.readUInt32BE(20), 630);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "docs", icon), "utf8"), /<svg\b/);
+});
+
+test("CIAOPS footer matches the sign-in simulator and the back link names the docs hub", () => {
+  const loginHtml = fs.readFileSync(path.join(__dirname, "..", "docs", "m365-login-sim.html"), "utf8");
+  const footer = /<section class="ciaops-footer"[\s\S]*?<\/section>/;
+  assert.equal(html.match(footer)?.[0], loginHtml.match(footer)?.[0]);
+  assert.match(html, /<a class="back" href="index\.html">← Office365 Docs hub<\/a>/);
+  const world = createWorld();
+  assert.equal(world.element("ciaopsYear").textContent, String(new Date().getFullYear()));
+  assert.match(world.element("footerVersion").textContent, /^Version: v\d{4}\.\d{2}\.\d{2}\.\d{4} \| Last updated: .+/);
+});
 
 test("a contact produces one nearby child without repeated births during overlap", () => {
   const world = createWorld();
@@ -305,6 +392,21 @@ test("food adds health to the eater while another bug's health continues to drai
   assert.equal(world.element("status-text").textContent, "Simulation running");
 });
 
+test("a finite world declines to extinction when starved replacement is disabled", () => {
+  const world = createWorld();
+  world.start({ replaceStarved: false });
+  world.feed(0);
+  world.advance(101);
+  assert.equal(world.element("bugs").textContent, 1);
+  assert.equal(world.element("starvation-deaths").textContent, 1);
+  assert.equal(world.element("replaced").textContent, 0);
+  assert.equal(world.element("status-text").textContent, "Simulation running");
+  world.advance(100);
+  assert.equal(world.element("bugs").textContent, 0);
+  assert.equal(world.element("starvation-deaths").textContent, 2);
+  assert.equal(world.element("status-text").textContent, "No bugs survived");
+});
+
 test("multiple meals stack health instead of resetting it to one portion", () => {
   const world = createWorld();
   world.start({ bugs: 1, lifetime: 5 });
@@ -324,6 +426,54 @@ test("all bugs starving at once ends the simulation without replacements", () =>
   assert.equal(world.element("replaced").textContent, 0);
   assert.equal(world.element("status-text").textContent, "No bugs survived");
   assert.match(world.element("survival-summary").textContent, /0\.0%/);
+});
+
+test("an invalid new world leaves the seed, simulation and ended-world hints unchanged", () => {
+  const world = createWorld();
+  world.start({ seed: "original-seed", replaceStarved: false });
+  world.advance(101);
+  world.element("click-mode").value = "food";
+  world.element("click-mode").dispatch("change");
+  world.element("sprinkle").dispatch("click");
+  const fields = ["seed", "active-seed", "status-text", "bugs", "food", "elapsed", "interaction-hint", "sprinkle-status"];
+  const snapshot = fields.map((id) => id === "seed" ? world.element(id).value : world.element(id).textContent);
+  assert.match(world.element("interaction-hint").textContent, /cannot be revived/);
+  assert.match(world.element("sprinkle-status").textContent, /cannot be revived/);
+  world.element("settings").valid = false;
+  world.element("restart").dispatch("click");
+  assert.deepEqual(fields.map((id) => id === "seed" ? world.element(id).value : world.element(id).textContent), snapshot);
+  world.element("settings").dispatch("submit");
+  assert.deepEqual(fields.map((id) => id === "seed" ? world.element(id).value : world.element(id).textContent), snapshot);
+});
+
+test("a valid new world synchronizes the generated seed and clears ended-world hints", () => {
+  const world = createWorld();
+  world.start({ seed: "original-seed", replaceStarved: false });
+  world.advance(101);
+  world.element("click-mode").value = "food";
+  world.element("click-mode").dispatch("change");
+  world.element("sprinkle").dispatch("click");
+  world.element("restart").dispatch("click");
+  assert.notEqual(world.element("seed").value, "original-seed");
+  assert.equal(world.element("active-seed").textContent, world.element("seed").value);
+  assert.equal(world.element("status-text").textContent, "Simulation running");
+  assert.equal(world.element("click-mode").value, "food");
+  assert.equal(world.element("interaction-hint").textContent, "Click the habitat to add food (up to 300 pieces).");
+  assert.doesNotMatch(world.element("sprinkle-status").textContent, /cannot be revived/);
+  world.element("habitat").dispatch("click", { clientX: 10, clientY: 10 });
+  assert.doesNotMatch(world.element("interaction-hint").textContent, /cannot be revived/);
+});
+
+test("replaying a seed restores the selected inspect-mode hint", () => {
+  const world = createWorld();
+  world.start({ seed: "replay-seed", replaceStarved: false });
+  world.advance(101);
+  world.element("click-mode").value = "food";
+  world.element("click-mode").dispatch("change");
+  world.element("click-mode").value = "inspect";
+  world.element("settings").dispatch("submit");
+  assert.equal(world.element("active-seed").textContent, "replay-seed");
+  assert.equal(world.element("interaction-hint").textContent, "Click a bug or choose one from the list to inspect it.");
 });
 
 test("seeded lifetimes and sampled statistics replay across simulation speeds", () => {
