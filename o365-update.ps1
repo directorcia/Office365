@@ -167,13 +167,25 @@ Why PowerShell 7?
     outside PowerShellGet.
 
 .NOTES
-    Author: CIAOPS    Version: 2.18
+    Author: CIAOPS    Version: 2.19
     Last Updated: November 2026
     Requires: PowerShell 7.X; Administrator privileges for installs/removals (not for
               -CheckOnly, -CheckSessions or -WhatIf); PowerShellGet 2.x; internet access
               to the PowerShell Gallery (or the repository given in -Repository)
 
     IMPORTANT: This version removes deprecated Azure AD and MSOnline modules in favor of Microsoft Graph PowerShell SDK
+
+    Major Changes in v2.19:
+    - Replaced repeated Get-InstalledModule scans with a single cached PowerShellGet package
+      snapshot (cutting -CheckOnly runtime by ~4x) and cached per-module Get-Module results
+    - Fixed Remove-OldModuleVersion keeping 2 versions instead of 1 when -Verbose or -WhatIf
+      was passed without -KeepLatestOnly
+    - Hardened Invoke-PowerShellCommandWithTimeout against deadline exit races and unflushed
+      output streams, and aligned the child-process worker with job non-interactive settings
+    - Replaced wildcard -like path prefix checks with normalized directory-boundary matching
+    - Fixed single-line progress-file indexing, duplicate version display in -CheckOnly,
+      PowerApps estimate keys, and nested Write-Progress IDs
+    - Resolved all PSScriptAnalyzer warnings and information findings (OutputType and singular nouns)
 
     Major Changes in v2.18:
     - Verifies effective write access to the AllUsers module directory before making changes
@@ -524,7 +536,7 @@ $Script:ModuleList = @(
         RequiredPSVersion = '5.1'
     },
     @{
-        Name = 'PowershellGet'
+        Name = 'PowerShellGet'
         Description = 'PowerShellGet Module'
         Category = 'Core'
         Deprecated = $false
@@ -579,13 +591,16 @@ $Script:DeprecatedModules = @(
 # Run state (initialised up front so Set-StrictMode never trips on an unset variable)
 $Script:SkipCleanupPrompts = $false
 $Script:LastInstallationError = $null
-$Script:ModuleOperationResults = @()
+$Script:ModuleOperationResults = [System.Collections.Generic.List[object]]::new()
 $Script:FilteredModuleList = @()
 $Script:ProcessingFailureCount = 0
 $Script:SkippedCount = 0
 $Script:ModuleResults = [System.Collections.Generic.List[object]]::new()
-# Per-name results; avoids the much slower full Get-Module -ListAvailable scan.
+# Per-name caches; avoid repeated slow Get-Module and Get-InstalledModule scans.
 $Script:ModulePresenceCache = @{}
+$Script:AvailableModuleCache = @{}
+$Script:InstalledModuleCache = $null
+$Script:StaleInstalledModuleNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
 $Script:JobsSupported = $ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'
 $Script:BootstrapModuleNames = @('PowerShellGet', 'PackageManagement')
@@ -649,6 +664,181 @@ function Enable-Tls12 {
     }
 }
 
+function Test-IsAdministrator {
+    <#
+    .SYNOPSIS
+        Returns $true when the current process has elevated Administrator privileges.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    try {
+        $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+        return [bool]$currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+    catch {
+        Write-Verbose "Could not evaluate administrator status: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Test-PathUnderDirectory {
+    <#
+    .SYNOPSIS
+        Tests whether a filesystem path equals or resides beneath a root directory.
+    .DESCRIPTION
+        Normalizes both paths and enforces a directory-separator boundary so wildcard
+        characters (such as '[' or ']') and sibling prefixes (such as 'ModulesExtra')
+        cannot produce false matches.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter()]
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$RootDirectory
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+
+    try {
+        $sep = [System.IO.Path]::DirectorySeparatorChar
+        $normalizedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd($sep, [System.IO.Path]::AltDirectorySeparatorChar)
+        $normalizedRoot = [System.IO.Path]::GetFullPath($RootDirectory).TrimEnd($sep, [System.IO.Path]::AltDirectorySeparatorChar)
+        return $normalizedPath.Equals($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+            $normalizedPath.StartsWith("$normalizedRoot$sep", [System.StringComparison]::OrdinalIgnoreCase)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Initialize-InstalledModuleCache {
+    <#
+    .SYNOPSIS
+        Snapshots all PowerShellGet-registered module versions in a single query.
+    .DESCRIPTION
+        Calling Get-InstalledModule -Name <m> -AllVersions repeatedly rescans every
+        registered package on each call (~6-8 s per module on large installations).
+        Querying PackageManagement\Get-Package once builds a case-insensitive lookup
+        table reused across version checks, deprecated cleanup, and old-version cleanup.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [switch]$Force
+    )
+
+    if (-not $Force -and $null -ne $Script:InstalledModuleCache) {
+        return
+    }
+
+    try {
+        Write-Verbose 'Building cached PowerShellGet installed-module snapshot...'
+        $cache = [System.Collections.Hashtable]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $packages = @(PackageManagement\Get-Package -ProviderName 'PowerShellGet' -AllVersions -ErrorAction Stop)
+
+        foreach ($pkg in $packages) {
+            # Metadata indexer values are ReEnumerable<string>; unwrap safely under StrictMode
+            $pkgType = [string](@($pkg.Metadata['Type'])[0])
+            if ($pkgType -and $pkgType -ne 'Module') {
+                continue
+            }
+
+            $installedLocation = [string](@($pkg.Metadata['InstalledLocation'])[0])
+            if (-not $cache.ContainsKey($pkg.Name)) {
+                $cache[$pkg.Name] = [System.Collections.Generic.List[object]]::new()
+            }
+
+            $cache[$pkg.Name].Add([pscustomobject]@{
+                Name              = $pkg.Name
+                Version           = $pkg.Version
+                InstalledLocation = $installedLocation
+            })
+        }
+
+        $Script:InstalledModuleCache = $cache
+        $Script:StaleInstalledModuleNames.Clear()
+        Write-Verbose "Cached $($packages.Count) PowerShellGet package record(s) across $($cache.Count) module(s)."
+    }
+    catch {
+        Write-Verbose "Could not build PowerShellGet package snapshot; falling back to per-module queries: $($_.Exception.Message)"
+        $Script:InstalledModuleCache = $null
+    }
+}
+
+function Get-InstalledModuleCached {
+    <#
+    .SYNOPSIS
+        Returns registered PowerShellGet versions for a module from the cache or Get-InstalledModule.
+    #>
+    [CmdletBinding()]
+    [OutputType([object[]])]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Name,
+
+        [Parameter()]
+        [switch]$Refresh
+    )
+
+    if ($null -eq $Script:InstalledModuleCache) {
+        return @(Get-InstalledModule -Name $Name -AllVersions -ErrorAction SilentlyContinue)
+    }
+
+    $isStale = $Script:StaleInstalledModuleNames.Contains($Name)
+    if ($Refresh -or $isStale) {
+        $refreshed = @(Get-InstalledModule -Name $Name -AllVersions -ErrorAction SilentlyContinue)
+        if ($refreshed.Count -gt 0) {
+            $list = [System.Collections.Generic.List[object]]::new()
+            $list.AddRange($refreshed)
+            $Script:InstalledModuleCache[$Name] = $list
+        } else {
+            $null = $Script:InstalledModuleCache.Remove($Name)
+        }
+        $null = $Script:StaleInstalledModuleNames.Remove($Name)
+        return $refreshed
+    }
+
+    if ($Script:InstalledModuleCache.ContainsKey($Name)) {
+        return $Script:InstalledModuleCache[$Name].ToArray()
+    }
+
+    return @()
+}
+
+function Clear-ModuleCacheEntry {
+    <#
+    .SYNOPSIS
+        Marks cached presence, available-module, and installed-module data stale for a module.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Name
+    )
+
+    if ($Script:ModulePresenceCache.ContainsKey($Name)) {
+        $null = $Script:ModulePresenceCache.Remove($Name)
+    }
+    if ($Script:AvailableModuleCache.ContainsKey($Name)) {
+        $null = $Script:AvailableModuleCache.Remove($Name)
+    }
+    if ($null -ne $Script:InstalledModuleCache) {
+        $null = $Script:StaleInstalledModuleNames.Add($Name)
+    }
+}
+
 function Test-ModulePresentOnDisk {
     <#
     .SYNOPSIS
@@ -656,6 +846,7 @@ function Test-ModulePresentOnDisk {
     .DESCRIPTION
         A name-filtered Get-Module query is much cheaper than either Get-InstalledModule -AllVersions
         or a full unfiltered Get-Module scan on module trees with many OneDrive-backed entries.
+        Also caches the discovered PSModuleInfo objects so callers do not pay for a second scan.
         Call with -Refresh after changing this module's installation state.
     #>
     [CmdletBinding()]
@@ -672,6 +863,7 @@ function Test-ModulePresentOnDisk {
     if ($Refresh -or -not $Script:ModulePresenceCache.ContainsKey($Name)) {
         Write-Verbose "Checking PSModulePath for '$Name'..."
         $availableModules = @(Get-Module -Name $Name -ListAvailable -ErrorAction SilentlyContinue)
+        $Script:AvailableModuleCache[$Name] = $availableModules
         $Script:ModulePresenceCache[$Name] = ($availableModules.Count -gt 0)
     }
 
@@ -772,7 +964,7 @@ function Test-PackageProvider {
 
         # Several provider versions can be loaded side by side; compare against the newest
         $installedProvider = @(Get-PackageProvider -Name $PackageName -ErrorAction SilentlyContinue) |
-            Sort-Object { [version]$_.Version } -Descending | Select-Object -First 1
+            Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending | Select-Object -First 1
 
         if (-not $installedProvider) {
             Write-ColorOutput "    [Warning] Package provider '$PackageName' not found" -Type Warning
@@ -796,7 +988,7 @@ function Test-PackageProvider {
             return $true
         }
 
-        if ([version]$installedProvider.Version -ge $minimumProviderVersion) {
+        if ((ConvertTo-ModuleVersion $installedProvider.Version) -ge $minimumProviderVersion) {
             Write-Verbose "Package provider '$PackageName' v$($installedProvider.Version) meets the minimum version $minimumProviderVersion."
             return $true
         }
@@ -811,7 +1003,7 @@ function Test-PackageProvider {
         $localVersion = $installedProvider.Version
         $onlineVersion = $onlineProvider.Version
 
-        if ([version]$localVersion -ge [version]$onlineVersion) {
+        if ((ConvertTo-ModuleVersion $localVersion) -ge (ConvertTo-ModuleVersion $onlineVersion)) {
             Write-ColorOutput "    Local provider $PackageName ($localVersion) is up to date" -Type Process
             return $true
         }
@@ -826,7 +1018,7 @@ function Test-PackageProvider {
         return $true
     }
     catch {
-        Write-ColorOutput "    Error processing package provider '$PackageName' - $($PSItem.Exception.Message)" -Type Error
+        Write-ColorOutput "    Error processing package provider '$PackageName' - $($_.Exception.Message)" -Type Error
         Write-ColorOutput "    Fix: run 'Install-PackageProvider -Name $PackageName -Force' in an elevated PowerShell 7 session, then re-run." -Type Info
         return $false
     }
@@ -848,16 +1040,18 @@ function Get-ModuleInstallationEstimate {
     .PARAMETER Operation
         Type of operation: 'Install', 'Update', or 'Remove'
 
-    .RETURNS
-        Hashtable with EstimatedTime (seconds), EstimatedSize (MB), and Complexity
+    .OUTPUTS
+        Hashtable with EstimatedTime (seconds), EstimatedSize (MB), FormattedSize, and FormattedTime
     #>
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName,
 
         [Parameter()]
-        [string]$Operation = 'Install'  # Install, Update, or Remove
+        [ValidateSet('Install', 'Update', 'Remove')]
+        [string]$Operation = 'Install'
     )
 
     # Get language mode for enhanced time estimates
@@ -892,9 +1086,10 @@ function Get-ModuleInstallationEstimate {
         'SharePointPnPPowerShellOnline' = @{ Size = 60; InstallTime = 50; UpdateTime = 65; RemoveTime = 30 }
         'WindowsAutoPilotIntune' = @{ Size = 20; InstallTime = 30; UpdateTime = 35; RemoveTime = 25 }
         'Microsoft.Online.SharePoint.PowerShell' = @{ Size = 30; InstallTime = 35; UpdateTime = 45; RemoveTime = 20 }
-        'PowerApps-Admin' = @{ Size = 25; InstallTime = 30; UpdateTime = 40; RemoveTime = 15 }
+        'Microsoft.PowerApps.PowerShell' = @{ Size = 25; InstallTime = 30; UpdateTime = 40; RemoveTime = 15 }
+        'Microsoft.PowerApps.Administration.PowerShell' = @{ Size = 25; InstallTime = 30; UpdateTime = 40; RemoveTime = 15 }
     }
-      $defaultEstimate = @{ Size = 10; InstallTime = 20; UpdateTime = 25; RemoveTime = 15 }
+    $defaultEstimate = @{ Size = 10; InstallTime = 20; UpdateTime = 25; RemoveTime = 15 }
 
     # Use traditional if-else statements for Constrained Language Mode compatibility
     if ($estimates[$ModuleName]) {
@@ -927,16 +1122,21 @@ function Get-ModuleInstallationEstimate {
     }
 }
 
-function Get-ModuleSpecificParams {
+function Get-ModuleInstallParameter {
     <#
     .SYNOPSIS
         Gets module-specific installation parameters
-      .DESCRIPTION
+
+    .DESCRIPTION
         Returns appropriate parameters for Install-Module or Update-Module based on the specific module,
         as some modules don't support certain parameters like -AllowClobber, -AcceptLicense,
         or -SkipPublisherCheck. Note: Update-Module only supports a subset of Install-Module parameters.
+
+    .OUTPUTS
+        Hashtable of parameters to splat to Install-Module or Update-Module
     #>
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName,
@@ -953,8 +1153,7 @@ function Get-ModuleSpecificParams {
     $noAllowClobberModules = @(
         'Microsoft.WinGet.Client',
         'Az'
-        # REMOVED: Microsoft.Graph and Microsoft.Graph.Authentication
-        # These modules NEED AllowClobber to resolve command conflicts
+        # Microsoft.Graph and Microsoft.Graph.Authentication require AllowClobber for command conflicts
     )
 
     # Modules that don't support -AcceptLicense
@@ -965,7 +1164,6 @@ function Get-ModuleSpecificParams {
         'MicrosoftTeams',
         'PnP.PowerShell',
         'Microsoft.Online.SharePoint.PowerShell'
-        # REMOVED: Microsoft.Graph - it supports AcceptLicense
     )
 
     # Modules that don't support -SkipPublisherCheck
@@ -977,13 +1175,8 @@ function Get-ModuleSpecificParams {
         'Az',
         'MicrosoftTeams',
         'Microsoft.Online.SharePoint.PowerShell'
-        # REMOVED: Microsoft.Graph - it supports SkipPublisherCheck
-        # PnP.PowerShell is allowed to use SkipPublisherCheck to avoid publisher-signature conflicts during updates
+        # PnP.PowerShell uses SkipPublisherCheck to avoid publisher-signature conflicts during updates
     )
-
-    # Note: Microsoft.PowerApps modules were removed from the exclusion lists above
-    # because they actually REQUIRE -AllowClobber, -AcceptLicense, and -SkipPublisherCheck
-    # to install properly due to command name conflicts
 
     # Start with base parameters
     $moduleParams = $BaseParams.Clone()
@@ -1040,12 +1233,8 @@ function Get-ModuleSpecificParams {
         $moduleParams.SkipPublisherCheck = $true
     }
 
-    # Add debugging info for troubleshooting
     if ($ModuleName -in $noAllowClobberModules -or $ModuleName -in $noAcceptLicenseModules -or $ModuleName -in $noSkipPublisherCheckModules) {
-        Write-Verbose "Using module-specific parameters for $ModuleName (some standard parameters not supported)"
-        if ($ModuleName -eq 'MicrosoftTeams') {
-            Write-ColorOutput "    [Debug] MicrosoftTeams parameters after filtering: $($moduleParams.Keys -join ', ')" -Type Info
-        }
+        Write-Verbose "Using module-specific parameters for $ModuleName ($($moduleParams.Keys -join ', '))"
     }
 
     return $moduleParams
@@ -1119,31 +1308,53 @@ function Invoke-PowerShellCommandWithTimeout {
         $null = New-Item -Path $workerDirectory -ItemType Directory -ErrorAction Stop
         Set-Content -LiteralPath $workerScriptPath -Value $CommandText -Encoding utf8 -ErrorAction Stop
         Set-Content -LiteralPath $requestPath -Value $RequestJson -Encoding utf8 -ErrorAction Stop
-        $pwshPath = Join-Path $PSHOME 'pwsh.exe'
+        $pwshExe = if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' }
+        $pwshPath = Join-Path $PSHOME $pwshExe
         $argumentList = "-NoLogo -NoProfile -NonInteractive -File `"$workerScriptPath`" -RequestPath `"$requestPath`""
-        $process = Start-Process -FilePath $pwshPath `
-            -ArgumentList $argumentList `
-            -PassThru -WindowStyle Hidden `
-            -RedirectStandardOutput $stdoutPath `
-            -RedirectStandardError $stderrPath `
-            -ErrorAction Stop
+        $startProcessParams = @{
+            FilePath               = $pwshPath
+            ArgumentList           = $argumentList
+            PassThru               = $true
+            WindowStyle            = 'Hidden'
+            RedirectStandardOutput = $stdoutPath
+            RedirectStandardError  = $stderrPath
+            ErrorAction            = 'Stop'
+        }
+        $process = Start-Process @startProcessParams
 
         $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
         while (-not $process.HasExited) {
             if ((Get-Date) -ge $deadline) {
-                Stop-Process -Id $process.Id -Force -ErrorAction Stop
-                $result.TimedOut = $true
-                $result.ErrorMessage = "The PowerShell worker exceeded the $TimeoutSeconds-second timeout and was terminated."
+                # Guard against the process exiting between the loop condition and termination
+                if (-not $process.HasExited) {
+                    try {
+                        $process.Kill($true)
+                    }
+                    catch {
+                        Write-Verbose "Worker PID $($process.Id) exited during termination: $($_.Exception.Message)"
+                    }
+                    $result.TimedOut = $true
+                    $result.ErrorMessage = "The PowerShell worker exceeded the $TimeoutSeconds-second timeout and was terminated."
+                }
                 break
             }
 
             $elapsed = (Get-Date) - $startedAt
             $percentComplete = [int][Math]::Min(99, ($elapsed.TotalSeconds / $TimeoutSeconds) * 100)
-            Write-Progress -Activity $Activity -Status ("Child process running ({0:N0}s elapsed)" -f $elapsed.TotalSeconds) -PercentComplete $percentComplete
+            $workerProgress = @{
+                Id              = 1
+                ParentId        = 0
+                Activity        = $Activity
+                Status          = ("Child process running ({0:N0}s elapsed)" -f $elapsed.TotalSeconds)
+                PercentComplete = $percentComplete
+            }
+            Write-Progress @workerProgress
             Start-Sleep -Seconds 1
         }
 
         if (-not $result.TimedOut) {
+            # Ensure redirected stdout/stderr buffers finish flushing before reading
+            $process.WaitForExit()
             $result.ExitCode = $process.ExitCode
             $result.Success = $result.ExitCode -eq 0
         }
@@ -1170,11 +1381,11 @@ function Invoke-PowerShellCommandWithTimeout {
     }
     finally {
         $result.Duration = (Get-Date) - $startedAt
-        Write-Progress -Activity $Activity -Completed
+        Write-Progress -Id 1 -ParentId 0 -Activity $Activity -Completed
 
         if ($process -and -not $process.HasExited) {
             try {
-                Stop-Process -Id $process.Id -Force -ErrorAction Stop
+                $process.Kill($true)
             }
             catch {
                 Write-Verbose "Could not stop PowerShell worker PID $($process.Id): $($_.Exception.Message)"
@@ -1206,6 +1417,11 @@ function Get-ModuleInstallWorkerScript {
     return @"
 param([Parameter(Mandatory)][string]`$RequestPath)
 `$ErrorActionPreference = 'Stop'
+`$ProgressPreference = 'SilentlyContinue'
+`$ConfirmPreference = 'None'
+`$PSDefaultParameterValues['*:Confirm'] = `$false
+`$originalInstallationPolicy = `$null
+`$targetRepository = `$null
 try {
     try {
         `$protocol = [Net.ServicePointManager]::SecurityProtocol
@@ -1219,12 +1435,25 @@ try {
 
     `$request = Get-Content -LiteralPath `$RequestPath -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable -ErrorAction Stop
     `$workerParams = `$request.InstallParams
+    if (`$workerParams -and `$workerParams.ContainsKey('Repository') -and `$workerParams['Repository']) {
+        `$targetRepository = [string]`$workerParams['Repository']
+        `$originalInstallationPolicy = (Get-PSRepository -Name `$targetRepository -ErrorAction Stop).InstallationPolicy
+        if (`$originalInstallationPolicy -ne 'Trusted') {
+            Set-PSRepository -Name `$targetRepository -InstallationPolicy Trusted -ErrorAction Stop
+        }
+    }
+
     Install-Module -Name `$request.ModuleName @workerParams -ErrorAction Stop
     exit 0
 }
 catch {
     Write-Error -Message `$_.Exception.Message -ErrorAction Continue
     exit 1
+}
+finally {
+    if (`$targetRepository -and `$originalInstallationPolicy -and `$originalInstallationPolicy -ne 'Trusted') {
+        Set-PSRepository -Name `$targetRepository -InstallationPolicy `$originalInstallationPolicy -ErrorAction SilentlyContinue
+    }
 }
 "@
 }
@@ -1264,10 +1493,13 @@ function Invoke-ModuleInstallDirect {
         InstallParams = $InstallParams
     } | ConvertTo-Json -Depth 10 -Compress
 
-    $attempt = Invoke-PowerShellCommandWithTimeout -CommandText $workerCommand `
-        -RequestJson $requestJson `
-        -TimeoutSeconds ($TimeoutMinutes * 60) `
-        -Activity "$Operation module: $ModuleName"
+    $workerCallParams = @{
+        CommandText    = $workerCommand
+        RequestJson    = $requestJson
+        TimeoutSeconds = $TimeoutMinutes * 60
+        Activity       = "$Operation module: $ModuleName"
+    }
+    $attempt = Invoke-PowerShellCommandWithTimeout @workerCallParams
 
     if ($attempt.Success) {
         $elapsed = (Get-Date) - $StartTime
@@ -1300,10 +1532,13 @@ function Invoke-ModuleInstallDirect {
         ModuleName = $ModuleName
         InstallParams = $retryParams
     } | ConvertTo-Json -Depth 10 -Compress
-    $attempt = Invoke-PowerShellCommandWithTimeout -CommandText $workerCommand `
-        -RequestJson $retryRequestJson `
-        -TimeoutSeconds ($TimeoutMinutes * 60) `
-        -Activity "$Operation module: $ModuleName (retry)"
+    $retryCallParams = @{
+        CommandText    = $workerCommand
+        RequestJson    = $retryRequestJson
+        TimeoutSeconds = $TimeoutMinutes * 60
+        Activity       = "$Operation module: $ModuleName (retry)"
+    }
+    $attempt = Invoke-PowerShellCommandWithTimeout @retryCallParams
 
     if ($attempt.Success) {
         Write-ColorOutput "    ✅ Successfully resolved conflict and installed $ModuleName" -Type Process
@@ -1335,10 +1570,11 @@ function Install-ModuleWithProgress {
     .PARAMETER Operation
         Operation type: 'Install' or 'Update'
 
-    .RETURNS
+    .OUTPUTS
         Boolean indicating success or failure
     #>
     [CmdletBinding()]
+    [OutputType([bool])]
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName,
@@ -1397,7 +1633,7 @@ function Install-ModuleWithProgress {
         Write-ColorOutput "      ⚠️  Extended time due to security verification requirements" -Type Warning
     }
     Write-ColorOutput "" -Type Info
-      # Create a background job for the actual installation with phase tracking
+    # Create a background job for the actual installation with phase tracking
     $jobScript = {
         param($ModuleName, $InstallParams, $Operation, $LanguageMode, $ProgressFilePath, $Repository)
         $ErrorActionPreference = 'Stop'
@@ -1439,52 +1675,52 @@ function Install-ModuleWithProgress {
 
             if ($isConstrainedLargeModule) {
                 $progressFile = $ProgressFilePath
-                "Starting $Operation of $ModuleName at $(Get-Date -Format 'HH:mm:ss') | Phase: Download and Installation" | Out-File $progressFile -Force
+                "Starting $Operation of $ModuleName at $(Get-Date -Format 'HH:mm:ss') | Phase: Download and Installation" | Out-File -LiteralPath $progressFile -Force
             }
 
             # Execute the installation/update
             switch ($Operation) {
                 'Install' {
                     if ($isConstrainedLargeModule) {
-                        "Status: Installing $ModuleName... | Phase: Installation Starting" | Out-File $progressFile -Append
+                        "Status: Installing $ModuleName... | Phase: Installation Starting" | Out-File -LiteralPath $progressFile -Append
                     }
                     $null = Install-Module -Name $ModuleName @InstallParams
                     if ($isConstrainedLargeModule) {
-                        "Phase: Installation Complete - Starting Verification | Status: Verification may take several minutes" | Out-File $progressFile -Append
+                        "Phase: Installation Complete - Starting Verification | Status: Verification may take several minutes" | Out-File -LiteralPath $progressFile -Append
                     }
                 }
                 'Update' {
                     if ($isConstrainedLargeModule) {
-                        "Status: Updating $ModuleName... | Phase: Update Starting" | Out-File $progressFile -Append
+                        "Status: Updating $ModuleName... | Phase: Update Starting" | Out-File -LiteralPath $progressFile -Append
                     }
                     $null = Install-Module -Name $ModuleName @InstallParams
                     if ($isConstrainedLargeModule) {
-                        "Phase: Update Complete - Starting Verification | Status: Verification may take several minutes" | Out-File $progressFile -Append
+                        "Phase: Update Complete - Starting Verification | Status: Verification may take several minutes" | Out-File -LiteralPath $progressFile -Append
                     }
                 }
                 default {
                     if ($isConstrainedLargeModule) {
-                        "Status: Installing $ModuleName (default)... | Phase: Installation Starting" | Out-File $progressFile -Append
+                        "Status: Installing $ModuleName (default)... | Phase: Installation Starting" | Out-File -LiteralPath $progressFile -Append
                     }
                     $null = Install-Module -Name $ModuleName @InstallParams
                     if ($isConstrainedLargeModule) {
-                        "Phase: Installation Complete - Starting Verification | Status: Verification may take several minutes" | Out-File $progressFile -Append
+                        "Phase: Installation Complete - Starting Verification | Status: Verification may take several minutes" | Out-File -LiteralPath $progressFile -Append
                     }
                 }
             }
 
             # Final cleanup phase
             if ($isConstrainedLargeModule) {
-                "Phase: Verification Complete - Final Cleanup | Status: Complete at $(Get-Date -Format 'HH:mm:ss')" | Out-File $progressFile -Append
+                "Phase: Verification Complete - Final Cleanup | Status: Complete at $(Get-Date -Format 'HH:mm:ss')" | Out-File -LiteralPath $progressFile -Append
             }
 
             # Old-version cleanup is performed by the parent process after the job completes;
-            # script functions like Remove-OldModuleVersions are not available inside this job.
+            # script functions like Remove-OldModuleVersion are not available inside this job.
             return @{ Success = $true; Message = "$Operation completed successfully" }
         }
         catch {
-            if ($progressFile -and (Test-Path $progressFile)) {
-                "Error: $($_.Exception.Message) at $(Get-Date -Format 'HH:mm:ss')" | Out-File $progressFile -Append
+            if ($progressFile -and (Test-Path -LiteralPath $progressFile)) {
+                "Error: $($_.Exception.Message) at $(Get-Date -Format 'HH:mm:ss')" | Out-File -LiteralPath $progressFile -Append
             }
 
             # Enhanced error handling for AllowClobber conflicts in background jobs
@@ -1494,8 +1730,8 @@ function Install-ModuleWithProgress {
                 $errorMessage -like "*may override the existing commands*" -or
                 ($ModuleName -eq 'PnP.PowerShell' -and ($errorMessage -like "*publisher*" -or $errorMessage -like "*SkipPublisherCheck*" -or $errorMessage -like "*signed module*"))) {
 
-                if ($progressFile -and (Test-Path $progressFile)) {
-                    "Retry: Command conflict detected - retrying with AllowClobber at $(Get-Date -Format 'HH:mm:ss')" | Out-File $progressFile -Append
+                if ($progressFile -and (Test-Path -LiteralPath $progressFile)) {
+                    "Retry: Command conflict detected - retrying with AllowClobber at $(Get-Date -Format 'HH:mm:ss')" | Out-File -LiteralPath $progressFile -Append
                 }
 
                 # Force AllowClobber for conflict resolution
@@ -1510,8 +1746,8 @@ function Install-ModuleWithProgress {
                         }
                         $null = Install-Module -Name $ModuleName @retryParams
 
-                        if ($progressFile -and (Test-Path $progressFile)) {
-                            "Retry: Success with AllowClobber at $(Get-Date -Format 'HH:mm:ss')" | Out-File $progressFile -Append
+                        if ($progressFile -and (Test-Path -LiteralPath $progressFile)) {
+                            "Retry: Success with AllowClobber at $(Get-Date -Format 'HH:mm:ss')" | Out-File -LiteralPath $progressFile -Append
                         }
 
                         return @{ Success = $true; Message = "$Operation completed successfully after retry" }
@@ -1520,8 +1756,8 @@ function Install-ModuleWithProgress {
                     }
                 }
                 catch {
-                    if ($progressFile -and (Test-Path $progressFile)) {
-                        "Retry: Failed with error: $($_.Exception.Message)" | Out-File $progressFile -Append
+                    if ($progressFile -and (Test-Path -LiteralPath $progressFile)) {
+                        "Retry: Failed with error: $($_.Exception.Message)" | Out-File -LiteralPath $progressFile -Append
                     }
                     return @{ Success = $false; Message = $_.Exception.Message }
                 }
@@ -1569,8 +1805,10 @@ function Install-ModuleWithProgress {
 
     # Enhanced progress tracking with phase detection
     $progressParams = @{
-        Activity = "$Operation module: $ModuleName"
-        Status = "Downloading and installing..."
+        Id              = 1
+        ParentId        = 0
+        Activity        = "$Operation module: $ModuleName"
+        Status          = "Downloading and installing..."
         PercentComplete = 0
     }
 
@@ -1582,152 +1820,153 @@ function Install-ModuleWithProgress {
                                ($ModuleName -eq 'Az' -or $ModuleName -eq 'Microsoft.Graph'))
 
     try {
-    while ($job.State -in @('NotStarted', 'Running', 'Blocked')) {
-        $elapsed = (Get-Date) - $startTime
-        $elapsedSeconds = $elapsed.TotalSeconds
-        $elapsedMinutes = $elapsed.TotalMinutes
-        if ($elapsedMinutes -ge $TimeoutMinutes) {
-            throw "Installation exceeded $TimeoutMinutes minutes. Old versions will be retained."
-        }
+        while ($job.State -in @('NotStarted', 'Running', 'Blocked')) {
+            $elapsed = (Get-Date) - $startTime
+            $elapsedSeconds = $elapsed.TotalSeconds
+            $elapsedMinutes = $elapsed.TotalMinutes
+            if ($elapsedMinutes -ge $TimeoutMinutes) {
+                throw "Installation exceeded $TimeoutMinutes minutes. Old versions will be retained."
+            }
 
-        # Check for progress file updates for large modules in constrained mode
-        $currentPhase = "Installation"
-        if ($isConstrainedLargeModule -and (Test-Path $progressFile)) {
-            try {
-                $progressContent = Get-Content $progressFile -ErrorAction SilentlyContinue | Select-Object -Last 2
-                if ($progressContent) {
-                    $latestLine = $progressContent[-1]
-                    if ($latestLine -like "*Verification*") {
-                        $currentPhase = "Verification"
-                        if (-not $verificationPhaseStarted) {
-                            $verificationPhaseStarted = $true
-                            Write-ColorOutput "    📋 Entered Verification Phase - This may take several minutes" -Type Warning
-                            Write-ColorOutput "    ⏳ The process may appear frozen - this is normal behavior!" -Type Warning
+            # Check for progress file updates for large modules in constrained mode
+            $currentPhase = "Installation"
+            if ($isConstrainedLargeModule -and (Test-Path -LiteralPath $progressFile)) {
+                try {
+                    # @() ensures a single-line file stays an array so [-1] returns the line, not its last character
+                    $progressContent = @(Get-Content -LiteralPath $progressFile -Tail 2 -ErrorAction SilentlyContinue)
+                    if ($progressContent.Count -gt 0) {
+                        $latestLine = $progressContent[-1]
+                        if ($latestLine -like "*Verification*") {
+                            $currentPhase = "Verification"
+                            if (-not $verificationPhaseStarted) {
+                                $verificationPhaseStarted = $true
+                                Write-ColorOutput "    📋 Entered Verification Phase - This may take several minutes" -Type Warning
+                                Write-ColorOutput "    ⏳ The process may appear frozen - this is normal behavior!" -Type Warning
+                            }
+                        }
+                        elseif ($latestLine -like "*Cleanup*") {
+                            $currentPhase = "Cleanup"
+                            if ($verificationPhaseStarted) {
+                                Write-ColorOutput "    ✅ Verification Complete - Finalizing installation..." -Type Process
+                            }
                         }
                     }
-                    elseif ($latestLine -like "*Cleanup*") {
-                        $currentPhase = "Cleanup"
-                        if ($verificationPhaseStarted) {
-                            Write-ColorOutput "    ✅ Verification Complete - Finalizing installation..." -Type Process
-                        }
-                    }
                 }
-            }
-            catch {
-                # The job may be mid-write; a missed poll is harmless, the next one catches up
-                Write-Verbose "Progress file read skipped: $($_.Exception.Message)"
-            }
-        }
-
-        # Enhanced progress calculation for large modules in constrained mode
-        if ($isConstrainedLargeModule) {
-            switch ($currentPhase) {
-                "Installation" {
-                    # First 25% is download/installation (usually faster)
-                    $phaseProgress = [Math]::Min(25, ($elapsedSeconds / 240) * 25) # Reduced to 4 minutes for this phase
-                    $progressPercent = $phaseProgress
-                }
-                "Verification" {
-                    # 25-85% is verification (slowest phase)
-                    $verificationTime = $elapsedSeconds - 240  # Adjusted for reduced installation time
-                    $verificationProgress = [Math]::Min(60, ($verificationTime / 480) * 60) # Reduced to 8 minutes for verification
-                    $progressPercent = 25 + $verificationProgress
-
-                    # Show periodic reminders during verification
-                    if (($elapsedMinutes -gt 6) -and (((Get-Date) - $lastProgressUpdate).TotalSeconds -gt 60)) {  # Reduced thresholds
-                        Write-ColorOutput ("    ⏳ Still in verification phase ({0:N1} min elapsed) - please continue waiting..." -f $elapsedMinutes) -Type Info
-                        $lastProgressUpdate = Get-Date
-                    }
-                }
-                "Cleanup" {
-                    # 85-100% is cleanup (usually quick)
-                    $cleanupTime = $elapsedSeconds - 720  # Adjusted for reduced total time (4+8 minutes)
-                    $cleanupProgress = [Math]::Min(15, ($cleanupTime / 120) * 15) # 2 minutes for cleanup
-                    $progressPercent = 85 + $cleanupProgress
-                }
-                default {
-
-                    $progressPercent = [Math]::Min(95, ($elapsedSeconds / $estimate.EstimatedTime) * 100)
-                }
-            }
-        } else {
-            # Standard progress calculation for normal modules
-            $progressPercent = [Math]::Min(95, ($elapsedSeconds / $estimate.EstimatedTime) * 100)
-        }
-
-        $progressParams.PercentComplete = $progressPercent
-
-        # Enhanced status messages
-        if ($isConstrainedLargeModule) {
-            $progressParams.Status = "Phase: $currentPhase - {0:N1}% - Elapsed: {1:N1}min" -f $progressPercent, $elapsedMinutes
-
-            if ($estimate.EstimatedTime -gt $elapsedSeconds) {
-                $remainingSeconds = $estimate.EstimatedTime - $elapsedSeconds
-                if ($remainingSeconds -gt 60) {
-                    $progressParams.Status += " - Est. remaining: {0:N1} min" -f ($remainingSeconds / 60)
-                } else {
-                    $progressParams.Status += " - Est. remaining: {0:N0}s" -f $remainingSeconds
+                catch {
+                    # The job may be mid-write; a missed poll is harmless, the next one catches up
+                    Write-Verbose "Progress file read skipped: $($_.Exception.Message)"
                 }
             }
 
-            # Add phase-specific messages
-            switch ($currentPhase) {
-                "Verification" {
-                    $progressParams.Status += " (May appear frozen - normal!)"
-                }
-                "Cleanup" {
-                    $progressParams.Status += " (Almost complete)"
-                }
-            }
-        } else {
-            # Standard progress for normal modules
-            $progressParams.Status = "Progress: {0:N0}% - Elapsed: {1:N0}s" -f $progressPercent, $elapsedSeconds
-
-            if ($estimate.EstimatedTime -gt $elapsedSeconds) {
-                $remainingSeconds = $estimate.EstimatedTime - $elapsedSeconds
-                if ($remainingSeconds -gt 60) {
-                    $progressParams.Status += " - Est. remaining: {0:N1} min" -f ($remainingSeconds / 60)
-                } else {
-                    $progressParams.Status += " - Est. remaining: {0:N0}s" -f $remainingSeconds
-                }
-            }
-        }
-
-        Write-Progress @progressParams
-
-        # Wait-Job throws when the child is blocked on an interactive prompt.
-        # The job is configured as non-interactive above, but surface a useful
-        # error if a provider or module still requests input.
-        if ($job.State -eq 'Blocked') {
-            throw "Installation job is blocked waiting for user interaction. Ensure the NuGet provider and $($Repository) trust settings are available."
-        }
-        $null = Wait-Job -Job $job -Timeout 1 -ErrorAction Stop
-        $iteration++
-
-        # Enhanced timeout handling for large modules in constrained mode
-        $timeoutMultiplier = if ($isConstrainedLargeModule) { 2.0 } else { 1.5 }  # Reduced from 2.5 to 2.0
-
-        if ($iteration -gt $maxIterations -and $elapsedSeconds -gt ($estimate.EstimatedTime * $timeoutMultiplier)) {
+            # Enhanced progress calculation for large modules in constrained mode
             if ($isConstrainedLargeModule) {
-                $progressParams.Status = "Extended processing time in Constrained Mode - Elapsed: {0:N1} min" -f $elapsedMinutes
-                if ($currentPhase -eq "Verification") {
-                    $progressParams.Status += " (Still in verification - normal for this module)"
+                switch ($currentPhase) {
+                    "Installation" {
+                        # First 25% is download/installation (usually faster)
+                        $phaseProgress = [Math]::Min(25, ($elapsedSeconds / 240) * 25)
+                        $progressPercent = $phaseProgress
+                    }
+                    "Verification" {
+                        # 25-85% is verification (slowest phase)
+                        $verificationTime = $elapsedSeconds - 240
+                        $verificationProgress = [Math]::Min(60, ($verificationTime / 480) * 60)
+                        $progressPercent = 25 + $verificationProgress
+
+                        # Show periodic reminders during verification
+                        if (($elapsedMinutes -gt 6) -and (((Get-Date) - $lastProgressUpdate).TotalSeconds -gt 60)) {
+                            Write-ColorOutput ("    ⏳ Still in verification phase ({0:N1} min elapsed) - please continue waiting..." -f $elapsedMinutes) -Type Info
+                            $lastProgressUpdate = Get-Date
+                        }
+                    }
+                    "Cleanup" {
+                        # 85-100% is cleanup (usually quick)
+                        $cleanupTime = $elapsedSeconds - 720
+                        $cleanupProgress = [Math]::Min(15, ($cleanupTime / 120) * 15)
+                        $progressPercent = 85 + $cleanupProgress
+                    }
+                    default {
+                        $progressPercent = [Math]::Min(95, ($elapsedSeconds / $estimate.EstimatedTime) * 100)
+                    }
                 }
             } else {
-                $progressParams.Status = "Taking longer than expected - Elapsed: {0:N0}s" -f $elapsedSeconds
+                # Standard progress calculation for normal modules
+                $progressPercent = [Math]::Min(95, ($elapsedSeconds / $estimate.EstimatedTime) * 100)
             }
-            Write-Progress @progressParams
-        }
-    }
 
-    if ($job.State -ne 'Completed') {
-        throw "Installation job ended in state '$($job.State)': $($job.ChildJobs[0].JobStateInfo.Reason)"
-    }
-    $jobResults = @(Receive-Job -Job $job -ErrorAction Stop)
-    if ($jobResults.Count -ne 1 -or $jobResults[0] -isnot [System.Collections.IDictionary] -or -not $jobResults[0].Contains('Success')) {
-        throw 'Installation job returned an invalid result.'
-    }
-    $result = $jobResults[0]
+            $progressParams.PercentComplete = $progressPercent
+
+            # Enhanced status messages
+            if ($isConstrainedLargeModule) {
+                $progressParams.Status = "Phase: $currentPhase - {0:N1}% - Elapsed: {1:N1}min" -f $progressPercent, $elapsedMinutes
+
+                if ($estimate.EstimatedTime -gt $elapsedSeconds) {
+                    $remainingSeconds = $estimate.EstimatedTime - $elapsedSeconds
+                    if ($remainingSeconds -gt 60) {
+                        $progressParams.Status += " - Est. remaining: {0:N1} min" -f ($remainingSeconds / 60)
+                    } else {
+                        $progressParams.Status += " - Est. remaining: {0:N0}s" -f $remainingSeconds
+                    }
+                }
+
+                # Add phase-specific messages
+                switch ($currentPhase) {
+                    "Verification" {
+                        $progressParams.Status += " (May appear frozen - normal!)"
+                    }
+                    "Cleanup" {
+                        $progressParams.Status += " (Almost complete)"
+                    }
+                }
+            } else {
+                # Standard progress for normal modules
+                $progressParams.Status = "Progress: {0:N0}% - Elapsed: {1:N0}s" -f $progressPercent, $elapsedSeconds
+
+                if ($estimate.EstimatedTime -gt $elapsedSeconds) {
+                    $remainingSeconds = $estimate.EstimatedTime - $elapsedSeconds
+                    if ($remainingSeconds -gt 60) {
+                        $progressParams.Status += " - Est. remaining: {0:N1} min" -f ($remainingSeconds / 60)
+                    } else {
+                        $progressParams.Status += " - Est. remaining: {0:N0}s" -f $remainingSeconds
+                    }
+                }
+            }
+
+            Write-Progress @progressParams
+
+            # Wait-Job throws when the child is blocked on an interactive prompt.
+            # The job is configured as non-interactive above, but surface a useful
+            # error if a provider or module still requests input.
+            if ($job.State -eq 'Blocked') {
+                throw "Installation job is blocked waiting for user interaction. Ensure the NuGet provider and $($Repository) trust settings are available."
+            }
+            $null = Wait-Job -Job $job -Timeout 1 -ErrorAction Stop
+            $iteration++
+
+            # Enhanced timeout handling for large modules in constrained mode
+            $timeoutMultiplier = if ($isConstrainedLargeModule) { 2.0 } else { 1.5 }
+
+            if ($iteration -gt $maxIterations -and $elapsedSeconds -gt ($estimate.EstimatedTime * $timeoutMultiplier)) {
+                if ($isConstrainedLargeModule) {
+                    $progressParams.Status = "Extended processing time in Constrained Mode - Elapsed: {0:N1} min" -f $elapsedMinutes
+                    if ($currentPhase -eq "Verification") {
+                        $progressParams.Status += " (Still in verification - normal for this module)"
+                    }
+                } else {
+                    $progressParams.Status = "Taking longer than expected - Elapsed: {0:N0}s" -f $elapsedSeconds
+                }
+                Write-Progress @progressParams
+            }
+        }
+
+        if ($job.State -ne 'Completed') {
+            $jobReason = if ($job.ChildJobs.Count -gt 0) { $job.ChildJobs[0].JobStateInfo.Reason } else { 'No child job details available' }
+            throw "Installation job ended in state '$($job.State)': $jobReason"
+        }
+        $jobResults = @(Receive-Job -Job $job -ErrorAction Stop)
+        if ($jobResults.Count -ne 1 -or $jobResults[0] -isnot [System.Collections.IDictionary] -or -not $jobResults[0].Contains('Success')) {
+            throw 'Installation job returned an invalid result.'
+        }
+        $result = $jobResults[0]
     }
     catch {
         $result = @{ Success = $false; Message = $_.Exception.Message }
@@ -1738,7 +1977,7 @@ function Install-ModuleWithProgress {
         }
         Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $progressFile -Force -ErrorAction SilentlyContinue
-        Write-Progress -Activity "$Operation module: $ModuleName" -Completed
+        Write-Progress -Id 1 -ParentId 0 -Activity "$Operation module: $ModuleName" -Completed
     }
 
     $actualTime = ((Get-Date) - $startTime).TotalSeconds
@@ -1804,10 +2043,11 @@ function Get-FilteredModuleList {
     .PARAMETER Scope
         Array of scopes to include (All, Graph, Azure, Exchange, Teams, SharePoint, PowerApps)
 
-    .RETURNS
+    .OUTPUTS
         Array of module objects matching the specified scope
     #>
     [CmdletBinding()]
+    [OutputType([object[]])]
     param(
         [Parameter()]
         [string[]]$Scope = @('All')
@@ -1848,10 +2088,11 @@ function Test-NetworkConnectivity {
         Verifies that the system can reach the PowerShell Gallery and Microsoft endpoints
         required for module downloads and updates
 
-    .RETURNS
+    .OUTPUTS
         Boolean indicating whether network connectivity is sufficient
     #>
     [CmdletBinding()]
+    [OutputType([bool])]
     param()
 
     Write-ColorOutput "Testing network connectivity..." -Type System
@@ -1888,10 +2129,11 @@ function Get-ModuleVersionInfo {
     .PARAMETER ModuleName
         Name of the module to check
 
-    .RETURNS
+    .OUTPUTS
         Hashtable containing version information and recommendations
     #>
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName
@@ -1913,23 +2155,33 @@ function Get-ModuleVersionInfo {
     }
 
     try {
-        # Get-InstalledModule -AllVersions costs ~20 s per call on large module trees, so only
-        # pay for it when the module actually exists on PSModulePath (one cached scan).
-        $presentOnDisk = Test-ModulePresentOnDisk -Name $ModuleName
-
-        # Check for versions installed via PowerShellGet / Install-Module
+        # When the single PowerShellGet snapshot is cached, look up registered versions in O(1)
+        # without paying for a Get-Module -ListAvailable scan on modules already known to be registered.
         $installedModules = @()
-        if ($presentOnDisk) {
-            $installedModules = @(Get-InstalledModule -Name $ModuleName -AllVersions -ErrorAction SilentlyContinue |
+        $presentOnDisk = $false
+        if ($null -ne $Script:InstalledModuleCache) {
+            $installedModules = @(Get-InstalledModuleCached -Name $ModuleName |
                 Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending)
+            if ($installedModules.Count -gt 0) {
+                $presentOnDisk = $true
+            } else {
+                $presentOnDisk = Test-ModulePresentOnDisk -Name $ModuleName
+            }
+        } else {
+            # Cache not initialized (e.g. direct helper call): guard Get-InstalledModule with on-disk check
+            $presentOnDisk = Test-ModulePresentOnDisk -Name $ModuleName
+            if ($presentOnDisk) {
+                $installedModules = @(Get-InstalledModule -Name $ModuleName -AllVersions -ErrorAction SilentlyContinue |
+                    Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending)
+            }
         }
         $versionInfo.InstalledVersions = $installedModules
 
-        if ($installedModules) {
+        if ($installedModules.Count -gt 0) {
             $versionInfo.IsInstalled = $true
             $versionInfo.IsRegistered = $true
             $versionInfo.LocalVersion = $installedModules[0].Version
-            $versionInfo.MultipleVersionsInstalled = ($installedModules | Measure-Object).Count -gt 1
+            $versionInfo.MultipleVersionsInstalled = $installedModules.Count -gt 1
         }
 
         # Get-InstalledModule only sees modules registered by PowerShellGet. A module can also
@@ -1937,8 +2189,12 @@ function Get-ModuleVersionInfo {
         # before deciding that an installation is missing.
         if (-not $versionInfo.IsInstalled -and $presentOnDisk) {
             $psHomeModulePath = Join-Path $PSHOME 'Modules'
-            $availableModules = @(Get-Module -Name $ModuleName -ListAvailable -ErrorAction SilentlyContinue |
-                Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending)
+            $cachedAvailable = if ($Script:AvailableModuleCache.ContainsKey($ModuleName)) {
+                @($Script:AvailableModuleCache[$ModuleName])
+            } else {
+                @(Get-Module -Name $ModuleName -ListAvailable -ErrorAction SilentlyContinue)
+            }
+            $availableModules = @($cachedAvailable | Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending)
             $availableModule = $availableModules | Select-Object -First 1
 
             if ($availableModule) {
@@ -1946,7 +2202,7 @@ function Get-ModuleVersionInfo {
                 $versionInfo.InstalledVersions = $availableModules
                 $versionInfo.LocalVersion = $availableModule.Version
                 $versionInfo.MultipleVersionsInstalled = $availableModules.Count -gt 1
-                $versionInfo.IsBundled = $availableModule.ModuleBase -like "$psHomeModulePath*"
+                $versionInfo.IsBundled = Test-PathUnderDirectory -Path $availableModule.ModuleBase -RootDirectory $psHomeModulePath
                 if ($versionInfo.IsBundled) {
                     Write-Verbose "Module '$ModuleName' found as PS7 bundled module v$($availableModule.Version) at $($availableModule.ModuleBase)"
                 } else {
@@ -1995,6 +2251,7 @@ function Get-ModuleVersionInfo {
 
 function Get-ModuleVersionInstallPath {
     [CmdletBinding()]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory)]
         [object]$ModuleVersion
@@ -2003,7 +2260,7 @@ function Get-ModuleVersionInstallPath {
     foreach ($propertyName in @('ModuleBase', 'InstalledLocation')) {
         $property = $ModuleVersion.PSObject.Properties[$propertyName]
         if ($property -and -not [string]::IsNullOrWhiteSpace($property.Value)) {
-            return $property.Value
+            return [string]$property.Value
         }
     }
 
@@ -2012,6 +2269,7 @@ function Get-ModuleVersionInstallPath {
 
 function Get-ModuleInstallRoot {
     [CmdletBinding()]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName,
@@ -2038,14 +2296,19 @@ function Get-ModuleInstallRoot {
     return (Split-Path -Path $ModuleBase -Parent)
 }
 
-function Get-ModuleVersionCleanupEntries {
+function Get-ModuleVersionCleanupEntry {
     [CmdletBinding()]
+    [OutputType([object[]])]
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName,
 
         [Parameter()]
-        [switch]$IncludeAvailable
+        [switch]$IncludeAvailable,
+
+        [Parameter()]
+        [AllowNull()]
+        [object[]]$AvailableVersions
     )
 
     $entriesByKey = @{}
@@ -2071,16 +2334,21 @@ function Get-ModuleVersionCleanupEntries {
         }
     }
 
-    $registeredVersions = @(Get-InstalledModule -Name $ModuleName -AllVersions -ErrorAction SilentlyContinue)
+    $registeredVersions = @(Get-InstalledModuleCached -Name $ModuleName)
     foreach ($version in $registeredVersions) {
         & $addEntry $version (Get-ModuleVersionInstallPath -ModuleVersion $version)
     }
 
     if ($IncludeAvailable) {
-        $availableVersions = @(Get-Module -Name $ModuleName -ListAvailable -ErrorAction SilentlyContinue |
-            Where-Object { $_.ModuleBase -notlike "$psHomeModulePath*" })
-        foreach ($version in $availableVersions) {
-            & $addEntry $version $version.ModuleBase
+        $candidateAvailable = if ($PSBoundParameters.ContainsKey('AvailableVersions')) {
+            @($AvailableVersions)
+        } else {
+            @(Get-Module -Name $ModuleName -ListAvailable -ErrorAction SilentlyContinue)
+        }
+        foreach ($version in $candidateAvailable) {
+            if (-not (Test-PathUnderDirectory -Path $version.ModuleBase -RootDirectory $psHomeModulePath)) {
+                & $addEntry $version $version.ModuleBase
+            }
         }
     }
 
@@ -2110,10 +2378,11 @@ function Remove-ModuleVersionForced {
         Optional known module base path (from Get-Module -ListAvailable) used for the
         filesystem fallback. If not supplied, the path is looked up.
 
-    .RETURNS
+    .OUTPUTS
         Hashtable: @{ Success = [bool]; Method = 'Uninstall-Module'|'Filesystem'|'WhatIf'|$null; ErrorMessage = [string] }
     #>
     [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName,
@@ -2171,7 +2440,7 @@ function Remove-ModuleVersionForced {
             throw "Could not locate an on-disk path for $ModuleName v$Version"
         }
 
-        if ($ModuleBase -like "$psHomeModulePath*") {
+        if (Test-PathUnderDirectory -Path $ModuleBase -RootDirectory $psHomeModulePath) {
             throw "Refusing to delete '$ModuleBase' - it is a PS7 bundled module"
         }
 
@@ -2186,7 +2455,7 @@ function Remove-ModuleVersionForced {
     return $outcome
 }
 
-function Remove-OldModuleVersions {
+function Remove-OldModuleVersion {
     <#
     .SYNOPSIS
         Removes old versions of a module after successful installation/update
@@ -2208,10 +2477,15 @@ function Remove-OldModuleVersions {
         module from the session before removing, and falls back to direct filesystem
         deletion when Uninstall-Module cannot complete the removal.
 
-    .RETURNS
+    .PARAMETER CleanupEntries
+        Optional pre-fetched cleanup entries (from Get-ModuleVersionCleanupEntry) to avoid
+        redundant module queries during bulk cleanup.
+
+    .OUTPUTS
         Hashtable with cleanup results
     #>
     [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [string]$ModuleName,
@@ -2220,7 +2494,11 @@ function Remove-OldModuleVersions {
         [switch]$KeepLatestOnly,
 
         [Parameter()]
-        [switch]$Force
+        [switch]$Force,
+
+        [Parameter()]
+        [AllowNull()]
+        [object[]]$CleanupEntries
     )
 
     $result = @{
@@ -2232,7 +2510,11 @@ function Remove-OldModuleVersions {
     }
 
     try {
-        $installedVersions = @(Get-ModuleVersionCleanupEntries -ModuleName $ModuleName -IncludeAvailable:$Force)
+        $installedVersions = if ($PSBoundParameters.ContainsKey('CleanupEntries')) {
+            @($CleanupEntries)
+        } else {
+            @(Get-ModuleVersionCleanupEntry -ModuleName $ModuleName -IncludeAvailable:$Force)
+        }
         $keepNewestPerRoot = $ModuleName -in $Script:BootstrapModuleNames
 
         if (-not $installedVersions -or $installedVersions.Count -le 1) {
@@ -2245,29 +2527,35 @@ function Remove-OldModuleVersions {
         }
 
         if ($keepNewestPerRoot) {
-            $versionsToRemove = @()
+            $versionsToRemoveList = [System.Collections.Generic.List[object]]::new()
             foreach ($rootGroup in ($installedVersions | Group-Object -Property ModuleRoot)) {
                 $rootVersions = @($rootGroup.Group | Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending)
-                $versionsToRemove += @($rootVersions | Select-Object -Skip 1)
+                $olderInRoot = @($rootVersions | Select-Object -Skip 1)
+                if ($olderInRoot.Count -gt 0) {
+                    $versionsToRemoveList.AddRange($olderInRoot)
+                }
             }
+            $versionsToRemove = $versionsToRemoveList.ToArray()
 
-            if ($versionsToRemove) {
+            if ($versionsToRemove.Count -gt 0) {
                 Write-ColorOutput "    Protecting $ModuleName bootstrap availability: keeping newest version per module root" -Type Info
             }
         } else {
-            # Determine how many versions to keep (default to keeping only latest if no parameter specified)
-            $versionsToKeep = if ($KeepLatestOnly -or $Force -or $PSBoundParameters.Count -eq 1) { 1 } else { 2 }
+            # Default to keeping only the latest version unless caller explicitly passes -KeepLatestOnly:$false.
+            # Checking ContainsKey avoids common parameters (-Verbose, -WhatIf) altering the retention count.
+            $versionsToKeep = if ($KeepLatestOnly -or $Force -or -not $PSBoundParameters.ContainsKey('KeepLatestOnly')) { 1 } else { 2 }
             $versionsToRemove = @($installedVersions | Select-Object -Skip $versionsToKeep)
         }
 
-        if (-not $versionsToRemove) {
+        if ($versionsToRemove.Count -eq 0) {
             Write-Verbose "No old versions to remove for $ModuleName"
             $result.Success = $true
-            $result.KeptVersions = $installedVersions | ForEach-Object { $_.Version.ToString() }
+            $result.KeptVersions = @($installedVersions | ForEach-Object { $_.Version.ToString() })
             return $result
         }
 
         Write-ColorOutput "    🧹 Cleaning up old versions of $ModuleName..." -Type Info
+        $removedVersionsList = [System.Collections.Generic.List[string]]::new()
 
         foreach ($versionToRemove in $versionsToRemove) {
             try {
@@ -2304,7 +2592,7 @@ function Remove-OldModuleVersions {
                     }
                 }
 
-                $result.RemovedVersions += $versionToRemove.Version.ToString()
+                $removedVersionsList.Add($versionToRemove.Version.ToString())
                 $result.RemovedCount++
             }
             catch {
@@ -2317,11 +2605,15 @@ function Remove-OldModuleVersions {
             }
         }
 
+        $result.RemovedVersions = $removedVersionsList.ToArray()
+        if ($result.RemovedCount -gt 0) {
+            Clear-ModuleCacheEntry -Name $ModuleName
+        }
+
         # Record kept versions
         $result.KeptVersions = @($installedVersions | Where-Object { $_.Version.ToString() -notin $result.RemovedVersions } |
             ForEach-Object { $_.Version.ToString() })
 
-        # Consider operation successful even if some versions couldn't be removed
         $result.Success = -not $result.ErrorMessage
 
         if ($result.RemovedCount -gt 0) {
@@ -2339,7 +2631,7 @@ function Remove-OldModuleVersions {
     return $result
 }
 
-function Remove-AllOldModuleVersions {
+function Remove-AllOldModuleVersion {
     <#
     .SYNOPSIS
         Removes old versions from all installed modules that have multiple versions
@@ -2360,10 +2652,11 @@ function Remove-AllOldModuleVersions {
         Get-Module -ListAvailable (not registered with PowerShellGet), and uses
         Remove-ModuleVersionForced (session unload + filesystem fallback) for each removal.
 
-    .RETURNS
+    .OUTPUTS
         Hashtable with overall cleanup results
     #>
     [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([hashtable])]
     param(
         [Parameter()]
         [string[]]$ExcludeModules = @(),
@@ -2375,6 +2668,7 @@ function Remove-AllOldModuleVersions {
         [switch]$Force
     )
 
+    $cleanupDetailsList = [System.Collections.Generic.List[object]]::new()
     $overallResult = @{
         ProcessedModules = 0
         SuccessfulCleanups = 0
@@ -2386,27 +2680,54 @@ function Remove-AllOldModuleVersions {
     Write-ColorOutput "🧹 Starting cleanup of old module versions..." -Type System
 
     try {
-        # Get all modules registered via PowerShellGet, grouped by name
-        $allInstalledModules = Get-InstalledModule -ErrorAction SilentlyContinue
-        $moduleNames = @($allInstalledModules | Select-Object -ExpandProperty Name -Unique)
+        # Reuse a single PowerShellGet snapshot instead of scanning per module in a loop
+        Initialize-InstalledModuleCache
+        if ($null -ne $Script:InstalledModuleCache) {
+            $moduleNames = @($Script:InstalledModuleCache.Keys)
+        } else {
+            $allInstalledModules = Get-InstalledModule -ErrorAction SilentlyContinue
+            $moduleNames = @($allInstalledModules | Select-Object -ExpandProperty Name -Unique)
+        }
 
+        $availableByName = [System.Collections.Hashtable]::new([System.StringComparer]::OrdinalIgnoreCase)
         if ($Force) {
-            # Comprehensive scan: also include anything visible on PSModulePath, even if
-            # PowerShellGet never registered it (e.g. copied in manually, or side-by-side
-            # versions installed by a different tool). Bundled PS7 modules are excluded.
+            # Single Get-Module -ListAvailable scan grouped in memory to avoid repeating it per module.
             $psHomeModulePath = Join-Path $PSHOME 'Modules'
-            $availableModuleNames = @(Get-Module -ListAvailable -ErrorAction SilentlyContinue |
-                Where-Object { $_.ModuleBase -notlike "$psHomeModulePath*" } |
-                Select-Object -ExpandProperty Name -Unique)
-            $moduleNames = @($moduleNames + $availableModuleNames | Select-Object -Unique)
+            $availableModules = @(Get-Module -ListAvailable -ErrorAction SilentlyContinue)
+            foreach ($availMod in $availableModules) {
+                if (Test-PathUnderDirectory -Path $availMod.ModuleBase -RootDirectory $psHomeModulePath) {
+                    continue
+                }
+                if (-not $availableByName.ContainsKey($availMod.Name)) {
+                    $availableByName[$availMod.Name] = [System.Collections.Generic.List[object]]::new()
+                }
+                $availableByName[$availMod.Name].Add($availMod)
+            }
+            $moduleNames = @($moduleNames + @($availableByName.Keys) | Select-Object -Unique)
         }
 
         # Find modules with multiple versions using the same combined logic that
-        # Remove-OldModuleVersions applies, so counts here reflect what will actually happen
-        $modulesWithMultipleVersions = foreach ($name in $moduleNames) {
-            if ($name -in $ExcludeModules) { continue }
+        # Remove-OldModuleVersion applies, passing pre-fetched entries to avoid double scans.
+        $excludeSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($excluded in $ExcludeModules) { $null = $excludeSet.Add($excluded) }
 
-            $cleanupEntries = @(Get-ModuleVersionCleanupEntries -ModuleName $name -IncludeAvailable:$Force)
+        $modulesWithMultipleVersions = [System.Collections.Generic.List[object]]::new()
+        foreach ($name in $moduleNames) {
+            if ($excludeSet.Contains($name)) { continue }
+
+            $entryParams = @{
+                ModuleName       = $name
+                IncludeAvailable = $Force
+            }
+            if ($Force) {
+                $entryParams.AvailableVersions = if ($availableByName.ContainsKey($name)) {
+                    $availableByName[$name].ToArray()
+                } else {
+                    @()
+                }
+            }
+            $cleanupEntries = @(Get-ModuleVersionCleanupEntry @entryParams)
+
             if ($name -in $Script:BootstrapModuleNames) {
                 $rootsWithMultipleVersions = @($cleanupEntries | Group-Object -Property ModuleRoot | Where-Object { $_.Count -gt 1 })
                 $versionCount = if ($rootsWithMultipleVersions) {
@@ -2419,16 +2740,20 @@ function Remove-AllOldModuleVersions {
             }
 
             if ($versionCount -gt 1) {
-                [pscustomobject]@{ Name = $name; Count = $versionCount }
+                $modulesWithMultipleVersions.Add([pscustomobject]@{
+                    Name           = $name
+                    Count          = $versionCount
+                    CleanupEntries = $cleanupEntries
+                })
             }
         }
 
-        if (-not $modulesWithMultipleVersions) {
+        if ($modulesWithMultipleVersions.Count -eq 0) {
             Write-ColorOutput "✅ No modules with multiple versions found - cleanup not needed" -Type Process
             return $overallResult
         }
 
-        Write-ColorOutput "Found $(@($modulesWithMultipleVersions).Count) module(s) with multiple versions" -Type Info
+        Write-ColorOutput "Found $($modulesWithMultipleVersions.Count) module(s) with multiple versions" -Type Info
 
         foreach ($moduleInfo in $modulesWithMultipleVersions) {
             $moduleName = $moduleInfo.Name
@@ -2437,8 +2762,8 @@ function Remove-AllOldModuleVersions {
 
             Write-ColorOutput "Processing: $moduleName ($($moduleInfo.Count) versions)" -Type Info
 
-            # Perform cleanup for this module
-            $cleanupResult = Remove-OldModuleVersions -ModuleName $moduleName -KeepLatestOnly:$KeepLatestOnly -Force:$Force
+            # Perform cleanup for this module using the already-collected entries
+            $cleanupResult = Remove-OldModuleVersion -ModuleName $moduleName -KeepLatestOnly:$KeepLatestOnly -Force:$Force -CleanupEntries $moduleInfo.CleanupEntries
 
             # Track results
             if ($cleanupResult.Success) {
@@ -2449,14 +2774,14 @@ function Remove-AllOldModuleVersions {
             }
 
             # Store detailed results
-            $overallResult.CleanupDetails += @{
+            $cleanupDetailsList.Add(@{
                 ModuleName = $moduleName
                 Success = $cleanupResult.Success
                 RemovedVersions = $cleanupResult.RemovedVersions
                 KeptVersions = $cleanupResult.KeptVersions
                 RemovedCount = $cleanupResult.RemovedCount
                 ErrorMessage = $cleanupResult.ErrorMessage
-            }
+            })
         }
 
         # Display overall summary
@@ -2476,13 +2801,14 @@ function Remove-AllOldModuleVersions {
     }
     catch {
         Write-ColorOutput "❌ Module cleanup failed: $($_.Exception.Message)" -Type Error
-        $overallResult.CleanupDetails += @{
+        $cleanupDetailsList.Add(@{
             ModuleName = "Overall Operation"
             Success = $false
             ErrorMessage = $_.Exception.Message
-        }
+        })
     }
 
+    $overallResult.CleanupDetails = $cleanupDetailsList.ToArray()
     return $overallResult
 }
 
@@ -2549,12 +2875,13 @@ function Test-AllUsersModuleWriteAccess {
     }
 }
 
-function Test-Prerequisites {
+function Test-Prerequisite {
     <#
     .SYNOPSIS
         Tests system prerequisites for running the script
     #>
     [CmdletBinding()]
+    [OutputType([bool])]
     param()
 
     Write-ProgressHeader "System Prerequisites Check"
@@ -2574,8 +2901,7 @@ function Test-Prerequisites {
 
     # Check administrator privileges
     try {
-        $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-        $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        $isAdmin = Test-IsAdministrator
 
         if ($isAdmin) {
             Write-ColorOutput "✅ Running with administrator privileges" -Type Success
@@ -2650,12 +2976,12 @@ function Start-ModuleProcessing {
     $failureCount = 0
     $cleanupFailureCount = 0
     $cleanupCandidates = [System.Collections.Generic.List[object]]::new()
-    $Script:ModuleOperationResults = @()
+    $Script:ModuleOperationResults = [System.Collections.Generic.List[object]]::new()
 
     foreach ($module in $modules) {
         $processedCount++
 
-        Write-Progress -Activity 'Microsoft cloud module update' -Status "$($module.Name) ($processedCount of $totalModules)" -PercentComplete ([int](($processedCount - 1) / [Math]::Max($totalModules, 1) * 100))
+        Write-Progress -Id 0 -Activity 'Microsoft cloud module update' -Status "$($module.Name) ($processedCount of $totalModules)" -PercentComplete ([int](($processedCount - 1) / [Math]::Max($totalModules, 1) * 100))
         Write-ColorOutput "($processedCount of $totalModules) Processing: $($module.Description)" -Type Info
 
         # Get version information
@@ -2709,7 +3035,7 @@ function Start-ModuleProcessing {
                         # Perform cleanup if requested
                         if ($cleanupChoice -eq 'Y') {
                             Write-ColorOutput "  🧹 Cleaning up old versions of $($module.Name)..." -Type Process
-                            $cleanupResult = Remove-OldModuleVersions -ModuleName $module.Name -KeepLatestOnly
+                            $cleanupResult = Remove-OldModuleVersion -ModuleName $module.Name -KeepLatestOnly
 
                             if ($cleanupResult.Success -and $cleanupResult.RemovedCount -gt 0) {
                                 Write-ColorOutput "  ✅ Removed $($cleanupResult.RemovedCount) old version(s)" -Type Process
@@ -2723,12 +3049,7 @@ function Start-ModuleProcessing {
                             Write-ColorOutput "  ⏭️ Keeping all versions as requested" -Type Info
                         }
                     }
-                } elseif ($CheckOnly) {
-                    # In check-only mode, just show the versions
-                    if ($allVersions -and $allVersions.Count -gt 1) {
-                        Write-ColorOutput "  📋 Installed versions: $($allVersions.Version -join ', ')" -Type Info
-                    }
-                } else {
+                } elseif (-not $CheckOnly) {
                     Write-ColorOutput "  ⏭️ Version cleanup skipped by parameter - multiple versions will be preserved" -Type Warning
                 }
             }
@@ -2788,7 +3109,12 @@ function Start-ModuleProcessing {
             }
 
             # Installs run in a separate job process that does not inherit -WhatIf, so gate here.
-            if (-not $PSCmdlet.ShouldProcess("$($module.Name) $($versionInfo.LocalVersion) -> $($versionInfo.OnlineVersion) (AllUsers)", "$action module")) {
+            $shouldProcessTarget = if ($null -ne $versionInfo.LocalVersion) {
+                "$($module.Name) $($versionInfo.LocalVersion) -> $($versionInfo.OnlineVersion) (AllUsers)"
+            } else {
+                "$($module.Name) v$($versionInfo.OnlineVersion) (AllUsers)"
+            }
+            if (-not $PSCmdlet.ShouldProcess($shouldProcessTarget, "$action module")) {
                 Add-ModuleResult -Module $module -Status 'WhatIf' -Action $action -LocalVersion $versionInfo.LocalVersion -OnlineVersion $versionInfo.OnlineVersion
                 $Script:SkippedCount++
                 Write-ColorOutput ""
@@ -2802,7 +3128,7 @@ function Start-ModuleProcessing {
                 $startTime = Get-Date
 
                 # Get proper installation parameters
-                $installParams = Get-ModuleSpecificParams -ModuleName $module.Name -BaseParams @{
+                $installParams = Get-ModuleInstallParameter -ModuleName $module.Name -BaseParams @{
                     Force = $true
                     Confirm = $false
                     Scope = 'AllUsers'
@@ -2818,6 +3144,7 @@ function Start-ModuleProcessing {
                     if ($verified.Count -eq 0) {
                         throw "Installation did not produce $($module.Name) v$($versionInfo.OnlineVersion)."
                     }
+                    Clear-ModuleCacheEntry -Name $module.Name
                 }
                 $result.Success = $success
                 if (-not $success) { $result.ErrorMessage = $Script:LastInstallationError }
@@ -2837,18 +3164,13 @@ function Start-ModuleProcessing {
             $resultStatus = if ($result.Success) { 'Succeeded' } else { 'Failed' }
             Add-ModuleResult -Module $module -Status $resultStatus -Action $action -LocalVersion $versionInfo.LocalVersion -OnlineVersion $versionInfo.OnlineVersion -Duration $result.Duration -ErrorMessage $result.ErrorMessage
 
-            # Store result for summary
-            if (-not $Script:ModuleOperationResults) {
-                $Script:ModuleOperationResults = @()
-            }
-
-            $Script:ModuleOperationResults += @{
+            $Script:ModuleOperationResults.Add(@{
                 ModuleName = $module.Name
                 Operation = $action
                 Success = $result.Success
                 Duration = $result.Duration
                 ErrorMessage = $result.ErrorMessage
-            }
+            })
         } else {
             Write-ColorOutput "  ✅ Already up to date" -Type Process
             Add-ModuleResult -Module $module -Status 'UpToDate' -Action 'None' -LocalVersion $versionInfo.LocalVersion -OnlineVersion $versionInfo.OnlineVersion
@@ -2858,7 +3180,7 @@ function Start-ModuleProcessing {
 
         Write-ColorOutput ""
     }
-    Write-Progress -Activity 'Microsoft cloud module update' -Completed
+    Write-Progress -Id 0 -Activity 'Microsoft cloud module update' -Completed
 
     # Final pass to ensure processed modules are maintained in a latest-only state
     if (-not $CheckOnly -and -not $SkipVersionCleanup) {
@@ -2866,7 +3188,7 @@ function Start-ModuleProcessing {
         Write-ColorOutput "🧹 Final latest-only cleanup verification..." -Type System
 
         foreach ($module in $cleanupCandidates) {
-            $finalCleanupResult = Remove-OldModuleVersions -ModuleName $module.Name -KeepLatestOnly
+            $finalCleanupResult = Remove-OldModuleVersion -ModuleName $module.Name -KeepLatestOnly
             if (-not $finalCleanupResult.Success) {
                 $cleanupFailureCount++
                 Write-ColorOutput "  ⚠️ Final cleanup could not fully complete for $($module.Name): $($finalCleanupResult.ErrorMessage)" -Type Warning
@@ -2904,16 +3226,16 @@ function Start-ModuleProcessing {
         Write-ColorOutput "🧹 Final Cleanup Opportunity" -Type System
 
         # Check for any remaining modules with multiple versions
-        $modulesWithMultipleVersions = @()
+        $modulesWithMultipleVersions = [System.Collections.Generic.List[object]]::new()
         foreach ($module in $modules) {
-            $installedVersions = @(Get-InstalledModule -Name $module.Name -AllVersions -ErrorAction SilentlyContinue)
+            $installedVersions = @(Get-InstalledModuleCached -Name $module.Name)
             if ($installedVersions.Count -gt 1) {
-                $modulesWithMultipleVersions += @{
+                $modulesWithMultipleVersions.Add(@{
                     Name = $module.Name
                     Description = $module.Description
                     VersionCount = $installedVersions.Count
-                    Versions = ($installedVersions | Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending | ForEach-Object { $_.Version.ToString() })
-                }
+                    Versions = @($installedVersions | Sort-Object { ConvertTo-ModuleVersion $_.Version } -Descending | ForEach-Object { $_.Version.ToString() })
+                })
             }
         }
 
@@ -2931,7 +3253,7 @@ function Start-ModuleProcessing {
 
             if ($globalCleanupChoice -match '^[Yy]') {
                 Write-ColorOutput "🧹 Starting comprehensive cleanup..." -Type Process
-                $overallResult = Remove-AllOldModuleVersions -KeepLatestOnly
+                $overallResult = Remove-AllOldModuleVersion -KeepLatestOnly
 
                 Write-ColorOutput ""
                 Write-ColorOutput "✅ Comprehensive cleanup completed!" -Type Success
@@ -2951,12 +3273,13 @@ function Start-ModuleProcessing {
     }
 }
 
-function Remove-DeprecatedModules {
+function Remove-DeprecatedModule {
     <#
     .SYNOPSIS
         Removes deprecated PowerShell modules that should no longer be used
     #>
     [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([hashtable])]
     param()
 
     Write-ProgressHeader "Deprecated Module Cleanup"
@@ -2966,20 +3289,27 @@ function Remove-DeprecatedModules {
 
     foreach ($deprecatedModule in $Script:DeprecatedModules) {
         try {
-            # Most deprecated modules are absent; the cached on-disk check avoids a ~20 s
-            # Get-InstalledModule call for each of them.
-            if (-not (Test-ModulePresentOnDisk -Name $deprecatedModule.Name)) {
-                Write-Verbose "Deprecated module $($deprecatedModule.Name) not present on PSModulePath"
-                continue
+            if ($null -ne $Script:InstalledModuleCache) {
+                $installedVersions = @(Get-InstalledModuleCached -Name $deprecatedModule.Name)
+                if ($installedVersions.Count -eq 0) {
+                    Write-Verbose "Deprecated module $($deprecatedModule.Name) not registered with PowerShellGet"
+                    continue
+                }
+            } else {
+                # Cache not initialized: avoid a slow Get-InstalledModule call when module is absent on disk
+                if (-not (Test-ModulePresentOnDisk -Name $deprecatedModule.Name)) {
+                    Write-Verbose "Deprecated module $($deprecatedModule.Name) not present on PSModulePath"
+                    continue
+                }
+                $installedVersions = @(Get-InstalledModule -Name $deprecatedModule.Name -AllVersions -ErrorAction SilentlyContinue)
             }
-
-            $installedVersions = @(Get-InstalledModule -Name $deprecatedModule.Name -AllVersions -ErrorAction SilentlyContinue)
 
             if ($installedVersions.Count -gt 0) {
                 Write-ColorOutput "Found deprecated module: $($deprecatedModule.Name)" -Type Warning
                 Write-ColorOutput "  Reason: $($deprecatedModule.Reason)" -Type Info
                 Write-ColorOutput "  Replacement: $($deprecatedModule.Replacement)" -Type Info
                 Write-ColorOutput "  Versions installed: $($installedVersions.Count)" -Type Info
+                $removedForModule = $false
 
                 foreach ($version in $installedVersions) {
                     if (-not $PSCmdlet.ShouldProcess("$($deprecatedModule.Name) v$($version.Version)", 'Uninstall deprecated module')) {
@@ -2990,11 +3320,16 @@ function Remove-DeprecatedModules {
                         Uninstall-Module -Name $deprecatedModule.Name -RequiredVersion $version.Version -Force -Confirm:$false -ErrorAction Stop
                         Write-ColorOutput "    ✅ Removed successfully" -Type Process
                         $removedCount++
+                        $removedForModule = $true
                     }
                     catch {
                         Write-ColorOutput "    ⚠️ Could not remove: $($_.Exception.Message)" -Type Warning
                         $failedCount++
                     }
+                }
+
+                if ($removedForModule) {
+                    Clear-ModuleCacheEntry -Name $deprecatedModule.Name
                 }
             }
         }
@@ -3006,8 +3341,6 @@ function Remove-DeprecatedModules {
 
     if ($removedCount -gt 0) {
         Write-ColorOutput "✅ Removed $removedCount deprecated module version(s)" -Type Process
-        # Removals change what is on disk; refresh the cache before version checks use it
-        $null = Test-ModulePresentOnDisk -Name 'PowerShellGet' -Refresh
     } else {
         Write-ColorOutput "✅ No deprecated modules found or removal needed" -Type Process
     }
@@ -3048,32 +3381,27 @@ function Write-ProgressHeader {
 
 try {
     # Early elevation check (friendlier than the generic #Requires message)
-    try {
-        $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-        $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    }
-    catch {
-        $isAdmin = $false
-    }
+    $isAdmin = Test-IsAdministrator
 
     # -WhatIf makes no changes, so like -CheckOnly it may run without elevation
     if (-not $isAdmin -and -not $CheckOnly -and -not $CheckSessions -and -not $WhatIfPreference) {
         $scriptPath = $PSCommandPath
-        $argumentParts = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "'$($scriptPath -replace "'", "''")'")
+        $argumentParts = [System.Collections.Generic.List[string]]::new()
+        $argumentParts.AddRange([string[]]@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "'$($scriptPath -replace "'", "''")'"))
         foreach ($boundName in $PSBoundParameters.Keys | Sort-Object) {
             $boundValue = $PSBoundParameters[$boundName]
             if ($boundValue -is [System.Management.Automation.SwitchParameter]) {
                 if ($boundValue) {
-                    $argumentParts += "-$boundName"
+                    $argumentParts.Add("-$boundName")
                 }
             } elseif ($boundValue -is [array]) {
-                $argumentParts += "-$boundName"
+                $argumentParts.Add("-$boundName")
                 foreach ($item in $boundValue) {
-                    $argumentParts += "'$($item.ToString() -replace "'", "''")'"
+                    $argumentParts.Add("'$($item.ToString() -replace "'", "''")'")
                 }
             } else {
-                $argumentParts += "-$boundName"
-                $argumentParts += "'$($boundValue.ToString() -replace "'", "''")'"
+                $argumentParts.Add("-$boundName")
+                $argumentParts.Add("'$($boundValue.ToString() -replace "'", "''")'")
             }
         }
         $elevateCmd = "Start-Process -Verb RunAs pwsh -ArgumentList @($($argumentParts -join ', '))"
@@ -3100,7 +3428,7 @@ try {
     }
 
     # Show header (Clear-Host removed to avoid console issues in some environments)
-    Write-ProgressHeader "Microsoft Cloud PowerShell Module Updater v2.18" "Enhanced version with improved module management and version cleanup"
+    Write-ProgressHeader "Microsoft Cloud PowerShell Module Updater v2.19" "Enhanced version with improved module management and version cleanup"
 
     # Display configuration
     Write-ColorOutput "Configuration:" -Type Info
@@ -3124,7 +3452,7 @@ try {
 
     # Check prerequisites
     Write-ColorOutput "🔍 Checking prerequisites..." -Type System
-    $prerequisitesMet = Test-Prerequisites
+    $prerequisitesMet = Test-Prerequisite
     if (-not $prerequisitesMet) {
         Write-ColorOutput "❌ Prerequisites not met. Please resolve the issues above and try again." -Type Error
         exit 1
@@ -3191,6 +3519,9 @@ try {
         }
     }
 
+    # Build a single cached snapshot of all PowerShellGet-registered modules before checks/cleanup
+    Initialize-InstalledModuleCache
+
     # Clean up deprecated modules first
     $Script:ProcessingFailureCount = 0
     $deprecatedCleanupResult = $null
@@ -3198,7 +3529,7 @@ try {
         Write-ColorOutput "⏭️ Deprecated module cleanup skipped in check-only mode" -Type Info
     } elseif (-not $SkipDeprecatedCleanup) {
         Write-ColorOutput "🧹 Checking for deprecated modules..." -Type System
-        $deprecatedCleanupResult = Remove-DeprecatedModules
+        $deprecatedCleanupResult = Remove-DeprecatedModule
     } else {
         Write-ColorOutput "⏭️ Deprecated module cleanup skipped" -Type Warning
     }
@@ -3221,7 +3552,7 @@ try {
         }
         Write-ProgressHeader "Forced Comprehensive Module Version Cleanup"
         Write-ColorOutput "🧹 Scanning ALL installed modules (not limited to -ModuleScope) for old versions..." -Type System
-        $forcedCleanupResult = Remove-AllOldModuleVersions -Force -KeepLatestOnly
+        $forcedCleanupResult = Remove-AllOldModuleVersion -Force -KeepLatestOnly
         if ($forcedCleanupResult.FailedCleanups -gt 0) {
             Write-ColorOutput "⚠️ $($forcedCleanupResult.FailedCleanups) module(s) could not be fully cleaned up. Close any sessions using them and re-run with -ForceVersionCleanup." -Type Warning
             $Script:ProcessingFailureCount += $forcedCleanupResult.FailedCleanups
@@ -3262,7 +3593,7 @@ catch {
 }
 finally {
     #region Cleanup
-    Write-Progress -Activity 'Microsoft cloud module update' -Completed
+    Write-Progress -Id 0 -Activity 'Microsoft cloud module update' -Completed
 
     # Emitted here so results reach the pipeline on every exit path, including exit 1
     if ($PassThru) {

@@ -32,6 +32,10 @@ Describe 'o365-update.ps1' {
         $Script:Colors = @{ System = 'Cyan'; Process = 'Green'; Warning = 'Yellow'; Error = 'Red'; Info = 'White'; Success = 'Green' }
         $Script:BootstrapModuleNames = @('PowerShellGet', 'PackageManagement')
         $Script:LastInstallationError = $null
+        $Script:ModulePresenceCache = @{}
+        $Script:AvailableModuleCache = @{}
+        $Script:InstalledModuleCache = $null
+        $Script:StaleInstalledModuleNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $Repository = 'PSGallery'
 
         # Silence UI output from the script's helpers during tests
@@ -138,6 +142,34 @@ Describe 'o365-update.ps1' {
             if ($command -notmatch 'Get-Content -LiteralPath \$RequestPath -Raw') { throw 'Expected the worker to read its request file' }
             if ($command -notmatch 'Install-Module -Name \$request\.ModuleName @workerParams') { throw 'Expected the worker to splat the serialized parameters' }
         }
+        It 'runs non-interactively and restores repository InstallationPolicy in finally' {
+            $command = Get-ModuleInstallWorkerScript
+            if ($command -notmatch "\`$ConfirmPreference = 'None'") { throw 'Expected ConfirmPreference to be disabled in worker' }
+            if ($command -notmatch 'Set-PSRepository -Name \$targetRepository -InstallationPolicy \$originalInstallationPolicy') { throw 'Expected worker to restore original InstallationPolicy' }
+        }
+    }
+
+    Context 'Test-PathUnderDirectory' {
+        It 'matches the root itself and nested child paths case-insensitively' {
+            if (-not (Test-PathUnderDirectory -Path 'C:\Program Files\PowerShell\7\Modules' -RootDirectory 'C:\Program Files\PowerShell\7\Modules')) { throw 'exact match failed' }
+            if (-not (Test-PathUnderDirectory -Path 'c:\program files\powershell\7\modules\PowerShellGet\2.2.5' -RootDirectory 'C:\Program Files\PowerShell\7\Modules')) { throw 'nested match failed' }
+        }
+        It 'rejects sibling directory prefixes and handles wildcard characters literally' {
+            if (Test-PathUnderDirectory -Path 'C:\Program Files\PowerShell\7\ModulesExtra\Foo' -RootDirectory 'C:\Program Files\PowerShell\7\Modules') { throw 'sibling prefix falsely matched' }
+            if (-not (Test-PathUnderDirectory -Path 'C:\Modules\[v1]\Foo\1.0.0' -RootDirectory 'C:\Modules\[v1]')) { throw 'bracketed path failed to match' }
+            if (Test-PathUnderDirectory -Path $null -RootDirectory 'C:\Modules') { throw 'null path falsely matched' }
+        }
+    }
+
+    Context 'Get-ModuleInstallationEstimate' {
+        It 'returns specific estimates for both PowerApps modules' {
+            $pa = Get-ModuleInstallationEstimate -ModuleName 'Microsoft.PowerApps.PowerShell' -Operation 'Install'
+            $paa = Get-ModuleInstallationEstimate -ModuleName 'Microsoft.PowerApps.Administration.PowerShell' -Operation 'Update'
+            Assert-Equal $pa.EstimatedSize 25 'PowerApps size'
+            Assert-Equal $pa.EstimatedTime 30 'PowerApps install time'
+            Assert-Equal $paa.EstimatedSize 25 'PowerApps Admin size'
+            Assert-Equal $paa.EstimatedTime 40 'PowerApps Admin update time'
+        }
     }
 
     Context 'Invoke-PowerShellCommandWithTimeout' {
@@ -214,6 +246,19 @@ exit 1
     }
 
     Context 'Get-ModuleVersionInfo' {
+        BeforeEach {
+            $Script:InstalledModuleCache = $null
+            $Script:ModulePresenceCache = @{}
+            $Script:AvailableModuleCache = @{}
+            $Script:StaleInstalledModuleNames.Clear()
+        }
+        AfterEach {
+            $Script:InstalledModuleCache = $null
+            $Script:ModulePresenceCache = @{}
+            $Script:AvailableModuleCache = @{}
+            $Script:StaleInstalledModuleNames.Clear()
+        }
+
         It 'skips Get-InstalledModule for a module that is not on disk and recommends install' {
             $Script:getInstalledCalls = 0
             function Test-ModulePresentOnDisk { [CmdletBinding()] param($Name, [switch]$Refresh) $false }
@@ -234,12 +279,32 @@ exit 1
             Assert-Equal $info.ErrorMessage $null 'ErrorMessage'
             Assert-Equal $info.UpdateAvailable $true 'UpdateAvailable'
         }
+        It 'uses InstalledModuleCache without calling Get-InstalledModule or Test-ModulePresentOnDisk' {
+            $cache = [System.Collections.Hashtable]::new([System.StringComparer]::OrdinalIgnoreCase)
+            $list = [System.Collections.Generic.List[object]]::new()
+            $list.Add([pscustomobject]@{ Name = 'Az'; Version = '16.0.0'; InstalledLocation = 'C:\Program Files\PowerShell\Modules\Az\16.0.0' })
+            $cache['Az'] = $list
+            $Script:InstalledModuleCache = $cache
+            $Script:presenceCalls = 0
+            $Script:installedCalls = 0
+            function Test-ModulePresentOnDisk { [CmdletBinding()] param($Name, [switch]$Refresh) $Script:presenceCalls++; $true }
+            function Get-InstalledModule { [CmdletBinding()] param($Name, [switch]$AllVersions) $Script:installedCalls++ }
+            function Find-Module { [CmdletBinding()] param($Name, $Repository) [pscustomobject]@{ Name = $Name; Version = '17.0.0' } }
+
+            $info = Get-ModuleVersionInfo -ModuleName 'Az'
+            Assert-Equal $Script:presenceCalls 0 'presence calls'
+            Assert-Equal $Script:installedCalls 0 'Get-InstalledModule calls'
+            Assert-Equal $info.IsInstalled $true 'IsInstalled'
+            Assert-Equal $info.IsRegistered $true 'IsRegistered'
+            Assert-Equal $info.UpdateAvailable $true 'UpdateAvailable'
+            Assert-Equal ([string]$info.LocalVersion) '16.0.0' 'LocalVersion'
+        }
     }
 
-    Context 'Remove-OldModuleVersions' {
+    Context 'Remove-OldModuleVersion' {
         BeforeAll {
-            function Get-ModuleVersionCleanupEntries {
-                [CmdletBinding()] param($ModuleName, [switch]$IncludeAvailable)
+            function Get-ModuleVersionCleanupEntry {
+                [CmdletBinding()] param($ModuleName, [switch]$IncludeAvailable, $AvailableVersions)
                 foreach ($v in '3.0.0', '2.0.0', '1.0.0') {
                     [pscustomobject]@{ Version = [version]$v; ModuleBase = "C:\Modules\$ModuleName\$v"; ModuleRoot = "C:\Modules\$ModuleName" }
                 }
@@ -249,14 +314,26 @@ exit 1
 
         It 'removes all but the newest version' {
             $Script:uninstalled = [System.Collections.Generic.List[string]]::new()
-            $result = Remove-OldModuleVersions -ModuleName 'Az' -KeepLatestOnly
+            $result = Remove-OldModuleVersion -ModuleName 'Az' -KeepLatestOnly
             Assert-Equal ($Script:uninstalled -join ',') '2.0.0,1.0.0' 'removed versions'
             Assert-Equal ($result.KeptVersions -join ',') '3.0.0' 'kept versions'
             Assert-Equal $result.Success $true 'Success'
         }
+        It 'keeps only the newest version by default even when -Verbose is passed' {
+            $Script:uninstalled = [System.Collections.Generic.List[string]]::new()
+            $result = Remove-OldModuleVersion -ModuleName 'Az' -Verbose
+            Assert-Equal ($Script:uninstalled -join ',') '2.0.0,1.0.0' 'removed versions with -Verbose'
+            Assert-Equal ($result.KeptVersions -join ',') '3.0.0' 'kept versions with -Verbose'
+        }
+        It 'keeps the latest 2 versions when -KeepLatestOnly:$false is explicitly specified' {
+            $Script:uninstalled = [System.Collections.Generic.List[string]]::new()
+            $result = Remove-OldModuleVersion -ModuleName 'Az' -KeepLatestOnly:$false
+            Assert-Equal ($Script:uninstalled -join ',') '1.0.0' 'removed versions'
+            Assert-Equal ($result.KeptVersions -join ',') '3.0.0,2.0.0' 'kept versions'
+        }
         It 'removes nothing under -WhatIf' {
             $Script:uninstalled = [System.Collections.Generic.List[string]]::new()
-            $result = Remove-OldModuleVersions -ModuleName 'Az' -KeepLatestOnly -WhatIf
+            $result = Remove-OldModuleVersion -ModuleName 'Az' -KeepLatestOnly -WhatIf
             Assert-Equal $Script:uninstalled.Count 0 'Uninstall-Module calls'
             Assert-Equal $result.RemovedCount 0 'RemovedCount'
         }
@@ -264,14 +341,14 @@ exit 1
             $root = Join-Path ([System.IO.Path]::GetTempPath()) ("o365-cleanup-" + [guid]::NewGuid())
             $oldVersionPath = Join-Path $root '1.0.0'
             $null = New-Item -ItemType Directory -Path $oldVersionPath -Force
-            function Get-ModuleVersionCleanupEntries {
-                [CmdletBinding()] param($ModuleName, [switch]$IncludeAvailable)
+            function Get-ModuleVersionCleanupEntry {
+                [CmdletBinding()] param($ModuleName, [switch]$IncludeAvailable, $AvailableVersions)
                 [pscustomobject]@{ Version = [version]'2.0.0'; ModuleBase = (Join-Path $root '2.0.0'); ModuleRoot = $root }
                 [pscustomobject]@{ Version = [version]'1.0.0'; ModuleBase = $oldVersionPath; ModuleRoot = $root }
             }
             function Uninstall-Module { [CmdletBinding(SupportsShouldProcess)] param($Name, $RequiredVersion, [switch]$Force) throw 'Administrator rights are required to uninstall from that folder.' }
             try {
-                $result = Remove-OldModuleVersions -ModuleName 'Az' -KeepLatestOnly
+                $result = Remove-OldModuleVersion -ModuleName 'Az' -KeepLatestOnly
                 Assert-Equal (Test-Path -LiteralPath $oldVersionPath) $false 'old version folder exists'
                 Assert-Equal $result.RemovedCount 1 'RemovedCount'
                 Assert-Equal $result.Success $true 'Success'
@@ -284,14 +361,14 @@ exit 1
             $root = Join-Path ([System.IO.Path]::GetTempPath()) ("o365-cleanup-" + [guid]::NewGuid())
             $oldVersionPath = Join-Path $root '1.0.0'
             $null = New-Item -ItemType Directory -Path $oldVersionPath -Force
-            function Get-ModuleVersionCleanupEntries {
-                [CmdletBinding()] param($ModuleName, [switch]$IncludeAvailable)
+            function Get-ModuleVersionCleanupEntry {
+                [CmdletBinding()] param($ModuleName, [switch]$IncludeAvailable, $AvailableVersions)
                 [pscustomobject]@{ Version = [version]'2.0.0'; ModuleBase = (Join-Path $root '2.0.0'); ModuleRoot = $root }
                 [pscustomobject]@{ Version = [version]'1.0.0'; ModuleBase = $oldVersionPath; ModuleRoot = $root }
             }
             function Uninstall-Module { [CmdletBinding(SupportsShouldProcess)] param($Name, $RequiredVersion, [switch]$Force) throw 'Module is in use.' }
             try {
-                $result = Remove-OldModuleVersions -ModuleName 'Az' -KeepLatestOnly
+                $result = Remove-OldModuleVersion -ModuleName 'Az' -KeepLatestOnly
                 Assert-Equal (Test-Path -LiteralPath $oldVersionPath) $true 'old version folder exists'
                 Assert-Equal $result.Success $false 'Success'
             }
@@ -329,23 +406,23 @@ exit 1
         }
 
         It 'counts a failed cleanup even when the module is already up to date' {
-            Mock Remove-OldModuleVersions { @{ Success = $false; ErrorMessage = 'Access denied' } }
+            Mock Remove-OldModuleVersion { @{ Success = $false; ErrorMessage = 'Access denied' } }
             Start-ModuleProcessing
             Assert-Equal $Script:ProcessingFailureCount 1 'failure count'
         }
 
         It 'does not count a successful cleanup as a failure' {
-            Mock Remove-OldModuleVersions { @{ Success = $true; ErrorMessage = $null } }
+            Mock Remove-OldModuleVersion { @{ Success = $true; ErrorMessage = $null } }
             Start-ModuleProcessing
             Assert-Equal $Script:ProcessingFailureCount 0 'failure count'
         }
 
         It 'does not attempt final cleanup in check-only mode' {
             $Script:CheckOnly = $true
-            Mock Remove-OldModuleVersions { throw 'Cleanup must not run in check-only mode' }
+            Mock Remove-OldModuleVersion { throw 'Cleanup must not run in check-only mode' }
             Start-ModuleProcessing
             Assert-Equal $Script:ProcessingFailureCount 0 'failure count'
-            Assert-MockCalled Remove-OldModuleVersions -Times 0 -Exactly -Scope It
+            Assert-MockCalled Remove-OldModuleVersion -Times 0 -Exactly -Scope It
         }
     }
 }
